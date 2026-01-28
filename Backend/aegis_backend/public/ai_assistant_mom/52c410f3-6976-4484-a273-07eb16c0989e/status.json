@@ -1,0 +1,1 @@
+{"task_id": "52c410f3-6976-4484-a273-07eb16c0989e", "status": "failed", "message": "Failed to generate Meeting Minutes: Error processing with LLM: LLM client script failed: The syntax of the command is incorrect.\n", "created_at": "2025-11-21T04:09:50.079122", "started_at": "2025-11-21T04:09:50.933596", "completed_at": "2025-11-21T04:09:51.000257"}

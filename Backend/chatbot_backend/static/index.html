@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis Chatbot - Database Selection</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .database-selection {
+            margin-bottom: 20px;
+        }
+        .database-options {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        .database-option {
+            padding: 15px 20px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+            flex: 1;
+            margin: 0 10px;
+        }
+        .database-option:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .database-option.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+            font-weight: bold;
+        }
+        .chat-container {
+            margin-top: 20px;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background-color: #fafafa;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .bot-message {
+            background-color: #f5f5f5;
+        }
+        .input-area {
+            display: flex;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px 0 0 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .info-box {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [selectedDb, setSelectedDb] = useState('');
+            const [messages, setMessages] = useState([]);
+            const [inputMessage, setInputMessage] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+
+            const selectDatabase = (db) => {
+                setSelectedDb(db);
+                // Add system message about database selection
+                setMessages(prev => [...prev, {
+                    id: Date.now(),
+                    text: `You have selected the ${db.toUpperCase()} database. You can now ask questions related to this database.`,
+                    sender: 'system'
+                }]);
+            };
+
+            const sendMessage = async () => {
+                if (!inputMessage.trim() || !selectedDb || isLoading) return;
+
+                // Add user message
+                const userMessage = {
+                    id: Date.now(),
+                    text: inputMessage,
+                    sender: 'user'
+                };
+                
+                setMessages(prev => [...prev, userMessage]);
+                const currentMessage = inputMessage;
+                setInputMessage('');
+                setIsLoading(true);
+
+                try {
+                    // Send message to backend with selected database
+                    const response = await fetch('/api/chat/message', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: currentMessage,
+                            session_id: `session_${selectedDb}`,
+                            database: selectedDb  // Pass selected database to backend
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    // Add bot response
+                    const botMessage = {
+                        id: Date.now() + 1,
+                        text: data.response,
+                        sender: 'bot',
+                        sources: data.sources
+                    };
+                    
+                    setMessages(prev => [...prev, botMessage]);
+                } catch (error) {
+                    console.error('Error:', error);
+                    const errorMessage = {
+                        id: Date.now() + 1,
+                        text: 'Sorry, I encountered an error processing your request.',
+                        sender: 'bot'
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            };
+
+            return (
+                <div className="container">
+                    <h1>Aegis Chatbot</h1>
+                    
+                    {!selectedDb ? (
+                        <div className="database-selection">
+                            <h2>Select Database</h2>
+                            <p>Please select a database to begin:</p>
+                            <div className="database-options">
+                                <div 
+                                    className="database-option" 
+                                    onClick={() => selectDatabase('bse')}
+                                >
+                                    <h3>BSE Database</h3>
+                                    <p>Bombay Stock Exchange notifications</p>
+                                    <p>5,834 companies</p>
+                                </div>
+                                <div 
+                                    className="database-option" 
+                                    onClick={() => selectDatabase('sebi')}
+                                >
+                                    <h3>SEBI Database</h3>
+                                    <p>Securities and Exchange Board of India</p>
+                                    <p>Regulatory updates</p>
+                                </div>
+                                <div 
+                                    className="database-option" 
+                                    onClick={() => selectDatabase('rbi')}
+                                >
+                                    <h3>RBI Database</h3>
+                                    <p>Reserve Bank of India notifications</p>
+                                    <p>Monetary policy updates</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="chat-container">
+                            <div className="info-box">
+                                <strong>Selected Database:</strong> {selectedDb.toUpperCase()}
+                                <button 
+                                    onClick={() => setSelectedDb('')} 
+                                    style={{marginLeft: '10px', padding: '5px 10px', fontSize: '12px'}}
+                                >
+                                    Change Database
+                                </button>
+                            </div>
+                            
+                            <div className="messages">
+                                {messages.map(message => (
+                                    <div 
+                                        key={message.id} 
+                                        className={`message ${message.sender === 'user' ? 'user-message' : message.sender === 'bot' ? 'bot-message' : ''}`}
+                                    >
+                                        <strong>{message.sender === 'user' ? 'You' : message.sender === 'bot' ? 'Bot' : 'System'}:</strong>
+                                        {message.sender === 'bot' ? (
+                                            <div style={{ marginTop: '6px' }}
+                                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(message.text || '')) }}
+                                            />
+                                        ) : (
+                                            <span> {message.text}</span>
+                                        )}
+                                        {message.sources && message.sources.length > 0 && (
+                                            <div>
+                                                <strong>Sources:</strong>
+                                                <ul>
+                                                    {message.sources.map((source, idx) => (
+                                                        <li key={idx}><a href={source} target="_blank" rel="noopener noreferrer">{source}</a></li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                                {isLoading && (
+                                    <div className="message bot-message">
+                                        <strong>Bot:</strong> Thinking...
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="input-area">
+                                <input
+                                    type="text"
+                                    value={inputMessage}
+                                    onChange={(e) => setInputMessage(e.target.value)}
+                                    onKeyPress={handleKeyPress}
+                                    placeholder="Type your message here..."
+                                    disabled={isLoading}
+                                />
+                                <button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
+                                    {isLoading ? 'Sending...' : 'Send'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

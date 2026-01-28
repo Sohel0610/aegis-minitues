@@ -1,0 +1,145 @@
+{
+  "title": "Untitled Meeting",
+  "date": "Unknown Date",
+  "attendees": [
+    {
+      "name": "Anup Shah",
+      "role": null
+    },
+    {
+      "name": "Romesh Sobti",
+      "role": null
+    },
+    {
+      "name": "Dinesh Kanabar",
+      "role": null
+    }
+  ],
+  "agenda": [
+    "Minutes of the previous audit committee meeting",
+    "Action taken on decisions of the previous audit committee meeting",
+    "Review of matters pursuant to Regulation 18(3) of SEBI (LODR)",
+    "Review of inter-corporate loans and investments",
+    "Review of investments made by unlisted subsidiaries",
+    "Review of compliance with provisions of SEBI Insider Trading Regulation",
+    "Review of the status of vigil mechanism",
+    "Review of internal audit report for the quarter ended 30th September",
+    "Soil conditions and foundation for turbines",
+    "Inventory management",
+    "Insurance coverage, including terrorism and war damage",
+    "Project management and audit processes",
+    "Revenue assurance and business interruption policy",
+    "Sourcing strategy for modules",
+    "Supply chain and logistics",
+    "Cost comparison between domestic and international suppliers (China and South East Asia)",
+    "Quality control and assurance processes",
+    "Project management and construction",
+    "Implementation of digital tools for quality checks",
+    "Digitising project",
+    "Quality management",
+    "Invoicing",
+    "Pre-commissioning",
+    "Cheques",
+    "Readiness for end-to-end process",
+    "Land availability for solar projects",
+    "Pump storage and battery storage projects",
+    "Sodium ion technology",
+    "Kavda land and its potential for 10 extra gigawatts",
+    "Evacuation issues in Khabra",
+    "Compliance framework and validation of equipment masters",
+    "Cost-saving opportunities at Kavda level",
+    "Transmission evacuation and power supply from Rajasthan to Banaskanta",
+    "Merchant power and its cyclicality",
+    "Comparison of merchant power rates and PPA rates",
+    "Right of way (ROW) issues for transmission lines",
+    "Execution limitations and regulatory issues for transmission projects",
+    "Review and note of Related Party Transactions (RPTs) entered into during the quarter ended 30th September",
+    "Approval of additional projected RPTs",
+    "Proposal to enter into a Power Purchase Agreement (PPA) with a subsidiary of ASL for merchant power",
+    "Review of internal audit report for the quarter ended 30th September",
+    "Review of Related Party Transactions (RPTs) for the quarter ended 30th September",
+    "Omnibus approval for additional RPTs for the financial year 2025-26",
+    "CSR report",
+    "Audit committee",
+    "Board meeting locations"
+  ],
+  "decisions": [
+    "Approved the proposal to enter into a PPA with a subsidiary of ASL for merchant power",
+    "Accorded omnibus approval for additional RPTs for the financial year 2025-26"
+  ],
+  "action_items": [
+    {
+      "task": "Obtain quotations on a quarterly basis to show that transactions are beneficial",
+      "assignee": null
+    },
+    {
+      "task": "Keep records of quotations to support RPTs",
+      "assignee": null
+    },
+    {
+      "task": "Corrective actions to be taken on automation and equipment mapping",
+      "assignee": null
+    },
+    {
+      "task": "Review of 2025 sites per quarter for compliance framework",
+      "assignee": null
+    },
+    {
+      "task": "Implementation of preventive actions for Kappa",
+      "assignee": null
+    },
+    {
+      "task": "Development of a digital tool for 100% quality checks",
+      "assignee": null
+    },
+    {
+      "task": "Alignment of the company's quality plan with the IS code mandates",
+      "assignee": null
+    },
+    {
+      "task": "Implementation of a project life cycle management system",
+      "assignee": null
+    },
+    {
+      "task": "Training vendors and quality personnel for digitization process",
+      "assignee": null
+    },
+    {
+      "task": "Completing the digitization process by the end of the quarter",
+      "assignee": null
+    },
+    {
+      "task": "Advising anti-corrosion painting for existing work",
+      "assignee": null
+    },
+    {
+      "task": "Implementing mould verification process as part of the normal process",
+      "assignee": null
+    },
+    {
+      "task": "Evaluating alternative battery storage technologies",
+      "assignee": null
+    },
+    {
+      "task": "Share a video with someone",
+      "assignee": null
+    },
+    {
+      "task": "Mention something to someone tomorrow",
+      "assignee": null
+    },
+    {
+      "task": "Convene NRC in the second week of November",
+      "assignee": null
+    },
+    {
+      "task": "Put the clarification on the minimum return of 12% in the meeting minutes",
+      "assignee": null
+    },
+    {
+      "task": "Approve the additional RPTs",
+      "assignee": "Members"
+    }
+  ],
+  "next_meeting": "NRC in the second week of November"
+}

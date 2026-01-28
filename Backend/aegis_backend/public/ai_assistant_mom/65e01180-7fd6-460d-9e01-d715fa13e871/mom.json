@@ -1,0 +1,19 @@
+{
+  "title": "Meeting of the Board of Directors",
+  "date": "<Meeting_Date>",
+  "attendees": [
+    {
+      "name": "<Chairman_Name>",
+      "role": "Chairman"
+    }
+  ],
+  "agenda": [
+    "Confirmation of Previous Meeting Minutes",
+    "Review of Business Operations"
+  ],
+  "decisions": [
+    "Confirmation and approval of previous meeting minutes"
+  ],
+  "action_items": [],
+  "next_meeting": ""
+}

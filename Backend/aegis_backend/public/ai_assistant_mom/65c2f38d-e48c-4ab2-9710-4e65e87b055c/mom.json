@@ -1,0 +1,54 @@
+{
+  "title": "AGEL Board Meeting",
+  "date": "28th October, 2025",
+  "attendees": [
+    {
+      "name": "Dinesh Kanabar",
+      "role": "Audit Committee Member"
+    },
+    {
+      "name": "Romesh Sobti",
+      "role": "Audit Committee Member"
+    },
+    {
+      "name": "Anup Shah",
+      "role": "Audit Committee Member"
+    },
+    {
+      "name": "Dr. Seng Ratnam",
+      "role": "Audit Committee Member"
+    }
+  ],
+  "agenda": [
+    "1. Take note of the Minutes of the previous audit committee meeting held on 25th July and 28th July",
+    "2. Take note of action taken on decisions of the previous audit committee meeting",
+    "3. Review matters pursuant to Regulation 18(3) of SEBI LODR",
+    "4. Review inter corporate loans and investments made by the company during the quarter",
+    "5. Review investment made by unlisted subsidiary during the quarter ended September",
+    "6. Review compliance with provisions of SEBI insider trading regulation",
+    "7. Review status of vigil mechanism for the quarter ended 30th September",
+    "8. Review internal audit report for the quarter ended 30th September"
+  ],
+  "decisions": [
+    "Minutes of the previous audit committee meeting were finalised and entered in the minute book",
+    "Omnibus approval accorded to additional RPTs to be entered into during the financial year",
+    "Financial results for the first quarter were approved and submitted to stock exchanges",
+    "No differential points requiring note under Regulation 18(3) of SEBI LODR",
+    "No specific investments were made by AGEL during the quarter other than those stated",
+    "Investments amounting to about 784 crore rupees were made into step down subsidiaries",
+    "Compliance with SEBI insider trading regulations confirmed with no deviations",
+    "No complaints reported under the vigil mechanism during the quarter",
+    "Internal audit report for the quarter was reviewed and positive progress noted"
+  ],
+  "action_items": [
+    {
+      "task": "Installation of two pending WTGs at Kavada site within next 1.5 months",
+      "assignee": "Internal Audit Team / Engineering Team"
+    },
+    {
+      "task": "Explore alternative foundation schemes for Kavada site with IIT Guwahati",
+      "assignee": "Engineering Team"
+    }
+  ],
+  "next_meeting": "Not specified in the transcript"
+}

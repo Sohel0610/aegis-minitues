@@ -1,0 +1,39 @@
+DIRECTOR FAMILY INFORMATION DATABASE
+==================================================
+
+TABLES IN DATABASE:
+--------------------
+Table: Sheet1
+Columns:
+  Name (TEXT)
+  Section_2(77)(i) (TEXT)
+  Section_2(77)(ii) (TEXT)
+  Section_2(77)(iii) (REAL)
+  Father (TEXT)
+  Mother (TEXT)
+  Son (TEXT)
+  Son's_Wife (TEXT)
+  Daughter (TEXT)
+  Daughter's_husband (TEXT)
+  Brother (TEXT)
+  Sister (TEXT)
+  Father_PAN (TEXT)
+  Mother_PAN (TEXT)
+  Father_PAN_File (TEXT)
+  Mother_PAN_File (TEXT)
+Row count: 60
+
+Sample Data (First 10 rows):
+                  Name                                              Section_2(77)(i)               Section_2(77)(ii) Section_2(77)(iii)                            Father                          Mother                     Son              Son's_Wife                       Daughter Daughter's_husband                                                                                            Brother                                                            Sister
+        Pragnesh Darji                          H.U.F  in which I am a Member – N.A.             Mrs. Madhuri Sharma               None              Mr. Shashikant Darji               Mrs. Sudha Darji         Mr. Ayansh Darji                    None                           None               None                                                                                   Mr. Nirmal Darji                                                              None
+        Prerak Thekadi                               H.U.F in which I am a Member:NA Wife: Mrs. Ushma Prerak Thekadi               None Mr. Kanaiyalal Vallabhdas Thekadi Mrs. Niruben Kanaiyalal Thekadi Mr. Kian Prerak Thekadi                    None                           None               None                                                                                               None                                             Mrs. Sweta Rajiv Shah
+        Raj Kumar Jain             H.U.F in which I am a Member – Raj Kumar Jain HUF           Wife: Mrs. Reena Jain               None               Mr. Tara Chand Jain              Mrs. Lad Devi Jain         Mr. Argham Jain                    N.A.                 Ms. Ashmi Jain               N.A.                                                    Mr. Kamlesh Jain Mr. Vimal Jain  Mr.Mukesh Jain                                                              N.A.
+        Rajesh Lakhara H.U.F. in which I am a Member:   Rajesh Nandlal Lakhara (HUF)    Spouse: Neetu Rajesh Lakhara               None Late Shri Nandlal Kalulal Lakhara     Smt. Shanta Nandlal Lakhara   Eshaan Rajesh Lakhara                    None           Vidhi Rajesh Lakhara               None                                                                             Pravin Nandlal Lakhara                    Mamta Nandlal Lakhara\nBhavana Nandlal Lakhara
+           Rajiv Mehta                     H.U.F in which I am a Member: Rajiv Mehta         Wife: Deepa Rajiv Mehta               None      Mr. Dhirajlal Chunilal Mehta                            None              Jeet Mehta                    None                           None               None                                                                                       Rajesh Mehta                                                        Rita Mehta
+       Rajesh S. Adani                            H.U.F in which I am a Member: Nil       Wife: Smt. Shilin R. Adani               None      Late Shri Shantilal B. Adani    Late Smt. Shantaben S. Adani     Shri Sagar R. Adani Smt.Srushti Sagar Adani    Rahi Shah   Vanshi R. Adani         Tanuj Shah Shri Gautam S. Adani      Shri Vasant S. Adani     Shri Vinod S. Adani      Shri Mahasukh S. Adani Smt. Surekha Shah    Smt. Priti Shah     Smt. Sharmishta Sanghavi
+          Sandip Adani              H.U.F. in which I am a Member:  Mr. Sandip Adani            Wife: Ms. Pina Adani               None           Shri Mahendrabhai Adani             Mrs. Kantaben Adani         Mr. Utsav Adani      Mrs. Virangi Adani              Ms. Aashini Patel    Mr. Karan Patel                                                              Mr. Chetan Adani and Mr. Nikunj Adani                                                              None
+      Sangkaran Ratnam                           H.U.F in which I am a Member – NONE        Wife: Mrs. Rina Samsudin               None         Armugum Ratnam (deceased)           Selvamoney Arunasulam                    None                    None Hana Azura Said Ratnam (age 8)               None                                                                                               None                                                    Lakshmi Ratnam
+          Saurabh Shah      H.U.F. in which I am a Member:   Saurabh Nikhil Shah HUF Spouse: Mrs. Sneha Saurabh Shah               None                Mr. Nikhil M. Shah               Mrs. Usha N. Shah        Mr. Amay S. Shah                    None                           None               None                                                                                               None                                                Mrs. Anuja Agrawal
+Shalin Pankajbhai Shah                          H.U.F  in which I am a Member – N.A.          Wife:  Mrs. Richa Shah               None    Shri Pankajbhai Shantilal Shah                  Mrs. Asha Shah                    None                    None            Mrs. Harshinee Shah               None                                                                                     Mr. Parin Shah                                                              None
+
+==================================================

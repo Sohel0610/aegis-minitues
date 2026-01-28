@@ -1,0 +1,46 @@
+{
+  "title": "Untitled Meeting",
+  "date": "Unknown Date",
+  "attendees": [
+    {
+      "name": "Romesh Sobti",
+      "role": "Attendee"
+    },
+    {
+      "name": "Anup Shah",
+      "role": "Attendee"
+    },
+    {
+      "name": "Dinesh Kanabar",
+      "role": "Attendee"
+    }
+  ],
+  "agenda": [
+    "Item 2: Note the Minutes of the previous audit committee meeting held on 25th July and 28th July",
+    "Item 3: Note the action taken on the decisions of the previous audit committee meeting",
+    "Item 4: Review matters pursuant to Regulation 18(3) of SEBI LODR",
+    "Item 5: Review inter-corporate loans and investments by the company",
+    "Item 6: Review investments made by unlisted subsidiaries during the quarter",
+    "Item 7: Review compliance with SEBI Insider Trading Regulations",
+    "Item 8: Review the status of vigil mechanism for the quarter",
+    "Item 9: Review the internal audit report for the quarter",
+    "Review and note of RPTS entered into during the quarter ended 30th September",
+    "Approval of additional projected RPT statement along with rationale"
+  ],
+  "decisions": [
+    "Noted: RPTS entered into during the quarter ended 30th September",
+    "Approved: Additional projected RPT statement along with rationale",
+    "Accorded omnibus approval for additional RPT for the financial year 2526"
+  ],
+  "action_items": [
+    {
+      "task": "Go through the certificate from the Independent Chartered Accountant",
+      "assignee": "Company Secretary"
+    },
+    {
+      "task": "Obtain quotations on a quarterly basis for related party transactions",
+      "assignee": "Not specified"
+    }
+  ],
+  "next_meeting": "Not specified"
+}

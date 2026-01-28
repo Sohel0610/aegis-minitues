@@ -1,0 +1,158 @@
+{
+  "title": "Untitled Meeting",
+  "date": "Unknown Date",
+  "attendees": [
+    {
+      "name": "Dinesh Kanabar",
+      "role": "Attendee"
+    },
+    {
+      "name": "Anup Shah",
+      "role": "Attendee"
+    },
+    {
+      "name": "Romesh Sobti",
+      "role": "Attendee"
+    }
+  ],
+  "agenda": [
+    "Review of minutes of the previous audit committee meeting",
+    "Review of action taken on decisions of the previous audit committee meeting",
+    "Review of matters pursuant to Regulation 18(3) of SEBI (LODR)",
+    "Review of inter-corporate loans and investments",
+    "Review of investments made by unlisted subsidiaries",
+    "Review of compliance with SEBI Insider Trading Regulations",
+    "Review of the status of vigil mechanism",
+    "Review of internal audit report for the quarter ended 30th September",
+    "Soil conditions and foundation design for turbines",
+    "Inventory management and reconciliation process",
+    "Project audits and service audits",
+    "Revenue assurance and insurance coverage",
+    "Project management and inventory management",
+    "Inventory management and audit processes",
+    "Sourcing strategy for modules from different regions",
+    "IT tools and systems for inventory management and tracking",
+    "Cost comparison between domestic and international suppliers",
+    "Project management and quality control processes",
+    "Implementation of digital tools for quality checks and payment processing",
+    "Digitization project for quality management, invoicing, and pre-commissioning",
+    "Land acquisition and potential for solar projects in Rajasthan and Ladakh",
+    "Pump storage and battery storage projects",
+    "Sodium-ion technology and its potential for large projects",
+    "Kavda land and its potential for 10 extra gigawatts",
+    "Equipment master validation and automation",
+    "Evacuation and transmission line issues in Gujarat and Rajasthan",
+    "Transmission line projects",
+    "Solar power projects and their impact on transmission lines",
+    "Merchant power rates and their comparison to PPA rates",
+    "Review of Related Party Transactions (RPTs) entered into during the quarter ended September 30th",
+    "Approval of additional projected RPTs",
+    "Discussion on merchant capacity and risk management",
+    "Proposal to enter into a Power Purchase Agreement (PPA) with a subsidiary of ASL for merchant power",
+    "Review of internal audit report for the quarter ended 30th September",
+    "Omnibus approval for additional RPTs for the financial year 2025-26",
+    "CSR (Corporate Social Responsibility) report and consolidation",
+    "Audit Committee meeting and scheduling",
+    "Board meeting scheduling and location"
+  ],
+  "decisions": [
+    "To implement a digital tool for 100% quality checks, replacing the current manual sampling process",
+    "To align the company's quality plan with the IS code mandates",
+    "Approval of additional RPTs with various subsidiaries",
+    "Increase in transaction limit with Just Energy to Rs. 606,250 crores",
+    "Approval of the proposal to enter into a PPA with a subsidiary of ASL for merchant power",
+    "Accorded omnibus approval for additional RPTs for the financial year 2025-26",
+    "The next board meeting should be held at Kavda"
+  ],
+  "action_items": [
+    {
+      "task": "Confirm that there are no other investments made by the company during the quarter",
+      "assignee": "Company Secretary"
+    },
+    {
+      "task": "Brief the committee on the internal audit report",
+      "assignee": "Internal Auditor (Mr. Tejas Shap)"
+    },
+    {
+      "task": "Work with IIT Guwahati to find a solution for the plate load test failure at the Khawda location",
+      "assignee": "Engineers"
+    },
+    {
+      "task": "Share IT tools and systems with the team for review and feedback",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Continue to develop and refine the inventory management and tracking systems",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Develop a digital tool for quality checks and payment processing",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Implement the new digital tool by the next quarter",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Align the company's quality plan with the IS code mandates",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Complete the digitization project by the end of the quarter",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Train vendors and quality teams on the new digital process",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Explore land acquisition opportunities in Rajasthan and Ladakh",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Evaluate alternative battery storage technologies",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Continue to work on equipment master validation and automation",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Monitor and address evacuation and transmission line issues in Gujarat and Rajasthan",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Explore cost-saving opportunities at the Kavda level",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Review and note the RPTs entered into during the quarter",
+      "assignee": "Company Secretary"
+    },
+    {
+      "task": "Obtain quotations on a quarterly basis for certain transactions",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Prepare minutes of the meeting to include clarification on the expected return of 12% minimum for projects",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Review and approval of additional RPTs by the committee",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Share the video with the team",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Schedule the Audit Committee meeting for a convenient date in the second week of November",
+      "assignee": "Unknown"
+    },
+    {
+      "task": "Reach out to Vineet to schedule a meeting",
+      "assignee": "Unknown"
+    }
+  ],
+  "next_meeting": "The next board meeting should be held at Kavda, and the Audit Committee meeting will be scheduled for a later date, considering the availability of members"
+}

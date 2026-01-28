@@ -1,0 +1,45 @@
+{
+  "title": "AGEL Board Meeting",
+  "date": "28 October 2025",
+  "attendees": [
+    {
+      "name": "Dinesh Kanabar",
+      "role": "Audit Committee Member"
+    },
+    {
+      "name": "Anup Shah",
+      "role": "Audit Committee Member"
+    },
+    {
+      "name": "Romesh Sobti",
+      "role": "Audit Committee Member"
+    },
+    {
+      "name": "Dr Seng Ratnam",
+      "role": "Audit Committee Member"
+    }
+  ],
+  "agenda": [
+    "Take note of the Minutes of the previous audit committee meeting held on 25th July and 28th July",
+    "Take note of action taken on the decisions of the previous audit committee meeting",
+    "Review matters pursuant to Regulation 18(3) of SEBI LODR",
+    "Review inter corporate loans and investments by the company made during the quarter",
+    "Review investment made by unlisted subsidiary during the quarter ended September",
+    "Review compliance with provisions of SEBI insider Trading Regulation",
+    "Review status of vigil mechanism for the quarter ended 30th September",
+    "Review internal audit report for the quarter ended 30th September"
+  ],
+  "decisions": [
+    "Minutes of previous audit committee meetings were finalised and entered in the minute book",
+    "Omnibus approval accorded to additional RPTs to be entered into during the financial year",
+    "Financial results for the first quarter were approved and submitted to stock exchanges",
+    "No differential point requiring note under Regulation 18(3) of SEBI LODR",
+    "No specific investment made by AGEL during the quarter",
+    "About 784 crore rupees invested by the company into step down subsidiaries as promoter contribution",
+    "No deviation in compliance with SEBI insider Trading Regulation",
+    "No complaints reported under vigil mechanism during the quarter",
+    "Internal audit report for the quarter ended 30th September was reviewed and audit points addressed as per planning"
+  ],
+  "action_items": [],
+  "next_meeting": ""
+}
