@@ -6,3 +6,5 @@ python-dotenv
 pandas
 openpyxl
 python-docx
+python-jose[cryptography]
+PyJWT
