@@ -80,12 +80,12 @@ const DirectorsDisclosureMasterData = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [isFamilyInfoModalOpen, setIsFamilyInfoModalOpen] = useState<boolean>(false);
   const [selectedDirectorName, setSelectedDirectorName] = useState<string>("");
-  
+
   // Add state for director profile modal
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [selectedDirectorProfile, setSelectedDirectorProfile] = useState<DirectorProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState<boolean>(false);
-  
+
   // Add state for image upload
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null);
@@ -132,11 +132,11 @@ const DirectorsDisclosureMasterData = () => {
       setLoading(true);
       setError(null);
       const response = await fetch('/api/directors-master');
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch directors');
       }
-      
+
       const data = await response.json();
       setDirectors(data.data || []);
       setFilteredDirectors(data.data || []);
@@ -238,7 +238,7 @@ const DirectorsDisclosureMasterData = () => {
     setSelectedDirectorName(directorName);
     setIsFamilyInfoModalOpen(true);
   };
-  
+
   // Add function to fetch and show director profile
   const handleViewProfile = async (din: string) => {
     try {
@@ -246,17 +246,17 @@ const DirectorsDisclosureMasterData = () => {
       setUploadedImage(null);
       setUploadStatus(null);
       setIsEditingProfile(false);
-      
+
       // Fetch director profile data
       const response = await fetch(`/api/directors-profile/${din}`);
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch director profile');
       }
-      
+
       const profileData = await response.json();
       setSelectedDirectorProfile(profileData);
-      
+
       // Set editable profile fields (excluding name and DIN)
       setEditableProfile({
         address: profileData.address || '',
@@ -265,9 +265,9 @@ const DirectorsDisclosureMasterData = () => {
         qualification: profileData.qualification || '',
         experience: profileData.experience || ''
       });
-      
+
       setIsProfileModalOpen(true);
-      
+
       // Load stored image for this director from server
       await loadDirectorImage(din);
     } catch (err) {
@@ -289,10 +289,10 @@ const DirectorsDisclosureMasterData = () => {
   // Add function to save profile changes
   const handleSaveProfileChanges = async () => {
     if (!selectedDirectorProfile) return;
-    
+
     try {
       setProfileSaveLoading(true);
-      
+
       // Prepare update data (only send changed fields)
       const updateData: Partial<EditableProfileFields> = {};
       if (editableProfile.address !== (selectedDirectorProfile.address || '')) updateData.address = editableProfile.address;
@@ -300,37 +300,37 @@ const DirectorsDisclosureMasterData = () => {
       if (editableProfile.pan !== (selectedDirectorProfile.pan || '')) updateData.pan = editableProfile.pan;
       if (editableProfile.qualification !== (selectedDirectorProfile.qualification || '')) updateData.qualification = editableProfile.qualification;
       if (editableProfile.experience !== (selectedDirectorProfile.experience || '')) updateData.experience = editableProfile.experience;
-      
+
       // Only proceed if there are changes
       if (Object.keys(updateData).length === 0) {
         setIsEditingProfile(false);
         return;
       }
-      
+
       const response = await fetch(`/api/directors-profile/${selectedDirectorProfile.din}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to update profile');
       }
-      
+
       const updatedProfile = await response.json();
       setSelectedDirectorProfile(updatedProfile);
-      
+
       // Show success message
       setUploadStatus({
         type: 'success',
         message: 'Profile updated successfully!'
       });
-      
+
       // Auto-hide success message after 3 seconds
       setTimeout(() => {
         setUploadStatus(null);
       }, 3000);
-      
+
       setIsEditingProfile(false);
     } catch (err) {
       console.error('Error updating profile:', err);
@@ -457,7 +457,7 @@ const DirectorsDisclosureMasterData = () => {
 
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
-    
+
     canvas.width = crop.width;
     canvas.height = crop.height;
 
@@ -515,19 +515,19 @@ const DirectorsDisclosureMasterData = () => {
       if (response.ok && result.success) {
         // Load the newly uploaded image
         await loadDirectorImage(selectedDirectorProfile.din);
-        
+
         // Show success message
         setUploadStatus({
           type: 'success',
           message: 'Image uploaded successfully!'
         });
-        
+
         // Close crop modal
         setShowCropModal(false);
         setImageToCrop(null);
         setCrop(undefined);
         setCompletedCrop(undefined);
-        
+
         // Auto-hide success message after 3 seconds
         setTimeout(() => {
           setUploadStatus(null);
@@ -662,13 +662,16 @@ const DirectorsDisclosureMasterData = () => {
                           </span>
                         </TableCell>
                         <TableCell>
-                          {director.pan ? (
-                            <span className="px-2 py-1 rounded text-xs font-mono bg-blue-100">
-                              {director.pan}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">Not Available</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-gray-500 font-semibold uppercase">PAN:</span>
+                            {director.pan ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-50 text-blue-700 border border-blue-100">
+                                {director.pan}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-[10px]"></span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2 justify-center">
@@ -874,7 +877,7 @@ const DirectorsDisclosureMasterData = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Director Profile Modal */}
       <Dialog open={isProfileModalOpen} onOpenChange={(open) => {
         setIsProfileModalOpen(open);
@@ -892,19 +895,19 @@ const DirectorsDisclosureMasterData = () => {
               Detailed information about the director
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedDirectorProfile && (
             <div className="space-y-6 py-4">
               {/* Profile Header */}
               <div className="text-center bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-8 rounded-lg relative">
                 {/* Profile Image Container */}
                 <div className="mx-auto relative w-32 h-32 mb-4">
-                  <img 
+                  <img
                     src={uploadedImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedDirectorProfile.name)}&size=120&background=667eea&color=fff&bold=true`}
                     alt={selectedDirectorProfile.name}
                     className="w-32 h-32 rounded-full border-4 border-white object-cover"
                   />
-                  
+
                   {/* Upload Icon Overlay */}
                   <button
                     onClick={triggerFileInput}
@@ -917,7 +920,7 @@ const DirectorsDisclosureMasterData = () => {
                       <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
                   </button>
-                  
+
                   {/* Hidden File Input */}
                   <input
                     type="file"
@@ -928,25 +931,24 @@ const DirectorsDisclosureMasterData = () => {
                     disabled={isUploading}
                   />
                 </div>
-                
+
                 {/* Director Name and DIN (non-editable) */}
                 <h2 className="text-2xl font-bold">{selectedDirectorProfile.name}</h2>
                 <p className="text-sm opacity-90">DIN: {selectedDirectorProfile.din}</p>
-                
+
                 {/* Upload Status Message */}
                 {uploadStatus && (
-                  <div className={`mt-4 px-4 py-2 rounded-md text-sm ${
-                    uploadStatus.type === 'loading' 
-                      ? 'bg-blue-100 text-blue-800' 
-                      : uploadStatus.type === 'success' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                  }`}>
+                  <div className={`mt-4 px-4 py-2 rounded-md text-sm ${uploadStatus.type === 'loading'
+                    ? 'bg-blue-100 text-blue-800'
+                    : uploadStatus.type === 'success'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800'
+                    }`}>
                     {uploadStatus.message}
                   </div>
                 )}
               </div>
-              
+
               {/* Profile Actions */}
               <div className="flex justify-end space-x-2">
                 {isEditingProfile ? (
@@ -975,7 +977,7 @@ const DirectorsDisclosureMasterData = () => {
                   </Button>
                 )}
               </div>
-              
+
               {/* Profile Details */}
               <div className="space-y-4">
                 {/* Date of Birth */}
@@ -993,7 +995,7 @@ const DirectorsDisclosureMasterData = () => {
                     </p>
                   )}
                 </div>
-                
+
                 {/* PAN */}
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500 mb-1">PAN</p>
@@ -1005,12 +1007,12 @@ const DirectorsDisclosureMasterData = () => {
                       maxLength={10}
                     />
                   ) : (
-                    <p className="text-base font-mono bg-blue-100 px-2 py-1 rounded inline-block">
-                      {selectedDirectorProfile.pan || 'Please enter the details'}
+                    <p className="text-base font-mono bg-blue-50 px-2 py-1 rounded inline-block border border-blue-100 text-blue-800">
+                      {selectedDirectorProfile.pan || ''}
                     </p>
                   )}
                 </div>
-                
+
                 {/* Qualification */}
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Qualification</p>
@@ -1026,7 +1028,7 @@ const DirectorsDisclosureMasterData = () => {
                     </p>
                   )}
                 </div>
-                
+
                 {/* Address */}
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Address</p>
@@ -1044,7 +1046,7 @@ const DirectorsDisclosureMasterData = () => {
                     </p>
                   )}
                 </div>
-                
+
                 {/* Experience */}
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Experience</p>
@@ -1067,7 +1069,7 @@ const DirectorsDisclosureMasterData = () => {
               </div>
             </div>
           )}
-          
+
           <DialogFooter>
             <Button
               variant="outline"
@@ -1078,7 +1080,7 @@ const DirectorsDisclosureMasterData = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Image Crop Modal */}
       <Dialog open={showCropModal} onOpenChange={(open) => {
         if (!open) {
@@ -1092,7 +1094,7 @@ const DirectorsDisclosureMasterData = () => {
               Adjust the image to fit within the profile circle
             </DialogDescription>
           </DialogHeader>
-          
+
           {imageToCrop && (
             <div className="space-y-4 py-4">
               <div className="flex justify-center">
@@ -1105,20 +1107,20 @@ const DirectorsDisclosureMasterData = () => {
                   minWidth={100}
                   minHeight={100}
                 >
-                  <img 
+                  <img
                     ref={imgRef}
-                    src={imageToCrop} 
-                    alt="To crop" 
+                    src={imageToCrop}
+                    alt="To crop"
                     onLoad={onImageLoad}
                     className="max-w-full max-h-96"
                   />
                 </ReactCrop>
               </div>
-              
+
               <p className="text-center text-sm text-gray-600">
                 Drag and resize the selection to adjust the crop area
               </p>
-              
+
               <div className="flex justify-end space-x-2 pt-4">
                 <Button
                   variant="outline"
@@ -1136,7 +1138,7 @@ const DirectorsDisclosureMasterData = () => {
               </div>
             </div>
           )}
-          
+
           <DialogFooter>
             <Button
               variant="outline"
@@ -1147,7 +1149,7 @@ const DirectorsDisclosureMasterData = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Family Info Modal */}
       <FamilyInfoModal
         directorName={selectedDirectorName}

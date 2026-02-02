@@ -18,7 +18,6 @@ interface FamilyMember {
   relationship: string;
   details: string;
   pan_number?: string;
-  pan_file_path?: string;
 }
 
 interface DirectorFamilyInfo {
@@ -171,35 +170,6 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
     }
   };
 
-  const handleFileUpload = async (relationship: string, file: File) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('relationship', relationship);
-
-      const response = await fetch(`/api/directors/${encodeURIComponent(directorName)}/family-info/pan-upload?relationship=${encodeURIComponent(relationship)}`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload file');
-      }
-
-      const data = await response.json();
-
-      // Update local state with new filename
-      handleFamilyMemberChange(relationship, 'pan_file_path', data.filename);
-      alert(`PAN file uploaded for ${relationship}`);
-    } catch (err) {
-      console.error("Error uploading file:", err);
-      alert("Error uploading file. Please try again.");
-    }
-  };
-
-  const handleDownloadFile = (filename: string) => {
-    window.open(`/api/directors/${encodeURIComponent(directorName)}/family-info/pan-download/${filename}`, '_blank');
-  };
 
   const getRelationshipIcon = (relationship: string) => {
     switch (relationship.toLowerCase()) {
@@ -426,27 +396,6 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
                                       placeholder="PAN Number (Optional)"
                                       className="text-xs h-8"
                                     />
-                                    <div className="relative">
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 px-2 py-0 text-xs gap-1"
-                                        onClick={() => document.getElementById(`file-upload-${relationship}`)?.click()}
-                                      >
-                                        <FileText className="h-3 w-3" />
-                                        {getFamilyMember(relationship)?.pan_file_path ? "Change" : "Upload"}
-                                      </Button>
-                                      <input
-                                        type="file"
-                                        id={`file-upload-${relationship}`}
-                                        className="hidden"
-                                        accept=".pdf,.jpg,.jpeg,.png"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) handleFileUpload(relationship, file);
-                                        }}
-                                      />
-                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -469,33 +418,11 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
                                 </Badge>
                                 <div>
                                   <p className="text-sm font-medium">{member?.details || "Not specified"}</p>
-                                  {(relationship === "Father" || relationship === "Mother") && member?.pan_number && (
+                                  {(relationship === "Father" || relationship === "Mother") && (
                                     <div className="mt-1 flex items-center gap-2">
                                       <Badge variant="outline" className="text-[10px] py-0 h-4 border-gray-300">
-                                        PAN: {member.pan_number}
+                                        PAN: {member?.pan_number || ""}
                                       </Badge>
-                                      {member.pan_file_path && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-4 p-0 text-[10px] text-blue-600 hover:text-blue-800"
-                                          onClick={() => handleDownloadFile(member.pan_file_path!)}
-                                        >
-                                          View Document
-                                        </Button>
-                                      )}
-                                    </div>
-                                  )}
-                                  {(relationship === "Father" || relationship === "Mother") && !member?.pan_number && member?.pan_file_path && (
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-4 p-0 text-[10px] text-blue-600 hover:text-blue-800"
-                                        onClick={() => handleDownloadFile(member.pan_file_path!)}
-                                      >
-                                        View PAN Document
-                                      </Button>
                                     </div>
                                   )}
                                 </div>

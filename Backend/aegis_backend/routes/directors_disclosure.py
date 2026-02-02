@@ -98,7 +98,6 @@ class FamilyMemberInfo(BaseModel):
     relationship: str
     details: str
     pan_number: Optional[str] = None
-    pan_file_path: Optional[str] = None
 
 class DirectorFamilyInfoResponse(BaseModel):
     director_name: str
@@ -859,13 +858,12 @@ async def get_director_family_info(director_name: str):
                             ("Sister", family_data[11], None, None)
                         ]
                         
-                        for relationship, details, pan_no, pan_file in relationships:
+                        for relationship, details, pan_no, _ in relationships:
                             if (details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']) or pan_no:
                                 family_members.append({
                                     "relationship": relationship,
                                     "details": str(details) if details else "",
-                                    "pan_number": pan_no,
-                                    "pan_file_path": pan_file
+                                    "pan_number": pan_no
                                 })
                         
                         return {
@@ -1022,13 +1020,12 @@ async def update_director_family_info(director_name: str, request: UpdateFamilyI
                         ("Sister", family_data[11], None, None)
                     ]
                     
-                    for relationship, details, pan_no, pan_file in relationships:
+                    for relationship, details, pan_no, _ in relationships:
                         if (details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']) or pan_no:
                             family_members.append({
                                 "relationship": relationship,
                                 "details": str(details) if details else "",
-                                "pan_number": pan_no,
-                                "pan_file_path": pan_file
+                                "pan_number": pan_no
                             })
                     
                     return {
@@ -1059,65 +1056,6 @@ async def update_director_family_info(director_name: str, request: UpdateFamilyI
         logger.error(f"Error updating family info for director {director_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update family info: {str(e)}")
 
-# Endpoint to upload family member PAN document
-@router.post("/api/directors/{director_name}/family-info/pan-upload")
-async def upload_family_pan_file(director_name: str, relationship: str, file: UploadFile = File(...)):
-    """Upload a PAN document for a family member"""
-    try:
-        family_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "Director_Family_Information.db")
-        upload_dir = os.path.join(os.path.dirname(__file__), "..", "public", "family_pan_files")
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        # Save file with unique name
-        file_extension = os.path.splitext(file.filename)[1] if file.filename else ".pdf"
-        safe_director_name = director_name.replace(" ", "_").lower()
-        safe_relationship = relationship.replace(" ", "_").lower()
-        filename = f"{safe_director_name}_{safe_relationship}_pan{file_extension}"
-        file_path = os.path.join(upload_dir, filename)
-        
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # Update database with file name
-        def update_db():
-            conn = sqlite3.connect(family_db_path)
-            cursor = conn.cursor()
-            
-            # Map relationship to column name
-            column_map = {
-                "Father": "Father_PAN_File",
-                "Mother": "Mother_PAN_File"
-            }
-            
-            if relationship in column_map:
-                col = column_map[relationship]
-                cursor.execute(f"UPDATE Sheet1 SET {col} = ? WHERE Name = ?", (filename, director_name))
-                conn.commit()
-            conn.close()
-            
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(thread_pool, update_db)
-        
-        return {"success": True, "filename": filename, "message": f"PAN uploaded for {relationship}"}
-    except Exception as e:
-        logger.error(f"Error uploading PAN for {director_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Endpoint to download family member PAN document
-@router.get("/api/directors/{director_name}/family-info/pan-download/{filename}")
-async def download_family_pan_file(director_name: str, filename: str):
-    """Download a PAN document for a family member"""
-    try:
-        file_path = os.path.join(os.path.dirname(__file__), "..", "public", "family_pan_files", filename)
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found")
-            
-        return FileResponse(path=file_path, filename=filename)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error downloading PAN file: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint to get director profile information
 @router.get("/api/directors-profile/{din}", response_model=DirectorProfileResponse)
