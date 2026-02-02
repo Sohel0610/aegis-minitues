@@ -22,7 +22,7 @@ export const isAdmin = (): boolean => {
   try {
     const adminToken = localStorage.getItem('adminToken');
     const isAdminStatus = localStorage.getItem('isAdmin');
-    
+
     // Check if we have a valid admin token and status
     return adminToken !== null && isAdminStatus === 'true';
   } catch (error) {
@@ -50,10 +50,10 @@ export const authenticateAdmin = async (username: string, password: string): Pro
         password
       })
     });
-    
+
     if (response.ok) {
       const result: AdminLoginResponse = await response.json();
-      
+
       if (result.success) {
         // Store authentication data in localStorage
         localStorage.setItem('isAdmin', 'true');
@@ -63,7 +63,7 @@ export const authenticateAdmin = async (username: string, password: string): Pro
         return true;
       }
     }
-    
+
     // Authentication failed
     return false;
   } catch (error) {

@@ -127,7 +127,7 @@ const SEBIDailyTrendChart = ({ data }: SEBIDailyTrendChartProps) => {
                   Daily Trend Analysis
                 </CardTitle>
                 <CardDescription className="text-xs" style={{ color: 'rgba(1, 7, 65, 0.8)' }}> {/* Changed from rgba(189, 56, 97, 0.8) */}
-                  Notification count by day (All days in range) - Valid PDF Links Only
+                  Notification count by day (All days in range)
                 </CardDescription>
               </div>
             </div>
@@ -168,7 +168,7 @@ const SEBIDailyTrendChart = ({ data }: SEBIDailyTrendChartProps) => {
                 Daily Trend Analysis
               </CardTitle>
               <CardDescription className="text-xs" style={{ color: 'rgba(1, 7, 65, 0.8)' }}> {/* Changed from rgba(189, 56, 97, 0.8) */}
-                Notification count by day (All days in range) - Valid PDF Links Only
+                Notification count by day (All days in range)
               </CardDescription>
             </div>
             

@@ -73,7 +73,7 @@ const SEBIMonthlyTrendChart = ({ data }: SEBIMonthlyTrendChartProps) => {
                 {getYear(new Date())} Monthly Trend Analysis
               </CardTitle>
               <CardDescription className="text-xs" style={{ color: 'rgba(1, 7, 65, 0.8)' }}> 
-                Notification count by month - Valid PDF Links Only
+                Notification count by month
               </CardDescription>
             </div>
             
