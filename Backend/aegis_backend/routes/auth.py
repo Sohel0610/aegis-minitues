@@ -37,9 +37,6 @@ if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
 
 # In-memory local user role storage (temporary solution)
 LOCAL_USER_ROLES = {
-    "admin@example.com": ["admin"],
-    "viewer@example.com": ["viewer"],
-    "bse_manager@example.com": ["bse_manager"],
     "cogn206112@adani.com": ["admin"]
 }
 
@@ -127,14 +124,35 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
         if not id_token:
             raise HTTPException(status_code=400, detail="No ID token received from Azure AD")
         
-        # Validate ID token
-        jwks_url = f"https://login.microsoftonline.com/{TENANT_ID}/discovery/v2.0/keys"
+        # Get OIDC Configuration to find the correct JWKS URI
+        oidc_config_url = f"https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration"
+        try:
+            oidc_config = requests.get(oidc_config_url).json()
+            jwks_url = oidc_config.get('jwks_uri')
+        except Exception as e:
+            logger.error(f"Failed to fetch OIDC config: {e}")
+            # Fallback to standard URL if OIDC config fails
+            jwks_url = f"https://login.microsoftonline.com/{TENANT_ID}/discovery/v2.0/keys"
+            
+        # Add appid parameter to JWKS URL - Azure AD often needs this to return the correct signing key
+        if "?" in jwks_url:
+            jwks_url += f"&appid={CLIENT_ID}"
+        else:
+            jwks_url += f"?appid={CLIENT_ID}"
+
+        logger.info(f"Using JWKS URL: {jwks_url}")
+        
         jwks_response = requests.get(jwks_url)
         jwks = jwks_response.json()
         
-        # Decode the token without verification first to get header info
+        # Decode the token without verification first to get header/claims info
         unverified_header = jose_jwt.get_unverified_header(id_token)
-        kid = unverified_header['kid']
+        # We can remove the full claims logging now that we identified the key issue
+        # logger.info(f"Token header: {unverified_header}")
+        kid = unverified_header.get('kid')
+        
+        # Log for debugging
+        found_kids = [k.get('kid') for k in jwks.get('keys', [])]
         
         # Find the correct key in the JWKS
         rsa_key = {}
@@ -150,6 +168,7 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
                 break
         
         if not rsa_key:
+            logger.error(f"Unable to find appropriate signing key. Token kid: {kid}. Available kids in JWKS: {found_kids}")
             raise HTTPException(status_code=400, detail="Unable to find appropriate signing key")
         
         # Verify the token
@@ -159,11 +178,12 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
                 rsa_key,
                 algorithms=["RS256"],
                 audience=CLIENT_ID,
-                issuer=f"https://login.microsoftonline.com/{TENANT_ID}/v2.0"
+                # We allow for some flexibility in issuer validation or we could fetch issuer from oidc_config
+                issuer=oidc_config.get('issuer', f"https://login.microsoftonline.com/{TENANT_ID}/v2.0")
             )
         except Exception as e:
             logger.error(f"Token validation failed: {str(e)}")
-            raise HTTPException(status_code=400, detail="Invalid token from Azure AD")
+            raise HTTPException(status_code=400, detail=f"Invalid token from Azure AD: {str(e)}")
         
         # Extract user information
         user_id = payload.get('oid')
@@ -207,7 +227,7 @@ async def azure_ad_logout():
     # For Azure AD logout, you'd redirect to Azure AD's logout endpoint
     
     # Azure AD logout URL
-    logout_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://aegis.com"
+    logout_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://aegis.adani.com"
     
     # In a real implementation, you'd clear server-side session
     # For now, just return success
@@ -221,18 +241,9 @@ async def azure_ad_logout():
 @router.get("/api/auth/me")
 async def get_current_user(request: Request):
     """Get current user information (requires valid session)"""
-    # In a real implementation, you'd validate the session token from headers/cookies
-    # For now, return a mock response
-    
-    # This would validate the user session and return user details
-    # along with their assigned roles from the local in-memory storage
-    # For demo purposes, we'll return a default user
-    return {
-        "user_id": "mock-user-id",
-        "email": "mock@example.com",
-        "name": "Mock User",
-        "roles": ["read_only"]  # Would come from local role mapping
-    }
+    # Note: Proper session validation should be implemented here
+    # For now, we return 401 as we've removed mock users
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 # Endpoint to get user roles from local mapping
 @router.get("/api/auth/user/roles/{user_id}")

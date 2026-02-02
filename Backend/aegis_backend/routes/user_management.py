@@ -24,9 +24,6 @@ router = APIRouter()
 
 # In-memory local user role storage (temporary solution)
 LOCAL_USER_ROLES = {
-    "admin@example.com": ["admin"],
-    "viewer@example.com": ["viewer"],
-    "bse_manager@example.com": ["bse_manager"],
     "cogn206112@adani.com": ["admin"]
 }
 
