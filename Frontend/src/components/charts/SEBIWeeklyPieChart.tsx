@@ -83,7 +83,7 @@ const SEBIWeeklyPieChart = ({ data }: SEBIWeeklyPieChartProps) => {
                 Weekly Distribution
               </CardTitle>
               <CardDescription className="text-xs" style={{ color: 'rgba(1, 7, 65, 0.8)' }}>
-                Notification distribution by week (Last {data.length} weeks) - Valid PDF Links Only
+                Notification distribution by week (Last {data.length} weeks)
               </CardDescription>
             </div>
             

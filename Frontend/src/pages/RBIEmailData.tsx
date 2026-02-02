@@ -68,32 +68,32 @@ const RBIEmailData = () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log('Attempting to load emails from FastAPI server');
-        
+
         // Use relative path since frontend and backend are served from the same origin
         const API_BASE_URL = '';
-        
+
         // Fetch emails from FastAPI server with optional search filter
         const searchParam = searchFilter ? `?search=${encodeURIComponent(searchFilter)}` : '';
         const response = await fetch(`${API_BASE_URL}/emails${searchParam}`);
         console.log('Fetch response status:', response.status);
         console.log('Fetch response ok:', response.ok);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`Failed to load email data: ${response.statusText} (${response.status}) - ${errorText}`);
         }
-        
+
         const result = await response.json();
         console.log('Server response:', result);
-        
+
         // Convert email list to table format with serial numbers
         const emailDataWithSerial = result.emails.map((email: string, index: number) => ({
           'Sr. No': index + 1,
           'Email ID': email
         }));
-        
+
         setEmailData(emailDataWithSerial);
         setColumnNames(['Sr. No', 'Email ID']);
       } catch (err) {
@@ -146,14 +146,14 @@ const RBIEmailData = () => {
   // Add new email
   const handleAddEmail = async (): Promise<void> => {
     if (!newEmail.trim()) return;
-    
+
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newEmail.trim())) {
       alert('Please enter a valid email address');
       return;
     }
-    
+
     // Validate that email is from adani.com or pspprojects.com domain (case-insensitive)
     const emailLower = newEmail.trim().toLowerCase();
     if (!emailLower.endsWith('@adani.com') && !emailLower.endsWith('@pspprojects.com')) {
@@ -162,11 +162,11 @@ const RBIEmailData = () => {
     }
 
     setIsLoading(true);
-    
+
     try {
       // Use relative path since frontend and backend are served from the same origin
       const API_BASE_URL = '';
-      
+
       // Add email via API
       const response = await fetch(`${API_BASE_URL}/emails`, {
         method: 'POST',
@@ -175,12 +175,12 @@ const RBIEmailData = () => {
         },
         body: JSON.stringify({ email: newEmail.trim() })
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to add email');
       }
-      
+
       // Refresh email list
       const refreshResponse = await fetch(`${API_BASE_URL}/emails`);
       if (refreshResponse.ok) {
@@ -191,7 +191,7 @@ const RBIEmailData = () => {
         }));
         setEmailData(emailDataWithSerial);
       }
-      
+
       // Reset form
       setNewEmail('');
       setIsAddDialogOpen(false);
@@ -207,27 +207,27 @@ const RBIEmailData = () => {
   // Confirm and delete email
   const confirmDeleteEmail = async () => {
     if (!emailToDelete) return;
-    
+
     setIsLoading(true);
-    
+
     try {
       // Use relative path since frontend and backend are served from the same origin
       const API_BASE_URL = '';
-      
+
       // Get the email address from the row data
       const emailToDeleteAddress = String(emailToDelete['Email ID']);
-      
+
       // Delete email via API (URL encode the email address)
       const encodedEmail = encodeURIComponent(emailToDeleteAddress);
       const response = await fetch(`${API_BASE_URL}/emails/${encodedEmail}`, {
         method: 'DELETE'
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to delete email');
       }
-      
+
       // Refresh email list
       const refreshResponse = await fetch(`${API_BASE_URL}/emails`);
       if (refreshResponse.ok) {
@@ -238,7 +238,7 @@ const RBIEmailData = () => {
         }));
         setEmailData(emailDataWithSerial);
       }
-      
+
       setIsDeleteDialogOpen(false);
       setEmailToDelete(null);
     } catch (err) {
@@ -271,8 +271,8 @@ const RBIEmailData = () => {
             <AlertCircle className="h-12 w-12 mx-auto mb-4" style={{ color: "#EF4444" }} />
             <h2 className="text-xl font-bold mb-2" style={{ color: "#000000" }}>Error Loading Email Data</h2>
             <p className="mb-4" style={{ color: "#000000" }}>{error}</p>
-            <Button 
-              onClick={() => window.location.reload()} 
+            <Button
+              onClick={() => window.location.reload()}
               style={{
                 backgroundColor: '#75479C',
                 borderColor: '#75479C',
@@ -292,12 +292,12 @@ const RBIEmailData = () => {
 
   return (
     <RBIAnalysisDashboardLayout>
-      
+
       <div className="min-h-screen p-8" style={{
         background: "#FFFFFF"
       }}>
         {/* Header Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.0, ease: "easeOut" }}
@@ -334,7 +334,7 @@ const RBIEmailData = () => {
         >
           <div className="flex justify-end">
             {isAdminMode ? (
-              <Button 
+              <Button
                 variant="outline"
                 onClick={handleAdminLogout}
                 className="flex items-center gap-2"
@@ -347,7 +347,7 @@ const RBIEmailData = () => {
                 Logout Admin
               </Button>
             ) : (
-              <Button 
+              <Button
                 variant="outline"
                 onClick={() => setShowAdminLogin(true)}
                 className="flex items-center gap-2"
@@ -405,8 +405,8 @@ const RBIEmailData = () => {
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setShowAdminLogin(false)}
                   style={{
                     color: '#000000',
@@ -415,7 +415,7 @@ const RBIEmailData = () => {
                 >
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleAdminLogin}
                   style={{
                     backgroundColor: '#75479C',
@@ -448,8 +448,8 @@ const RBIEmailData = () => {
                 </div>
                 <div className="flex justify-end gap-2">
                   <DialogClose asChild>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       style={{
                         color: '#000000',
                         borderColor: '#000000'
@@ -458,7 +458,7 @@ const RBIEmailData = () => {
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button 
+                  <Button
                     onClick={confirmDeleteEmail}
                     style={{
                       backgroundColor: '#EF4444',
@@ -492,7 +492,7 @@ const RBIEmailData = () => {
                   </CardDescription>
                 </div>
                 {isAdminMode && (
-                  <Button 
+                  <Button
                     onClick={() => setIsAddDialogOpen(true)}
                     className="flex items-center gap-2"
                     style={{
@@ -531,7 +531,7 @@ const RBIEmailData = () => {
                   )}
                 </div>
                 {searchFilter && (
-                  <Button 
+                  <Button
                     variant="outline"
                     onClick={clearSearchFilter}
                     className="flex items-center gap-2"
@@ -545,15 +545,15 @@ const RBIEmailData = () => {
                   </Button>
                 )}
               </div>
-              
+
               {emailData.length > 0 ? (
                 <div className="rounded-md border" style={{ borderColor: '#000000' }}>
                   <Table>
                     <TableHeader>
                       <TableRow style={{ backgroundColor: 'rgba(117, 71, 156, 0.1)' }}>
                         {columnNames.map((column) => (
-                          <TableHead 
-                            key={column} 
+                          <TableHead
+                            key={column}
                             className="font-bold"
                             style={{ color: '#000000' }}
                           >
@@ -561,7 +561,7 @@ const RBIEmailData = () => {
                           </TableHead>
                         ))}
                         {isAdminMode && (
-                          <TableHead 
+                          <TableHead
                             className="font-bold text-right"
                             style={{ color: '#000000' }}
                           >
@@ -572,15 +572,15 @@ const RBIEmailData = () => {
                     </TableHeader>
                     <TableBody>
                       {emailData.map((row, index) => (
-                        <TableRow 
-                          key={index} 
-                          style={{ 
+                        <TableRow
+                          key={index}
+                          style={{
                             backgroundColor: index % 2 === 0 ? 'transparent' : 'rgba(0, 0, 0, 0.02)'
                           }}
                         >
                           {columnNames.map((column) => (
-                            <TableCell 
-                              key={`${index}-${column}`} 
+                            <TableCell
+                              key={`${index}-${column}`}
                               className="py-2"
                               style={{ color: '#000000' }}
                             >
@@ -616,8 +616,8 @@ const RBIEmailData = () => {
                     {searchFilter ? 'No emails match your search' : 'No email addresses found'}
                   </p>
                   {searchFilter && (
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={clearSearchFilter}
                       className="mt-2"
                       style={{
@@ -664,8 +664,8 @@ const RBIEmailData = () => {
               </div>
               <div className="flex justify-end gap-2">
                 <DialogClose asChild>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setNewEmail('')}
                     style={{
                       color: '#000000',
@@ -675,7 +675,7 @@ const RBIEmailData = () => {
                     Cancel
                   </Button>
                 </DialogClose>
-                <Button 
+                <Button
                   onClick={handleAddEmail}
                   disabled={isLoading || !newEmail.trim()}
                   style={{
