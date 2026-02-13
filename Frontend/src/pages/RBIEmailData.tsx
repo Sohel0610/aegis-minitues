@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import RBIAnalysisDashboardLayout from "@/components/layout/RBIAnalysisDashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,8 +26,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Plus, Loader2, AlertCircle, Lock, Trash2, X as XIcon } from "lucide-react";
 import * as XLSX from 'xlsx';
-// Import admin authentication utilities
-import { isAdmin, authenticateAdmin, logoutAdmin } from "@/utils/adminAuth";
 
 // Generic interface for Excel data
 interface ExcelRow {
@@ -46,21 +45,16 @@ const RBIEmailData = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [columnNames, setColumnNames] = useState<string[]>([]);
-  // Admin authentication state
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
-  const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
-  const [adminUsername, setAdminUsername] = useState<string>('');
-  const [adminPassword, setAdminPassword] = useState<string>('');
+  const { canAdmin } = useAuth();
+  // Admin mode controlled by SSO permissions
+  const isAdminMode = canAdmin('/rbi-dashboard');
   // Delete confirmation state
   const [emailToDelete, setEmailToDelete] = useState<ExcelRow | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   // Filter state
   const [searchFilter, setSearchFilter] = useState<string>('');
 
-  // Check admin status on component mount
-  useEffect(() => {
-    setIsAdminMode(isAdmin());
-  }, []);
+
 
   // Load emails from database via FastAPI server
   useEffect(() => {
@@ -108,18 +102,7 @@ const RBIEmailData = () => {
     loadEmailData();
   }, [searchFilter]);
 
-  // Handle admin login
-  const handleAdminLogin = async () => {
-    const success = await authenticateAdmin(adminUsername, adminPassword);
-    if (success) {
-      setIsAdminMode(true);
-      setShowAdminLogin(false);
-      setAdminUsername('');
-      setAdminPassword('');
-    } else {
-      alert('Invalid admin credentials');
-    }
-  };
+
 
   // Handle search filter change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,11 +114,7 @@ const RBIEmailData = () => {
     setSearchFilter('');
   };
 
-  // Handle admin logout
-  const handleAdminLogout = () => {
-    logoutAdmin();
-    setIsAdminMode(false);
-  };
+
 
   // Set email to delete and open confirmation dialog
   const handleDeleteEmail = (email: ExcelRow) => {
@@ -325,110 +304,7 @@ const RBIEmailData = () => {
           </Card>
         </motion.div>
 
-        {/* Admin Controls */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.0, delay: 0.2 }}
-          className="mb-4"
-        >
-          <div className="flex justify-end">
-            {isAdminMode ? (
-              <Button
-                variant="outline"
-                onClick={handleAdminLogout}
-                className="flex items-center gap-2"
-                style={{
-                  color: '#EF4444',
-                  borderColor: '#EF4444'
-                }}
-              >
-                <Lock className="h-4 w-4" />
-                Logout Admin
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => setShowAdminLogin(true)}
-                className="flex items-center gap-2"
-                style={{
-                  color: '#75479C',
-                  borderColor: '#75479C'
-                }}
-              >
-                <Lock className="h-4 w-4" />
-                Admin Login
-              </Button>
-            )}
-          </div>
-        </motion.div>
 
-        {/* Admin Login Dialog */}
-        <Dialog open={showAdminLogin} onOpenChange={setShowAdminLogin}>
-          <DialogContent className="sm:max-w-md" style={{ background: '#ffffff' }}>
-            <DialogHeader>
-              <DialogTitle style={{ color: '#000000' }}>Admin Login</DialogTitle>
-              <DialogDescription style={{ color: '#000000' }}>
-                Enter admin credentials to access email management features.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username" style={{ color: '#000000' }}>Username</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter username"
-                  value={adminUsername}
-                  onChange={(e) => setAdminUsername(e.target.value)}
-                  style={{
-                    borderColor: '#000000'
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password" style={{ color: '#000000' }}>Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAdminLogin();
-                    }
-                  }}
-                  style={{
-                    borderColor: '#000000'
-                  }}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowAdminLogin(false)}
-                  style={{
-                    color: '#000000',
-                    borderColor: '#000000'
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAdminLogin}
-                  style={{
-                    backgroundColor: '#75479C',
-                    borderColor: '#75479C',
-                    color: 'white'
-                  }}
-                >
-                  Login
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

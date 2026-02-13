@@ -1,49 +1,68 @@
-import React, { useEffect } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+/**
+ * ProtectedRoute Component
+ * Updated to use route-based permissions instead of role-based access
+ */
+
+import React from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
-    children?: React.ReactNode;
-    allowedRoles?: string[];
+    children: React.ReactNode;
+    requiredRoute?: string;
+    requireAdmin?: boolean;
+    requireEdit?: boolean;
+    allowedRoles?: string[]; // Deprecated, kept for backward compatibility
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
-    const { user, isAuthenticated, isLoading, login } = useAuth();
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+    children,
+    requiredRoute,
+    requireAdmin = false,
+    requireEdit = false,
+    allowedRoles, // Deprecated
+}) => {
+    const { isAuthenticated, isLoading, hasAccess, canAdmin, canEdit } = useAuth();
     const location = useLocation();
 
-    useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
-            // Automatically trigger login if not authenticated
-            login();
-        }
-    }, [isLoading, isAuthenticated, login]);
-
+    // Show loading state
     if (isLoading) {
-        // Show a simple loading state while checking auth
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-white">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-[#0B74B0]"></div>
-                    <p className="text-gray-500 font-medium">Authenticating...</p>
-                </div>
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
         );
     }
 
+    // Redirect to login if not authenticated
     if (!isAuthenticated) {
-        // If not authenticated (and login triggered), return null or a placeholder
-        // The useEffect above handles the redirect to SSO
-        return null;
+        return <Navigate to="/" state={{ from: location }} replace />;
     }
 
-    if (allowedRoles && user) {
-        const hasPermission = allowedRoles.some(role => user.roles.includes(role)) || user.roles.includes('admin');
-        if (!hasPermission) {
-            return <Navigate to="/" replace />;
-        }
+    // If no route specified, just check authentication
+    if (!requiredRoute) {
+        return <>{children}</>;
     }
 
-    return children ? <>{children}</> : <Outlet />;
+    // Check if user has access to the route
+    const userHasAccess = hasAccess(requiredRoute);
+
+    if (!userHasAccess) {
+        return <Navigate to="/access-denied" state={{ requestedRoute: requiredRoute }} replace />;
+    }
+
+    // Check admin permission if required
+    if (requireAdmin && !canAdmin(requiredRoute)) {
+        return <Navigate to="/access-denied" state={{ reason: 'admin_required' }} replace />;
+    }
+
+    // Check edit permission if required
+    if (requireEdit && !canEdit(requiredRoute)) {
+        return <Navigate to="/access-denied" state={{ reason: 'edit_required' }} replace />;
+    }
+
+    // User has required permissions, render children
+    return <>{children}</>;
 };
 
 export default ProtectedRoute;

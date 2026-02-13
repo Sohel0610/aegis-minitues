@@ -18,11 +18,15 @@ import {
   ArrowUp,
   ArrowDown,
   Link,
-  ChevronRight
+  ChevronRight,
+  LogIn,
+  User
 } from "lucide-react";
 import Orb from "@/components/Orb";
 import ChatbotFab from "@/components/ChatbotFab";
 import { useRef, useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+
 
 // Add fetch for visit count
 const fetchVisitCount = async (): Promise<number> => {
@@ -119,7 +123,7 @@ const products: Product[] = [
       "Standalone application"
     ]
   },
-{
+  {
     id: '4',
     title: "Insider Trading",
     description: "Monitor and analyze insider trading activities and patterns.",
@@ -204,7 +208,7 @@ const getColorForProduct = (color: string, status: 'Live' | 'Coming Soon') => {
   if (status === 'Live') {
     return "hsl(120, 80%, 40%)"; // Green color for live products
   }
-  
+
   // For coming soon products, use the original colors
   switch (color) {
     case "honolulu-blue":
@@ -224,7 +228,7 @@ const getButtonColorForProduct = (status: 'Live' | 'Coming Soon') => {
   if (status === 'Live') {
     return "hsl(120, 80%, 40%)"; // Green color for live products
   }
-  
+
   // For coming soon products, return null to use default styling
   return null;
 };
@@ -235,13 +239,14 @@ const getBadgeColorForProduct = (status: 'Live' | 'Coming Soon') => {
   if (status === 'Live') {
     return "hsl(120, 80%, 40%)"; // Green color for live products
   }
-  
+
   // For coming soon products, return null to use default styling
   return null;
 };
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user, login, logout, isAdmin } = useAuth();
   const [visitCount, setVisitCount] = useState<number>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
@@ -251,7 +256,7 @@ const LandingPage = () => {
       const count = await fetchVisitCount();
       setVisitCount(count);
     };
-    
+
     const incrementAndLoadCount = async () => {
       // First increment the visit count
       const newCount = await incrementVisitCount();
@@ -259,10 +264,10 @@ const LandingPage = () => {
       const updatedCount = await fetchVisitCount();
       setVisitCount(updatedCount);
     };
-    
+
     // Load initial count
     loadVisitCount();
-    
+
     // Increment visit count for this visit
     incrementAndLoadCount();
   }, []);
@@ -276,11 +281,11 @@ const LandingPage = () => {
         setShowScrollTop(false);
       }
     };
- 
+
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
- 
+
   const handleProductClick = (product: Product): void => {
     if (product.status === 'Live' && product.route) {
       // SEBI Analysis is a separate application, open in new tab
@@ -291,14 +296,14 @@ const LandingPage = () => {
       }
     }
   };
- 
+
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
       behavior: 'smooth'
     });
   };
- 
+
   const scrollToContent = () => {
     const contentElement = document.querySelector('.products-section');
     if (contentElement) {
@@ -307,10 +312,42 @@ const LandingPage = () => {
       });
     }
   };
- 
+
   return (
     <div className="min-h-screen bg-white">
-     
+
+      {/* SSO Login Header */}
+      <div className="fixed top-0 right-0 z-50 p-4">
+        {isAuthenticated && user ? (
+          <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200">
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">{user.name || user.email}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={logout}
+              className="rounded-full"
+            >
+              Logout
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={login}
+            className="rounded-full shadow-lg"
+            style={{
+              backgroundColor: '#0B74B0',
+              color: 'white'
+            }}
+          >
+            <LogIn className="h-4 w-4 mr-2" />
+            Login with SSO
+          </Button>
+        )}
+      </div>
+
       {/* Orbit Section with Background Image - Fully responsive */}
       <div className="flex flex-col items-center justify-center min-h-screen relative overflow-hidden bg-white w-full">
         <div className="w-full flex justify-center">
@@ -336,20 +373,20 @@ const LandingPage = () => {
             </div>
           </div>
         </div>
-     
-      {/* Project Title Section - Responsive typography */}
-      <div className="container mx-auto flex justify-center py-4 sm:py-6 px-4">
-        <h1
-          className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-clip-text text-transparent text-center"
-          style={{
-            backgroundImage: 'linear-gradient(to right, #0B74B0, #BD3861)'
-          }}
-        >
-          Project AEGIS
-        </h1>
+
+        {/* Project Title Section - Responsive typography */}
+        <div className="container mx-auto flex justify-center py-4 sm:py-6 px-4">
+          <h1
+            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-clip-text text-transparent text-center"
+            style={{
+              backgroundImage: 'linear-gradient(to right, #0B74B0, #BD3861)'
+            }}
+          >
+            Project AEGIS
+          </h1>
+        </div>
       </div>
-      </div>
-     
+
       {/* Scroll Down FAB - Responsive positioning */}
       <button
         onClick={scrollToContent}
@@ -364,7 +401,7 @@ const LandingPage = () => {
       >
         <ArrowDown size={16} />
       </button>
-     
+
       {/* Products Section - Fully responsive grid */}
       <div className="products-section container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 min-h-screen">
         <div className="w-full">
@@ -377,7 +414,7 @@ const LandingPage = () => {
                   className={`${product.status === 'Live' ? 'cursor-pointer' : 'cursor-default'} w-full`}
                   onClick={() => handleProductClick(product)}
                 >
-                  <Card 
+                  <Card
                     className="h-full relative overflow-hidden border-2 transition-all duration-300 flex flex-col w-full"
                     style={{
                       background: "#ffffff",
@@ -434,7 +471,7 @@ const LandingPage = () => {
                         </div>
                       </div>
                     </CardHeader>
- 
+
                     <CardContent className="flex-1 flex flex-col px-5 pb-5">
                       {/* Features List */}
                       <div className="flex-1">
@@ -455,7 +492,7 @@ const LandingPage = () => {
                           ))}
                         </div>
                       </div>
- 
+
                       {/* Action Button */}
                       <div className="pt-6">
                         {product.status === 'Live' ? (
@@ -500,15 +537,28 @@ const LandingPage = () => {
           </div>
         </div>
       </div>
- 
+
       {/* Footer Section - Responsive layout */}
       <div className="border-t py-6">
         <div className="container mx-auto px-4 sm:px-6 text-center">
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
           </div>
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm text-foreground" style={{ fontFamily: 'Adani, sans-serif' }}>
-            <a 
-              href="/hierarchy-structure" 
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm text-foreground relative" style={{ fontFamily: 'Adani, sans-serif' }}>
+            {isAdmin && (
+              <div className="sm:absolute sm:left-0 sm:top-1/2 sm:-translate-y-1/2 mb-4 sm:mb-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/admin-panel')}
+                  className="gap-2 border-gray-200 hover:bg-gray-50 text-gray-700 h-9 rounded-lg"
+                >
+                  <Shield className="h-4 w-4" />
+                  <span className="text-xs font-semibold">Admin Panel</span>
+                </Button>
+              </div>
+            )}
+            <a
+              href="/hierarchy-structure"
               className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 transition-colors"
             >
               Agent Organogram
@@ -521,7 +571,7 @@ const LandingPage = () => {
           </div>
         </div>
       </div>
- 
+
       {/* Scroll to Top FAB - Responsive positioning */}
       {showScrollTop && (
         <button
@@ -539,7 +589,7 @@ const LandingPage = () => {
         </button>
       )}
       <ChatbotFab />
-      
+
     </div>
   );
 };

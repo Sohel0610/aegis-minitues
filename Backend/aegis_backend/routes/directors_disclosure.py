@@ -5,7 +5,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
-import sqlite3
 import logging
 import asyncio
 import concurrent.futures
@@ -23,6 +22,9 @@ from llm_utils import generate_and_save_summary
 
 # Import our enhanced matching algorithm
 from routes.EnhancedIndianNameMatcher import indian_name_similarity
+
+# Import our PostgreSQL service
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -144,46 +146,42 @@ class ImageDeleteResponse(BaseModel):
     success: bool
     message: str
 
-# Endpoint to get all directors from directors database
+# Endpoint to get all directors from PostgreSQL database
 @router.get("/api/directors-master", response_model=DirectorsMasterResponse)
 async def get_directors_master():
-    """Get all directors from directors database"""
+    """Get all directors from PostgreSQL master table"""
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        
-        if not os.path.exists(db_path):
-            raise HTTPException(status_code=404, detail="Directors database not found")
-        
         def fetch_directors():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, name, din, created_at FROM directors ORDER BY name")
-            rows = cursor.fetchall()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            # Get PAN information from directors_profile.db
-            profile_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors_profile.db")
-            pan_data = {}
-            if os.path.exists(profile_db_path):
-                profile_conn = sqlite3.connect(profile_db_path)
-                profile_cursor = profile_conn.cursor()
-                profile_cursor.execute("SELECT DIN, PAN FROM directors_profile WHERE PAN IS NOT NULL AND PAN != ''")
-                pan_rows = profile_cursor.fetchall()
-                profile_conn.close()
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                # Fetch directors with their latest PAN from profiles if available
+                cursor.execute("""
+                    SELECT 
+                        d.id, d.name, d.din, d.created_at,
+                        p.pan
+                    FROM directors_master.directors d
+                    LEFT JOIN directors_profile.directors_profile p ON d.din = p.din
+                    ORDER BY d.name
+                """)
                 
-                # Create a dictionary mapping DIN to PAN
-                for din, pan in pan_rows:
-                    if din:
-                        pan_data[din.strip()] = pan.strip() if pan else None
-            
-            conn.close()
-            
-            return [{
-                'id': row[0],
-                'name': row[1],
-                'din': row[2],
-                'pan': pan_data.get(row[2].strip()) if row[2] else None,
-                'created_at': row[3]
-            } for row in rows]
+                rows = cursor.fetchall()
+                directors = []
+                for row in rows:
+                    directors.append({
+                        'id': row['id'],
+                        'name': row['name'],
+                        'din': row['din'],
+                        'pan': row['pan'],
+                        'created_at': row['created_at'].isoformat() if row['created_at'] else datetime.now().isoformat()
+                    })
+                
+                return directors
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         directors = await loop.run_in_executor(thread_pool, fetch_directors)
@@ -193,97 +191,96 @@ async def get_directors_master():
             count=len(directors)
         )
     except Exception as e:
-        logger.error(f"Error fetching directors master: {str(e)}")
+        logger.error(f"Error fetching directors master from PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch directors: {str(e)}")
 
-# Endpoint to create a new director in directors database
+# Endpoint to create a new director in PostgreSQL
 @router.post("/api/directors-master", response_model=DirectorMasterResponse)
 async def create_director(request: DirectorCreateRequest):
-    """Create a new director in directors database"""
+    """Create a new director in PostgreSQL master table"""
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        
         def insert_director():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            # Check if director with same DIN already exists
-            cursor.execute("SELECT id FROM directors WHERE din = ?", (request.din,))
-            if cursor.fetchone():
-                conn.close()
-                raise HTTPException(status_code=400, detail="Director with this DIN already exists")
-            
-            # Insert new director
-            cursor.execute(
-                "INSERT INTO directors (name, din) VALUES (?, ?)",
-                (request.name, request.din)
-            )
-            director_id = cursor.lastrowid
-            
-            # Fetch the created director
-            cursor.execute("SELECT id, name, din, created_at FROM directors WHERE id = ?", (director_id,))
-            row = cursor.fetchone()
-            conn.commit()
-            conn.close()
-            
-            return {
-                'id': row[0],
-                'name': row[1],
-                'din': row[2],
-                'created_at': row[3]
-            }
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Check if director with same DIN already exists
+                cursor.execute("SELECT id FROM directors_master.directors WHERE din = %s", (request.din,))
+                if cursor.fetchone():
+                    raise HTTPException(status_code=400, detail="Director with this DIN already exists")
+                
+                # Insert new director
+                cursor.execute(
+                    "INSERT INTO directors_master.directors (name, din) VALUES (%s, %s) RETURNING id, name, din, created_at",
+                    (request.name, request.din)
+                )
+                row = cursor.fetchone()
+                pg_conn.commit()
+                
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'din': row['din'],
+                    'pan': None,
+                    'created_at': row['created_at'].isoformat() if row['created_at'] else datetime.now().isoformat()
+                }
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
-        director = await loop.run_in_executor(thread_pool, insert_director)
+        director_data = await loop.run_in_executor(thread_pool, insert_director)
         
-        return DirectorMasterResponse(**director)
+        return DirectorMasterResponse(**director_data)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating director: {str(e)}")
+        logger.error(f"Error creating director in PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create director: {str(e)}")
 
-# Endpoint to update an existing director in directors database
+# Endpoint to update an existing director in PostgreSQL
 @router.put("/api/directors-master/{director_id}", response_model=DirectorMasterResponse)
 async def update_director(director_id: int, request: DirectorUpdateRequest):
-    """Update an existing director in directors database"""
+    """Update an existing director in PostgreSQL master table"""
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        
         def update_director_data():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            # Check if director exists
-            cursor.execute("SELECT id FROM directors WHERE id = ?", (director_id,))
-            if not cursor.fetchone():
-                conn.close()
-                raise HTTPException(status_code=404, detail="Director not found")
-            
-            # Check if another director has the same DIN
-            cursor.execute("SELECT id FROM directors WHERE din = ? AND id != ?", (request.din, director_id))
-            if cursor.fetchone():
-                conn.close()
-                raise HTTPException(status_code=400, detail="Another director with this DIN already exists")
-            
-            # Update director
-            cursor.execute(
-                "UPDATE directors SET name = ?, din = ? WHERE id = ?",
-                (request.name, request.din, director_id)
-            )
-            
-            # Fetch updated director
-            cursor.execute("SELECT id, name, din, created_at FROM directors WHERE id = ?", (director_id,))
-            row = cursor.fetchone()
-            conn.commit()
-            conn.close()
-            
-            return {
-                'id': row[0],
-                'name': row[1],
-                'din': row[2],
-                'created_at': row[3]
-            }
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Check if director exists
+                cursor.execute("SELECT id FROM directors_master.directors WHERE id = %s", (director_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Director not found")
+                
+                # Check if another director has the same DIN
+                cursor.execute("SELECT id FROM directors_master.directors WHERE din = %s AND id != %s", (request.din, director_id))
+                if cursor.fetchone():
+                    raise HTTPException(status_code=400, detail="Another director with this DIN already exists")
+                
+                # Update director
+                cursor.execute(
+                    "UPDATE directors_master.directors SET name = %s, din = %s WHERE id = %s RETURNING id, name, din, created_at",
+                    (request.name, request.din, director_id)
+                )
+                
+                row = cursor.fetchone()
+                pg_conn.commit()
+                
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'din': row['din'],
+                    'pan': None, # PAN lookup would need a join if we want to return it here
+                    'created_at': row['created_at'].isoformat() if row['created_at'] else datetime.now().isoformat()
+                }
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         director = await loop.run_in_executor(thread_pool, update_director_data)
@@ -292,55 +289,43 @@ async def update_director(director_id: int, request: DirectorUpdateRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating director: {str(e)}")
+        logger.error(f"Error updating director in PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update director: {str(e)}")
 
-# Endpoint to update PAN for a director (stored in directors_profile.db, keyed by DIN)
+# Endpoint to update PAN for a director
 @router.put("/api/directors-master/{director_id}/pan")
 async def update_director_pan(director_id: int, request: DirectorPanUpdateRequest):
-    """Update PAN for a director using DIN mapping in directors_profile.db"""
+    """Update PAN for a director in PostgreSQL"""
     try:
-        directors_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        profile_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors_profile.db")
-
         def upsert_pan():
-            # Ensure directors_profile.db exists; create table if missing
-            conn = sqlite3.connect(profile_db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS directors_profile (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    DIN TEXT UNIQUE,
-                    PAN TEXT
-                )
-                """
-            )
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
+            
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Get DIN for the given director_id from directors_master.directors
+                cursor.execute("SELECT din FROM directors_master.directors WHERE id = %s", (director_id,))
+                row = cursor.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Director not found")
+                
+                din = (row['din'] or "").strip()
+                if not din:
+                    raise HTTPException(status_code=400, detail="Director DIN is empty; cannot set PAN")
 
-            # Get DIN for the given director_id from directors.db
-            dconn = sqlite3.connect(directors_db_path)
-            dcur = dconn.cursor()
-            dcur.execute("SELECT din FROM directors WHERE id = ?", (director_id,))
-            row = dcur.fetchone()
-            dconn.close()
-            if not row:
-                conn.close()
-                raise HTTPException(status_code=404, detail="Director not found")
-            din = (row[0] or "").strip()
-            if not din:
-                conn.close()
-                raise HTTPException(status_code=400, detail="Director DIN is empty; cannot set PAN")
+                # Upsert PAN in directors_profile.directors_profile
+                # We use the 'directors_profile' schema and table
+                cursor.execute("""
+                    INSERT INTO directors_profile.directors_profile (din, pan)
+                    VALUES (%s, %s)
+                    ON CONFLICT (din) DO UPDATE SET pan = EXCLUDED.pan
+                """, (din, request.pan.strip()))
 
-            # Upsert PAN by DIN
-            cursor.execute("SELECT DIN FROM directors_profile WHERE DIN = ?", (din,))
-            exists = cursor.fetchone() is not None
-            if exists:
-                cursor.execute("UPDATE directors_profile SET PAN = ? WHERE DIN = ?", (request.pan.strip(), din))
-            else:
-                cursor.execute("INSERT INTO directors_profile (DIN, PAN) VALUES (?, ?)", (din, request.pan.strip()))
-
-            conn.commit()
-            conn.close()
+                pg_conn.commit()
+            finally:
+                pg_conn.close()
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(thread_pool, upsert_pan)
@@ -351,27 +336,30 @@ async def update_director_pan(director_id: int, request: DirectorPanUpdateReques
         logger.error(f"Error updating director PAN: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update director PAN: {str(e)}")
 
-# Endpoint to delete a director from directors database
+# Endpoint to delete a director from PostgreSQL
 @router.delete("/api/directors-master/{director_id}")
 async def delete_director(director_id: int):
-    """Delete a director from directors database"""
+    """Delete a director from PostgreSQL master table"""
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        
         def delete_director_data():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            # Check if director exists
-            cursor.execute("SELECT id FROM directors WHERE id = ?", (director_id,))
-            if not cursor.fetchone():
-                conn.close()
-                raise HTTPException(status_code=404, detail="Director not found")
-            
-            # Delete director
-            cursor.execute("DELETE FROM directors WHERE id = ?", (director_id,))
-            conn.commit()
-            conn.close()
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Check if director exists
+                cursor.execute("SELECT id FROM directors_master.directors WHERE id = %s", (director_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Director not found")
+                
+                # Delete director (PostgreSQL should handle dependent data if CASCADE is set, 
+                # otherwise this might fail if there are profiles/family linked)
+                cursor.execute("DELETE FROM directors_master.directors WHERE id = %s", (director_id,))
+                pg_conn.commit()
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(thread_pool, delete_director_data)
@@ -380,7 +368,7 @@ async def delete_director(director_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting director: {str(e)}")
+        logger.error(f"Error deleting director from PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete director: {str(e)}")
 
 # Endpoint to get all directors' disclosures from Word files
@@ -716,72 +704,77 @@ async def get_disclosure_summary(disclosure_id: int):
             # Get the file at the specified index
             filename = sorted(docx_files)[disclosure_id - 1]
             
-            # Connect to database to get summary
-            db_path = os.path.join(os.path.dirname(__file__), "..", 'directors_data.db')
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            # Connect to PostgreSQL to get summary
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            # Try to get existing record
-            cursor.execute('''
-                SELECT id, director_name, din, file_path, full_text, summary, created_at, updated_at 
-                FROM document_summaries WHERE file_path = ?
-            ''', (filename,))
-            
-            result = cursor.fetchone()
-            conn.close()
-            
-            # If record exists with full text and summary, return it
-            if result and result[4] and result[5]:  # Check if full_text and summary are not null/empty
-                return {
-                    'id': result[0],
-                    'director_name': result[1],
-                    'din': result[2],
-                    'file_path': result[3],
-                    'full_text': result[4],
-                    'summary': result[5],
-                    'created_at': result[6],
-                    'updated_at': result[7]
-                }
-            
-            # If no record exists or it's incomplete, generate it automatically
-            file_path = os.path.join(disclosures_dir, filename)
-            
-            # Extract director name from filename
-            director_name = filename.replace('_MBP.docx', '').replace('.docx', '').strip()
-            din = 'N/A'  # Default value
-            
-            # Try to generate full text and summary
             try:
-                # Generate and save full text and summary
-                full_text, summary = generate_and_save_summary(director_name, din, filename)
+                cursor = get_pg_cursor(pg_conn)
                 
-                # Return the newly generated data
-                file_stat = os.stat(file_path)
-                return {
-                    'id': 0,  # Will be updated when saved to DB
-                    'director_name': director_name,
-                    'din': din,
-                    'file_path': filename,
-                    'full_text': full_text,
-                    'summary': summary,
-                    'created_at': file_stat.st_mtime,
-                    'updated_at': file_stat.st_mtime
-                }
-            except Exception as e:
-                logger.error(f"Error generating full text and summary: {str(e)}")
-                # Return a default response if generation fails
-                file_stat = os.stat(file_path)
-                error_msg = 'Error processing document'
-                return {
-                    'id': 0,
-                    'director_name': director_name,
-                    'din': din,
-                    'file_path': filename,
-                    'full_text': error_msg,
-                    'summary': error_msg,
-                    'created_at': file_stat.st_mtime,
-                    'updated_at': file_stat.st_mtime
-                }
+                # Try to get existing record
+                cursor.execute('''
+                    SELECT id, director_name, din, file_path, full_text, summary, created_at, updated_at 
+                    FROM directors_data.document_summaries WHERE file_path = %s
+                ''', (filename,))
+                
+                result = cursor.fetchone()
+                
+                # If record exists with full text and summary, return it
+                if result and result['full_text'] and result['summary']:
+                    return {
+                        'id': result['id'],
+                        'director_name': result['director_name'],
+                        'din': result['din'],
+                        'file_path': result['file_path'],
+                        'full_text': result['full_text'],
+                        'summary': result['summary'],
+                        'created_at': result['created_at'].isoformat() if result['created_at'] else None,
+                        'updated_at': result['updated_at'].isoformat() if result['updated_at'] else None
+                    }
+                
+                # If no record exists or it's incomplete, generate it automatically
+                file_path = os.path.join(disclosures_dir, filename)
+                
+                # Extract director name from filename
+                director_name = filename.replace('_MBP.docx', '').replace('.docx', '').strip()
+                din = 'N/A'  # Default value
+                
+                # Try to generate full text and summary
+                try:
+                    # Generate and save full text and summary (Note: generate_and_save_summary might still use SQLite internally)
+                    # We should probably update that too, but for now let's focus on the route
+                    full_text, summary = generate_and_save_summary(director_name, din, filename)
+                    
+                    # Return the newly generated data
+                    file_stat = os.stat(file_path)
+                    return {
+                        'id': 0,  # Will be updated when saved to DB
+                        'director_name': director_name,
+                        'din': din,
+                        'file_path': filename,
+                        'full_text': full_text,
+                        'summary': summary,
+                        'created_at': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                        'updated_at': datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+                    }
+                except Exception as e:
+                    logger.error(f"Error generating full text and summary: {str(e)}")
+                    # Return a default response if generation fails
+                    file_stat = os.stat(file_path)
+                    error_msg = 'Error processing document'
+                    return {
+                        'id': 0,
+                        'director_name': director_name,
+                        'din': din,
+                        'file_path': filename,
+                        'full_text': error_msg,
+                        'summary': error_msg,
+                        'created_at': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                        'updated_at': datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+                    }
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         summary_data = await loop.run_in_executor(thread_pool, get_summary_data)
@@ -796,24 +789,20 @@ async def get_disclosure_summary(disclosure_id: int):
 # Endpoint to get family information for a specific director
 @router.get("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
 async def get_director_family_info(director_name: str):
-    """Get family information for a specific director using enhanced Indian name matching"""
+    """Get family information for a specific director using enhanced Indian name matching and PostgreSQL"""
     try:
-        directors_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        family_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "Director_Family_Information.db")
-        
         def fetch_family_info():
-            if not os.path.exists(directors_db_path) or not os.path.exists(family_db_path):
-                raise HTTPException(status_code=404, detail="Required databases not found")
-            
-            # Connect to family database
-            family_conn = sqlite3.connect(family_db_path)
-            family_cursor = family_conn.cursor()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
             try:
-                # Get all family members
-                family_cursor.execute("SELECT Name FROM Sheet1 ORDER BY Name")
-                family_rows = family_cursor.fetchall()
-                family_list = [row[0] for row in family_rows]
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Get all distinct director names from family information
+                cursor.execute("SELECT director_name FROM family_information.director_family ORDER BY director_name")
+                family_rows = cursor.fetchall()
+                family_list = [row['director_name'] for row in family_rows]
                 
                 # Find the best match for the director
                 best_match = None
@@ -827,38 +816,34 @@ async def get_director_family_info(director_name: str):
                 
                 # If we found a match, get the detailed family information
                 if best_match:
-                    family_cursor.execute("""
-                        SELECT Name, "Section_2(77)(i)", "Section_2(77)(ii)", "Section_2(77)(iii)", 
-                               Father, Mother, Son, "Son's_Wife", Daughter, "Daughter's_husband", Brother, Sister,
-                               Father_PAN, Mother_PAN, Father_PAN_File, Mother_PAN_File
-                        FROM Sheet1 
-                        WHERE Name = ?
+                    cursor.execute("""
+                        SELECT 
+                            director_name, section_2_77_i, section_2_77_ii, section_2_77_iii, 
+                            father, mother, son, sons_wife, daughter, daughters_husband, brother, sister,
+                            father_pan, mother_pan, father_pan_file, mother_pan_file
+                        FROM family_information.director_family 
+                        WHERE director_name = %s
                     """, (best_match,))
                     
-                    family_data = family_cursor.fetchone()
+                    row = cursor.fetchone()
                     
-                    if family_data:
+                    if row:
                         # Create family members list
                         family_members = []
                         
-                        # Add section information
-                        section_2_77_i = family_data[1] if family_data[1] else None
-                        section_2_77_ii = family_data[2] if family_data[2] else None
-                        section_2_77_iii = str(family_data[3]) if family_data[3] is not None else None
-                        
-                        # Add family members
+                        # Add family members with PAN info
                         relationships = [
-                            ("Father", family_data[4], family_data[12], family_data[14]),
-                            ("Mother", family_data[5], family_data[13], family_data[15]),
-                            ("Son", family_data[6], None, None),
-                            ("Son's Wife", family_data[7], None, None),
-                            ("Daughter", family_data[8], None, None),
-                            ("Daughter's Husband", family_data[9], None, None),
-                            ("Brother", family_data[10], None, None),
-                            ("Sister", family_data[11], None, None)
+                            ("Father", row['father'], row['father_pan']),
+                            ("Mother", row['mother'], row['mother_pan']),
+                            ("Son", row['son'], None),
+                            ("Son's Wife", row['sons_wife'], None),
+                            ("Daughter", row['daughter'], None),
+                            ("Daughter's Husband", row['daughters_husband'], None),
+                            ("Brother", row['brother'], None),
+                            ("Sister", row['sister'], None)
                         ]
                         
-                        for relationship, details, pan_no, _ in relationships:
+                        for relationship, details, pan_no in relationships:
                             if (details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']) or pan_no:
                                 family_members.append({
                                     "relationship": relationship,
@@ -870,17 +855,15 @@ async def get_director_family_info(director_name: str):
                             "director_name": director_name,
                             "matched_family_name": best_match,
                             "match_score": round(best_score, 2),
-                            "section_2_77_i": section_2_77_i,
-                            "section_2_77_ii": section_2_77_ii,
-                            "section_2_77_iii": section_2_77_iii,
+                            "section_2_77_i": row['section_2_77_i'],
+                            "section_2_77_ii": row['section_2_77_ii'],
+                            "section_2_77_iii": row['section_2_77_iii'],
                             "family_members": family_members
                         }
                 
-                # No match found
                 return None
-                
             finally:
-                family_conn.close()
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         family_info = await loop.run_in_executor(thread_pool, fetch_family_info)
@@ -892,156 +875,133 @@ async def get_director_family_info(director_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching family info for director {director_name}: {str(e)}")
+        logger.error(f"Error fetching family info for director {director_name} in PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch family info: {str(e)}")
 
-# Endpoint to update family information for a specific director
 @router.put("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
 async def update_director_family_info(director_name: str, request: UpdateFamilyInfoRequest):
-    """Update family information for a specific director"""
+    """Update family information for a specific director in PostgreSQL"""
     try:
-        family_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "Director_Family_Information.db")
-        
         def update_family_info():
-            if not os.path.exists(family_db_path):
-                raise HTTPException(status_code=404, detail="Family database not found")
-            
-            # Connect to family database
-            family_conn = sqlite3.connect(family_db_path)
-            family_cursor = family_conn.cursor()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
             try:
-                # Check if director exists in family database
-                family_cursor.execute("SELECT Name FROM Sheet1 WHERE Name = ?", (director_name,))
-                existing_record = family_cursor.fetchone()
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Check if director exists in family table
+                cursor.execute("SELECT director_name FROM family_information.director_family WHERE director_name = %s", (director_name,))
+                existing_record = cursor.fetchone()
                 
                 if not existing_record:
                     # Insert new record if it doesn't exist
-                    family_cursor.execute("""
-                        INSERT INTO Sheet1 (Name, "Section_2(77)(i)", "Section_2(77)(ii)", "Section_2(77)(iii)", 
-                                           Father, Mother, Son, "Son's_Wife", Daughter, "Daughter's_husband", Brother, Sister)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cursor.execute("""
+                        INSERT INTO family_information.director_family (director_name, section_2_77_i, section_2_77_ii, section_2_77_iii)
+                        VALUES (%s, %s, %s, %s)
                     """, (
                         director_name,
                         request.section_2_77_i,
                         request.section_2_77_ii,
+                        request.section_2_77_iii
+                    ))
+                else:
+                    # Update section info
+                    cursor.execute("""
+                        UPDATE family_information.director_family SET 
+                            section_2_77_i = %s,
+                            section_2_77_ii = %s,
+                            section_2_77_iii = %s
+                        WHERE director_name = %s
+                    """, (
+                        request.section_2_77_i,
+                        request.section_2_77_ii,
                         request.section_2_77_iii,
-                        None,  # Father
-                        None,  # Mother
-                        None,  # Son
-                        None,  # Son's Wife
-                        None,  # Daughter
-                        None,  # Daughter's Husband
-                        None,  # Brother
-                        None   # Sister
+                        director_name
                     ))
                 
-                # Update the record with new information
-                family_cursor.execute("""
-                    UPDATE Sheet1 SET 
-                        "Section_2(77)(i)" = ?,
-                        "Section_2(77)(ii)" = ?,
-                        "Section_2(77)(iii)" = ?
-                    WHERE Name = ?
-                """, (
-                    request.section_2_77_i,
-                    request.section_2_77_ii,
-                    request.section_2_77_iii,
-                    director_name
-                ))
+                # Update family members dynamically
+                # Map relationship to PostgreSQL column name
+                column_map = {
+                    "Father": "father",
+                    "Mother": "mother",
+                    "Son": "son",
+                    "Son's Wife": "sons_wife",
+                    "Daughter": "daughter",
+                    "Daughter's Husband": "daughters_husband",
+                    "Brother": "brother",
+                    "Sister": "sister"
+                }
                 
-                # Update family members
                 for member in request.family_members:
                     relationship = member.relationship
                     details = member.details
-                    
-                    # Map relationship to column name
-                    column_map = {
-                        "Father": "Father",
-                        "Mother": "Mother",
-                        "Son": "Son",
-                        "Son's Wife": "Son's_Wife",
-                        "Daughter": "Daughter",
-                        "Daughter's Husband": "Daughter's_husband",
-                        "Brother": "Brother",
-                        "Sister": "Sister"
-                    }
                     
                     if relationship in column_map:
                         column_name = column_map[relationship]
                         
                         # Update details
-                        family_cursor.execute(f"""
-                            UPDATE Sheet1 SET "{column_name}" = ? WHERE Name = ?
+                        cursor.execute(f"""
+                            UPDATE family_information.director_family SET {column_name} = %s WHERE director_name = %s
                         """, (details, director_name))
                         
                         # Update PAN number if provided
                         if member.pan_number is not None:
-                            pan_col = f"{column_name}_PAN"
-                            # Check if column exists (it should after migration)
-                            try:
-                                family_cursor.execute(f"""
-                                    UPDATE Sheet1 SET "{pan_col}" = ? WHERE Name = ?
+                            pan_col = f"{column_name}_pan"
+                            # We only have PAN columns for father and mother in the current schema
+                            if column_name in ['father', 'mother']:
+                                cursor.execute(f"""
+                                    UPDATE family_information.director_family SET {pan_col} = %s WHERE director_name = %s
                                 """, (member.pan_number, director_name))
-                            except sqlite3.OperationalError:
-                                pass # Column might not exist for non- Father/Mother
                 
-                family_conn.commit()
+                pg_conn.commit()
                 
                 # Return updated information
-                family_cursor.execute("""
-                    SELECT Name, "Section_2(77)(i)", "Section_2(77)(ii)", "Section_2(77)(iii)", 
-                           Father, Mother, Son, "Son's_Wife", Daughter, "Daughter's_husband", Brother, Sister,
-                           Father_PAN, Mother_PAN, Father_PAN_File, Mother_PAN_File
-                    FROM Sheet1 
-                    WHERE Name = ?
+                cursor.execute("""
+                    SELECT 
+                        director_name, section_2_77_i, section_2_77_ii, section_2_77_iii, 
+                        father, mother, son, sons_wife, daughter, daughters_husband, brother, sister,
+                        father_pan, mother_pan, father_pan_file, mother_pan_file
+                    FROM family_information.director_family 
+                    WHERE director_name = %s
                 """, (director_name,))
                 
-                family_data = family_cursor.fetchone()
+                row = cursor.fetchone()
                 
-                if family_data:
-                    # Create family members list
+                if row:
                     family_members = []
-                    
-                    # Add section information
-                    section_2_77_i = family_data[1] if family_data[1] else None
-                    section_2_77_ii = family_data[2] if family_data[2] else None
-                    section_2_77_iii = str(family_data[3]) if family_data[3] is not None else None
-                    
-                    # Add family members
                     relationships = [
-                        ("Father", family_data[4], family_data[12], family_data[14]),
-                        ("Mother", family_data[5], family_data[13], family_data[15]),
-                        ("Son", family_data[6], None, None),
-                        ("Son's Wife", family_data[7], None, None),
-                        ("Daughter", family_data[8], None, None),
-                        ("Daughter's Husband", family_data[9], None, None),
-                        ("Brother", family_data[10], None, None),
-                        ("Sister", family_data[11], None, None)
+                        ("Father", row['father'], row['father_pan']),
+                        ("Mother", row['mother'], row['mother_pan']),
+                        ("Son", row['son'], None),
+                        ("Son's Wife", row['sons_wife'], None),
+                        ("Daughter", row['daughter'], None),
+                        ("Daughter's Husband", row['daughters_husband'], None),
+                        ("Brother", row['brother'], None),
+                        ("Sister", row['sister'], None)
                     ]
                     
-                    for relationship, details, pan_no, _ in relationships:
-                        if (details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']) or pan_no:
+                    for rel, det, p in relationships:
+                        if (det and str(det).strip().lower() not in ['n/a', 'none', '', 'nil']) or p:
                             family_members.append({
-                                "relationship": relationship,
-                                "details": str(details) if details else "",
-                                "pan_number": pan_no
+                                "relationship": rel,
+                                "details": str(det) if det else "",
+                                "pan_number": p
                             })
                     
                     return {
                         "director_name": director_name,
                         "matched_family_name": director_name,
-                        "match_score": 1.0,  # Exact match since we're updating the director's own record
-                        "section_2_77_i": section_2_77_i,
-                        "section_2_77_ii": section_2_77_ii,
-                        "section_2_77_iii": section_2_77_iii,
+                        "match_score": 1.0,
+                        "section_2_77_i": row['section_2_77_i'],
+                        "section_2_77_ii": row['section_2_77_ii'],
+                        "section_2_77_iii": row['section_2_77_iii'],
                         "family_members": family_members
                     }
                 
                 return None
-                
             finally:
-                family_conn.close()
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         updated_info = await loop.run_in_executor(thread_pool, update_family_info)
@@ -1053,47 +1013,44 @@ async def update_director_family_info(director_name: str, request: UpdateFamilyI
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating family info for director {director_name}: {str(e)}")
+        logger.error(f"Error updating family info for director {director_name} in PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update family info: {str(e)}")
 
 
-# Endpoint to get director profile information
 @router.get("/api/directors-profile/{din}", response_model=DirectorProfileResponse)
 async def get_director_profile(din: str):
-    """Get director profile information from directors_profile.db"""
+    """Get director profile information from PostgreSQL"""
     try:
-        profile_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors_profile.db")
-        
         def fetch_profile():
-            if not os.path.exists(profile_db_path):
-                raise HTTPException(status_code=404, detail="Directors profile database not found")
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            conn = sqlite3.connect(profile_db_path)
-            cursor = conn.cursor()
-            
-            # Fetch director profile data (excluding Unnamed:_8 column)
-            cursor.execute("""
-                SELECT Name_of_Director, DIN, Address, Date_of_Birth, PAN, Qualification, 
-                       Nature_of_Experience_in_specific_Functional_Areas
-                FROM directors_profile 
-                WHERE DIN = ?
-            """, (din,))
-            
-            row = cursor.fetchone()
-            conn.close()
-            
-            if not row:
-                raise HTTPException(status_code=404, detail="Director profile not found")
-            
-            return {
-                'name': row[0] if row[0] else '',
-                'din': row[1] if row[1] else '',
-                'address': row[2] if row[2] else None,
-                'date_of_birth': row[3].split(' ')[0] if row[3] else None,  # Remove time part
-                'pan': row[4] if row[4] else None,
-                'qualification': row[5] if row[5] else None,
-                'experience': row[6] if row[6] else None
-            }
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                
+                cursor.execute("""
+                    SELECT name_of_director, din, address, date_of_birth, pan, qualification, experience
+                    FROM directors_profile.directors_profile 
+                    WHERE din = %s
+                """, (din,))
+                
+                row = cursor.fetchone()
+                
+                if not row:
+                    raise HTTPException(status_code=404, detail="Director profile not found")
+                
+                return {
+                    'name': row['name_of_director'] or '',
+                    'din': row['din'] or '',
+                    'address': row['address'],
+                    'date_of_birth': row['date_of_birth'].strftime('%Y-%m-%d') if row['date_of_birth'] else None,
+                    'pan': row['pan'],
+                    'qualification': row['qualification'],
+                    'experience': row['experience']
+                }
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         profile = await loop.run_in_executor(thread_pool, fetch_profile)
@@ -1102,89 +1059,86 @@ async def get_director_profile(din: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching director profile for DIN {din}: {str(e)}")
+        logger.error(f"Error fetching director profile for DIN {din} from PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch director profile: {str(e)}")
 
-# Endpoint to update director profile information
 @router.put("/api/directors-profile/{din}", response_model=DirectorProfileResponse)
 async def update_director_profile(din: str, request: DirectorProfileUpdateRequest):
-    """Update director profile information in directors_profile.db"""
+    """Update director profile information in PostgreSQL"""
     try:
-        profile_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors_profile.db")
-        
         def update_profile():
-            if not os.path.exists(profile_db_path):
-                raise HTTPException(status_code=404, detail="Directors profile database not found")
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            conn = sqlite3.connect(profile_db_path)
-            cursor = conn.cursor()
-            
-            # Build dynamic update query based on provided fields
-            update_fields = []
-            values = []
-            
-            if request.address is not None:
-                update_fields.append("Address = ?")
-                values.append(request.address)
-            
-            if request.date_of_birth is not None:
-                update_fields.append("Date_of_Birth = ?")
-                values.append(request.date_of_birth)
-            
-            if request.pan is not None:
-                update_fields.append("PAN = ?")
-                values.append(request.pan)
-            
-            if request.qualification is not None:
-                update_fields.append("Qualification = ?")
-                values.append(request.qualification)
-            
-            if request.experience is not None:
-                update_fields.append("Nature_of_Experience_in_specific_Functional_Areas = ?")
-                values.append(request.experience)
-            
-            # Only proceed if there are fields to update
-            if not update_fields:
-                conn.close()
-                raise HTTPException(status_code=400, detail="No fields to update")
-            
-            # Add DIN to values for WHERE clause
-            values.append(din)
-            
-            # Update the record
-            query = f"UPDATE directors_profile SET {', '.join(update_fields)} WHERE DIN = ?"
-            cursor.execute(query, values)
-            
-            # Check if any row was updated
-            if cursor.rowcount == 0:
-                conn.close()
-                raise HTTPException(status_code=404, detail="Director profile not found")
-            
-            conn.commit()
-            
-            # Fetch updated profile data
-            cursor.execute("""
-                SELECT Name_of_Director, DIN, Address, Date_of_Birth, PAN, Qualification, 
-                       Nature_of_Experience_in_specific_Functional_Areas
-                FROM directors_profile 
-                WHERE DIN = ?
-            """, (din,))
-            
-            row = cursor.fetchone()
-            conn.close()
-            
-            if not row:
-                raise HTTPException(status_code=404, detail="Director profile not found after update")
-            
-            return {
-                'name': row[0] if row[0] else '',
-                'din': row[1] if row[1] else '',
-                'address': row[2] if row[2] else None,
-                'date_of_birth': row[3].split(' ')[0] if row[3] else None,  # Remove time part
-                'pan': row[4] if row[4] else None,
-                'qualification': row[5] if row[5] else None,
-                'experience': row[6] if row[6] else None
-            }
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                
+                # Build dynamic update query based on provided fields
+                update_fields = []
+                values = []
+                
+                if request.address is not None:
+                    update_fields.append("address = %s")
+                    values.append(request.address)
+                
+                if request.date_of_birth is not None:
+                    update_fields.append("date_of_birth = %s")
+                    values.append(request.date_of_birth)
+                
+                if request.pan is not None:
+                    update_fields.append("pan = %s")
+                    values.append(request.pan)
+                
+                if request.qualification is not None:
+                    update_fields.append("qualification = %s")
+                    values.append(request.qualification)
+                
+                if request.experience is not None:
+                    update_fields.append("experience = %s")
+                    values.append(request.experience)
+                
+                # Only proceed if there are fields to update
+                if not update_fields:
+                    raise HTTPException(status_code=400, detail="No fields to update")
+                
+                # Add DIN to values for WHERE clause
+                values.append(din)
+                
+                # Update the record
+                query = f"UPDATE directors_profile.directors_profile SET {', '.join(update_fields)} WHERE din = %s"
+                cursor.execute(query, values)
+                
+                # Check if any row was updated
+                if cursor.rowcount == 0:
+                    pg_conn.commit() # Still commit to release potential locks
+                    raise HTTPException(status_code=404, detail="Director profile not found")
+                
+                pg_conn.commit()
+                
+                # Fetch updated profile data
+                cursor.execute("""
+                    SELECT name_of_director, din, address, date_of_birth, pan, qualification, experience
+                    FROM directors_profile.directors_profile 
+                    WHERE din = %s
+                """, (din,))
+                
+                row = cursor.fetchone()
+                
+                if not row:
+                    raise HTTPException(status_code=404, detail="Director profile not found after update")
+                
+                return {
+                    'name': row['name_of_director'] or '',
+                    'din': row['din'] or '',
+                    'address': row['address'],
+                    'date_of_birth': row['date_of_birth'].strftime('%Y-%m-%d') if row['date_of_birth'] else None,
+                    'pan': row['pan'],
+                    'qualification': row['qualification'],
+                    'experience': row['experience']
+                }
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         updated_profile = await loop.run_in_executor(thread_pool, update_profile)
@@ -1193,7 +1147,7 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating director profile for DIN {din}: {str(e)}")
+        logger.error(f"Error updating director profile for DIN {din} in PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update director profile: {str(e)}")
 
 # Endpoint to upload director profile image
@@ -1301,30 +1255,29 @@ async def delete_director_image(din: str):
         logger.error(f"Error deleting image for DIN {din}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
 
-# Endpoint to get all directors from directors database for Minutes Preparation
+# Endpoint to get all directors from PostgreSQL database for Minutes Preparation
 @router.get("/directors", response_model=DirectorsMasterResponse)
 async def get_directors_for_minutes():
-    """Get all directors from directors database for Minutes Preparation"""
+    """Get all directors from PostgreSQL database for Minutes Preparation"""
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-        
-        if not os.path.exists(db_path):
-            logger.warning(f"Directors database not found: {db_path}")
-            return DirectorsMasterResponse(data=[], count=0)
-        
         def fetch_directors():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, name, din, created_at FROM directors ORDER BY name")
-            rows = cursor.fetchall()
-            conn.close()
+            pg_conn = get_pg_connection()
+            if not pg_conn:
+                raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
             
-            return [{
-                'id': row[0],
-                'name': row[1],
-                'din': row[2],
-                'created_at': row[3]
-            } for row in rows]
+            try:
+                cursor = get_pg_cursor(pg_conn)
+                cursor.execute("SELECT id, name, din, created_at FROM directors_master.directors ORDER BY name")
+                rows = cursor.fetchall()
+                
+                return [{
+                    'id': row['id'],
+                    'name': row['name'],
+                    'din': row['din'],
+                    'created_at': row['created_at'].isoformat() if row['created_at'] else datetime.now().isoformat()
+                } for row in rows]
+            finally:
+                pg_conn.close()
         
         loop = asyncio.get_event_loop()
         directors = await loop.run_in_executor(thread_pool, fetch_directors)
@@ -1334,5 +1287,5 @@ async def get_directors_for_minutes():
             count=len(directors)
         )
     except Exception as e:
-        logger.error(f"Error fetching directors for minutes: {str(e)}")
+        logger.error(f"Error fetching directors for minutes from PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch directors: {str(e)}")

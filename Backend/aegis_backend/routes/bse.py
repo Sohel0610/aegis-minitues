@@ -1,14 +1,12 @@
-# BSE Data Route Module
-# This module handles BSE (Bombay Stock Exchange) alerts data processing and retrieval operations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
-import sqlite3
 import logging
 import asyncio
 import concurrent.futures
 from collections import defaultdict
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -37,106 +35,77 @@ class SEBIAnalysisDataResponse(BaseModel):
 # Endpoint to get BSE alerts data from the notifications database
 @router.get("/bse-alerts", response_model=SEBIAnalysisDataResponse)
 async def get_bse_alerts_data(limit: int = 10000, offset: int = 0):
-    """Get BSE alerts data from the notifications database"""
+    """Get BSE alerts data from the Azure PostgreSQL database"""
     try:
-        # Define path to the notifications database file
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "notifications.db")
-        
-        # Check if database file exists
-        if not os.path.exists(db_path):
-            raise HTTPException(status_code=404, detail="BSE alerts database file not found")
-        
-        # Connect to the database and fetch data
         def fetch_bse_data():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            # Get database name from environment
+            db_name = os.getenv('POSTGRES_DATABASE_BSE', 'aegis_bse_notification')
+            conn = get_pg_connection(database=db_name)
+            if not conn:
+                raise Exception(f"Failed to connect to PostgreSQL database: {db_name}")
             
-            # First, get the total count of records that match our criteria
-            cursor.execute("""
-                SELECT COUNT(*) 
-                FROM DailyLogs 
-                WHERE Link IS NOT NULL AND Link != 'NIL'
-            """)
-            total_count = cursor.fetchone()[0]
+            cursor = get_pg_cursor(conn)
             
-            # Fetch data from DailyLogs table with limit and offset for pagination
-            # Only include records where Link is not NULL and not 'NIL'
-            cursor.execute("""
-                SELECT SrNo, EntityName, Link, Nature, Summary, Date 
-                FROM DailyLogs 
-                WHERE Link IS NOT NULL AND Link != 'NIL'
-                ORDER BY Date DESC, SrNo ASC 
-                LIMIT ? OFFSET ?
-            """, (limit, offset))
-            
-            rows = cursor.fetchall()
-            
-            # Get column names
-            column_names = [description[0] for description in cursor.description]
-            
-            # Convert to list of dictionaries
-            data = []
-            for row in rows:
-                # Create a dictionary with the expected keys for the frontend
-                record = dict(zip(column_names, row))
+            try:
+                # First, get the total count of records
+                # New schema uses 'link' and table 'daily_logs'
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM daily_logs 
+                    WHERE link IS NOT NULL AND link != 'NIL'
+                """)
+                total_count = cursor.fetchone()['count']
                 
-                # Rename keys to match the frontend expectations
-                record['id'] = record.pop('SrNo', None)
-                record['date_key'] = record.pop('Date', '')
-                record['row_index'] = record.pop('SrNo', 0)  # Use SrNo as row_index
-                record['pdf_link'] = record.pop('Link', '')
-                record['summary'] = record.pop('Summary', '')
-                record['inserted_at'] = record.pop('Date', '')  # Use Date as inserted_at
-                # Preserve EntityName and Nature for BSE alerts
-                if 'EntityName' in record:
-                    record['entity_name'] = record.pop('EntityName')
-                else:
-                    record['entity_name'] = None
-                if 'Nature' in record:
-                    record['nature'] = record.pop('Nature')
-                else:
-                    record['nature'] = None
+                # Fetch data from daily_logs table with limit and offset
+                # New schema columns: sr_no, entity_name, link, nature, summary, record_date
+                cursor.execute("""
+                    SELECT id, sr_no, entity_name, link, nature, summary, record_date 
+                    FROM daily_logs 
+                    WHERE link IS NOT NULL AND link != 'NIL'
+                    ORDER BY record_date DESC, id ASC 
+                    LIMIT %s OFFSET %s
+                """, (limit, offset))
                 
-                data.append(record)
-            
-            conn.close()
-            
-            # Debug: Log some information about the data
-            logger.info(f"Fetched {len(data)} BSE alerts records out of {total_count} total records")
-            
-            # Group by month to show distribution
-            monthly_count = defaultdict(int)
-            for record in data:
-                date_key = record.get('date_key', '')
-                if date_key:
-                    try:
-                        # Extract year-month from date (YYYY-MM-DD format)
-                        year_month = date_key[:7]  # First 7 characters: YYYY-MM
-                        monthly_count[year_month] += 1
-                    except Exception as e:
-                        logger.warning(f"Error parsing date {date_key}: {e}")
-            
-            logger.info(f"Data distribution by month: {dict(monthly_count)}")
-            
-            return data, total_count
+                rows = cursor.fetchall()
+                
+                # Convert to list of dictionaries with frontend-expected keys
+                data = []
+                for row in rows:
+                    # Map PostgreSQL columns to the format the frontend expects
+                    record = {
+                        'id': row['id'],
+                        'date_key': str(row['record_date']),
+                        'row_index': int(row['sr_no']) if row['sr_no'] and str(row['sr_no']).isdigit() else 0,
+                        'pdf_link': row['link'],
+                        'summary': row['summary'],
+                        'inserted_at': str(row['record_date']),
+                        'entity_name': row['entity_name'],
+                        'nature': row['nature']
+                    }
+                    data.append(record)
+                
+                return data, total_count
+            finally:
+                cursor.close()
+                conn.close()
         
         # Run the database operation in a thread pool
         loop = asyncio.get_event_loop()
         data, total_count = await loop.run_in_executor(thread_pool, fetch_bse_data)
         
-        # Log the date range of the fetched data
+        # Log the distribution for tracking
         if data:
-            dates = [record.get('date_key') for record in data if record.get('date_key')]
-            if dates:
-                min_date = min(dates)
-                max_date = max(dates)
-                logger.info(f"Date range of fetched data: {min_date} to {max_date}")
+            monthly_count = defaultdict(int)
+            for record in data:
+                date_key = record.get('date_key', '')
+                if date_key:
+                    monthly_count[date_key[:7]] += 1
+            logger.info(f"Fetched {len(data)} BSE records. Distribution: {dict(monthly_count)}")
         
         return SEBIAnalysisDataResponse(
             data=data,
             count=total_count
         )
     except Exception as e:
-        error_message = str(e)
-        logger.error(f"Error fetching BSE alerts data: {error_message}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch BSE alerts data: {error_message}")
+        logger.error(f"Error fetching BSE alerts data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch BSE alerts data: {str(e)}")

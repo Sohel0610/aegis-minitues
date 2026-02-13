@@ -4,12 +4,14 @@ from typing import List, Optional, Dict, Any
 import asyncio
 import concurrent.futures
 import logging
-import sqlite3
 import os
 from datetime import datetime
 
 # Import our enhanced matching algorithm
 from EnhancedIndianNameMatcher import indian_name_similarity
+
+# Import our PostgreSQL service
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,8 @@ router = APIRouter()
 class FamilyMemberInfo(BaseModel):
     relationship: str
     details: str
+    pan: Optional[str] = None
+    pan_file: Optional[str] = None
 
 class DirectorFamilyInfoResponse(BaseModel):
     director_name: str
@@ -32,32 +36,27 @@ class DirectorFamilyInfoResponse(BaseModel):
     section_2_77_ii: Optional[str] = None
     section_2_77_iii: Optional[str] = None
     family_members: List[FamilyMemberInfo]
+    is_submitted: bool = False
     created_at: str = datetime.now().isoformat()
 
 class FamilyInfoListResponse(BaseModel):
     data: List[DirectorFamilyInfoResponse]
     count: int
 
-# Database paths
-directors_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
-family_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "Director_Family_Information.db")
-
 def get_family_info_for_director(director_name: str):
-    """Get family information for a specific director using enhanced matching"""
+    """Get family information for a specific director using enhanced matching against PostgreSQL"""
     try:
-        if not os.path.exists(directors_db_path) or not os.path.exists(family_db_path):
-            raise HTTPException(status_code=404, detail="Required databases not found")
-        
-        # Connect to both databases
-        directors_conn = sqlite3.connect(directors_db_path)
-        family_conn = sqlite3.connect(family_db_path)
+        # Connect to PostgreSQL
+        pg_conn = get_pg_connection()
+        if not pg_conn:
+            raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
         
         try:
-            # Get all family members
-            family_cursor = family_conn.cursor()
-            family_cursor.execute("SELECT Name FROM Sheet1 ORDER BY Name")
-            family_rows = family_cursor.fetchall()
-            family_list = [row[0] for row in family_rows]
+            # Get all family information records from PG
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute("SELECT director_name FROM family_information.director_family ORDER BY director_name")
+            family_rows = cursor.fetchall()
+            family_list = [row['director_name'] for row in family_rows]
             
             # Find the best match for the director
             best_match = None
@@ -71,84 +70,85 @@ def get_family_info_for_director(director_name: str):
             
             # If we found a match, get the detailed family information
             if best_match:
-                family_cursor.execute("""
-                    SELECT Name, "Section_2(77)(i)", "Section_2(77)(ii)", "Section_2(77)(iii)", 
-                           Father, Mother, Son, "Son's_Wife", Daughter, "Daughter's_husband", Brother, Sister 
-                    FROM Sheet1 
-                    WHERE Name = ?
+                cursor.execute("""
+                    SELECT 
+                        director_name, section_2_77_i, section_2_77_ii, section_2_77_iii, 
+                        father, mother, son, sons_wife, daughter, daughters_husband, brother, sister,
+                        father_pan, mother_pan, father_pan_file, mother_pan_file, is_submitted
+                    FROM family_information.director_family 
+                    WHERE director_name = %s
                 """, (best_match,))
                 
-                family_data = family_cursor.fetchone()
+                row = cursor.fetchone()
                 
-                if family_data:
+                if row:
                     # Create family members list
                     family_members = []
                     
-                    # Add section information
-                    section_2_77_i = family_data[1] if family_data[1] else None
-                    section_2_77_ii = family_data[2] if family_data[2] else None
-                    section_2_77_iii = str(family_data[3]) if family_data[3] is not None else None
-                    
-                    # Add family members
+                    # Core relationships with potential PAN details
+                    # Note: father and mother have PAN, others might not yet in this schema iteration
                     relationships = [
-                        ("Father", family_data[4]),
-                        ("Mother", family_data[5]),
-                        ("Son", family_data[6]),
-                        ("Son's Wife", family_data[7]),
-                        ("Daughter", family_data[8]),
-                        ("Daughter's Husband", family_data[9]),
-                        ("Brother", family_data[10]),
-                        ("Sister", family_data[11])
+                        ("Father", row['father'], row['father_pan'], row['father_pan_file']),
+                        ("Mother", row['mother'], row['mother_pan'], row['mother_pan_file']),
+                        ("Son", row['son'], None, None),
+                        ("Son's Wife", row['sons_wife'], None, None),
+                        ("Daughter", row['daughter'], None, None),
+                        ("Daughter's Husband", row['daughters_husband'], None, None),
+                        ("Brother", row['brother'], None, None),
+                        ("Sister", row['sister'], None, None)
                     ]
                     
-                    for relationship, details in relationships:
+                    for relationship, details, pan, pan_file in relationships:
                         if details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']:
                             family_members.append({
                                 "relationship": relationship,
-                                "details": str(details)
+                                "details": str(details),
+                                "pan": pan,
+                                "pan_file": pan_file
                             })
                     
                     return {
                         "director_name": director_name,
                         "matched_family_name": best_match,
                         "match_score": round(best_score, 2),
-                        "section_2_77_i": section_2_77_i,
-                        "section_2_77_ii": section_2_77_ii,
-                        "section_2_77_iii": section_2_77_iii,
-                        "family_members": family_members
+                        "section_2_77_i": row['section_2_77_i'],
+                        "section_2_77_ii": row['section_2_77_ii'],
+                        "section_2_77_iii": row['section_2_77_iii'],
+                        "family_members": family_members,
+                        "is_submitted": bool(row['is_submitted'])
                     }
             
             # No match found
             return None
             
         finally:
-            directors_conn.close()
-            family_conn.close()
+            pg_conn.close()
             
     except Exception as e:
-        logger.error(f"Error getting family info for director {director_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get family info: {str(e)}")
+        logger.error(f"Error getting family info for director {director_name} from PG: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get family info from PostgreSQL: {str(e)}")
 
 def get_all_directors_with_family_info():
-    """Get family information for all directors"""
+    """Get family information for all directors from PostgreSQL"""
     try:
-        if not os.path.exists(directors_db_path) or not os.path.exists(family_db_path):
-            raise HTTPException(status_code=404, detail="Required databases not found")
-        
-        # Connect to directors database
-        directors_conn = sqlite3.connect(directors_db_path)
-        directors_cursor = directors_conn.cursor()
+        # Connect to PostgreSQL
+        pg_conn = get_pg_connection()
+        if not pg_conn:
+            raise HTTPException(status_code=500, detail="Could not connect to Azure PostgreSQL")
         
         try:
-            # Get all directors
-            directors_cursor.execute("SELECT id, name, din FROM directors ORDER BY name")
-            directors_rows = directors_cursor.fetchall()
+            cursor = get_pg_cursor(pg_conn)
+            
+            # Get all directors from the master table in PG
+            cursor.execute("SELECT name FROM directors_master.directors ORDER BY name")
+            directors_rows = cursor.fetchall()
             
             directors_with_family = []
             
-            # For each director, try to find family information
+            # For each director, try to find family information using the same PG connection
+            # We'll optimize by passing the connection if needed, but for now we follow the existing pattern
             for row in directors_rows:
-                director_name = row[1]
+                director_name = row['name']
                 family_info = get_family_info_for_director(director_name)
                 
                 if family_info:
@@ -157,11 +157,11 @@ def get_all_directors_with_family_info():
             return directors_with_family
             
         finally:
-            directors_conn.close()
+            pg_conn.close()
             
     except Exception as e:
-        logger.error(f"Error getting all directors with family info: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get directors with family info: {str(e)}")
+        logger.error(f"Error getting all directors with family info from PG: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get directors with family info from PostgreSQL: {str(e)}")
 
 # Endpoint to get family information for a specific director
 @router.get("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)

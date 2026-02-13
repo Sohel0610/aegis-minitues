@@ -66,7 +66,8 @@ from routes import (
     insider_trading,
     chat,
     auth,
-    user_management
+    user_management,
+    rbac  # New RBAC module
 )
 
 # Include all route modules
@@ -87,6 +88,7 @@ app.include_router(insider_trading.router)
 app.include_router(chat.router)
 app.include_router(auth.router)
 app.include_router(user_management.router)
+app.include_router(rbac.router)  # Register RBAC routes
 
 # Custom thread pool for handling blocking operations
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -95,53 +97,13 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 @app.on_event("startup")
 async def startup_event():
     try:
-        # Ensure directors_data.db exists and has required tables
-        directors_db_path = os.path.join(os.path.dirname(__file__), "directors_data.db")
-
-        # Create database and tables if they don't exist
-        conn = sqlite3.connect(directors_db_path)
-        cursor = conn.cursor()
-
-        # Create document_summaries table with full_text and summary
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS document_summaries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                director_name TEXT NOT NULL,
-                din TEXT,
-                file_path TEXT NOT NULL UNIQUE,
-                full_text TEXT,
-                summary TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-
-        # Create indexes
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_document_summaries_file_path
-            ON document_summaries (file_path)
-            """
-        )
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_document_summaries_director_name
-            ON document_summaries (director_name)
-            """
-        )
-
-        conn.commit()
-        conn.close()
-
-        # Initialize core directors tables
+        # Initialize core directors tables in PostgreSQL
         from routes.director_data_analysis import init_database
         # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(thread_pool, init_database)
 
-        logger.info("Directors data database initialized")
+        logger.info("Directors data database initialized in PostgreSQL")
     except Exception as e:
         logger.error(f"Error initializing directors data database: {e}")
 

@@ -35,26 +35,42 @@ REDIRECT_URI = os.getenv("AZURE_AD_REDIRECT_URI", "https://aegis.adani.com/api/a
 if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
     logger.warning("Azure AD configuration not fully set. Authentication endpoints may not work properly.")
 
-# In-memory local user role storage (temporary solution)
-LOCAL_USER_ROLES = {
-    "cogn206112@adani.com": ["admin"]
-}
-
-def get_user_roles_with_default(email: str) -> List[str]:
-    """Get roles from mapping, providing a default 'viewer' role for corporate accounts"""
+def get_user_permissions_from_db(email: str) -> dict:
+    """Get route-based permissions from database for a user"""
     if not email:
-        return []
+        return {"routes": [], "has_any_access": False}
+    
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "email_data.db")
+        conn = sqlite3.connect(db_path, timeout=30)
+        cursor = conn.cursor()
         
-    # Check if user is in our explicit mapping
-    roles = LOCAL_USER_ROLES.get(email.lower())
-    if roles:
-        return roles
+        # Query all active permissions for this user (case-insensitive)
+        cursor.execute("""
+            SELECT route_path, permission_type
+            FROM route_permissions
+            WHERE LOWER(email) = LOWER(?) AND is_active = 1
+        """, (email,))
         
-    # Default behavior: any @adani.com email gets 'viewer' access
-    if email.lower().endswith("@adani.com"):
-        return ["viewer"]
+        permissions = cursor.fetchall()
+        conn.close()
         
-    return []
+        if not permissions:
+            return {"routes": [], "has_any_access": False}
+        
+        # Build permissions structure
+        route_perms = {}
+        for route_path, perm_type in permissions:
+            route_perms[route_path] = perm_type
+        
+        return {
+            "routes": list(route_perms.keys()),
+            "permissions": route_perms,
+            "has_any_access": len(route_perms) > 0
+        }
+    except Exception as e:
+        logger.error(f"Error fetching user permissions from database: {e}")
+        return {"routes": [], "has_any_access": False}
 
 # Response models
 class AuthResponse(BaseModel):
@@ -190,26 +206,47 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
         email = payload.get('email', payload.get('preferred_username'))
         name = payload.get('name')
         
-        # Get user roles from local in-memory storage with corporate default
-        user_roles = get_user_roles_with_default(email)
+        # Get user permissions from database (route-based)
+        user_perms = get_user_permissions_from_db(email)
+        
+        # Handle case when permissions key might not exist (database not migrated yet)
+        permissions_list = user_perms.get('permissions', {})
+        routes_list = user_perms.get('routes', [])
+        has_access = user_perms.get('has_any_access', False)
         
         user_info = {
             'user_id': user_id,
             'email': email,
             'name': name,
-            'roles': user_roles
+            'permissions': permissions_list,
+            'accessible_routes': routes_list,
+            'has_access': has_access
         }
         
         # Create a session token (in a real implementation, you'd use proper session management)
         session_token = secrets.token_urlsafe(32)
         
-        # Log successful login
-        logger.info(f"User {email} authenticated successfully. Roles: {user_roles}")
+        # Log successful login with audit trail
+        logger.info(f"User {email} authenticated successfully. Routes: {routes_list}")
+        
+        # Log to audit table (only if tables exist)
+        try:
+            db_path = os.path.join(os.path.dirname(__file__), "..", "public", "email_data.db")
+            conn = sqlite3.connect(db_path, timeout=30)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO auth_audit_logs (email, event_type, event_details)
+                VALUES (?, ?, ?)
+            """, (email, 'login', f"SSO login successful. Routes: {','.join(routes_list)}"))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to log audit event: {e}")
         
         # Redirect back to the frontend with the token and user info
         # Note: In production, you'd use a more secure way to pass the token (like a secure cookie)
         # For now, we'll use query parameters for simplicity
-        target_url = f"/dashboard?token={session_token}&email={email}&name={urllib.parse.quote(name or '')}&roles={','.join(user_roles)}"
+        target_url = f"/?token={session_token}&email={email}&name={urllib.parse.quote(name or '')}&has_access={has_access}"
         return RedirectResponse(url=target_url)
         
     except HTTPException:
