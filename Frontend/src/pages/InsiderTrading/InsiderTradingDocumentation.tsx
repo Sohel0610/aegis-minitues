@@ -85,8 +85,8 @@ const InsiderTradingDocumentation = () => {
                                     key={item.id}
                                     onClick={() => scrollToSection(item.id)}
                                     className={`w-full text-left px-4 py-3 text-sm font-medium transition-colors border-l-4 ${activeSection === item.id
-                                            ? 'bg-blue-50 text-blue-700 border-blue-600'
-                                            : 'text-gray-600 border-transparent active:bg-gray-100'
+                                        ? 'bg-blue-50 text-blue-700 border-blue-600'
+                                        : 'text-gray-600 border-transparent active:bg-gray-100'
                                         }`}
                                 >
                                     {item.title}
@@ -110,8 +110,8 @@ const InsiderTradingDocumentation = () => {
                                 key={item.id}
                                 onClick={() => scrollToSection(item.id)}
                                 className={`group relative flex items-center w-full text-left px-3 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${activeSection === item.id
-                                        ? 'text-blue-700 font-extrabold'
-                                        : 'text-gray-400 hover:text-gray-900'
+                                    ? 'text-blue-700 font-extrabold'
+                                    : 'text-gray-400 hover:text-gray-900'
                                     }`}
                             >
                                 <span className={`mr-3 w-1 h-5 transition-all ${activeSection === item.id ? 'bg-blue-600 scale-y-100' : 'bg-gray-200 scale-y-50 group-hover:scale-y-75 group-hover:bg-gray-400'
@@ -209,10 +209,10 @@ const InsiderTradingDocumentation = () => {
                     </div>
                     <div className="flex flex-col gap-1">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-1">
-                            <div className="bg-gray-900 text-white p-6 flex flex-col justify-between aspect-square">
-                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Logic Layer 01</span>
+                            <div className="bg-blue-50 text-gray-900 p-6 flex flex-col justify-between aspect-square border border-blue-100">
+                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Logic Layer 01</span>
                                 <h5 className="text-3xl font-black leading-[0.85] uppercase">Frontend Interface</h5>
-                                <p className="text-[10px] font-medium leading-relaxed uppercase opacity-50">React / Tailwind / Framer Motion</p>
+                                <p className="text-[10px] font-medium leading-relaxed uppercase opacity-70">React / Tailwind / Framer Motion</p>
                             </div>
                             <div className="bg-gray-100 p-6 flex flex-col justify-between aspect-square border-x border-white">
                                 <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Logic Layer 02</span>
@@ -337,18 +337,18 @@ const InsiderTradingDocumentation = () => {
 
                 {/* Takeaways */}
                 <section id="takeaways" className="mb-24 scroll-mt-32">
-                    <div className="p-12 bg-gray-900 text-white rounded-n">
-                        <div className="mb-8 border-b border-white/20 pb-8 flex justify-between items-end">
+                    <div className="p-12 bg-gray-50 text-gray-900 rounded-n border border-gray-200">
+                        <div className="mb-8 border-b border-gray-300 pb-8 flex justify-between items-end">
                             <div>
-                                <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-blue-400">Section 10</span>
-                                <h2 className="text-5xl font-black uppercase italic">Takeaways</h2>
+                                <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-blue-600">Section 10</span>
+                                <h2 className="text-5xl font-black uppercase italic text-gray-900">Takeaways</h2>
                             </div>
                             <div className="hidden md:block text-right">
-                                <p className="text-[10px] font-bold uppercase opacity-50">Confidential Standard</p>
-                                <p className="text-[10px] font-bold uppercase opacity-50">© AEGIS 2026</p>
+                                <p className="text-[10px] font-bold uppercase text-gray-500">Confidential Standard</p>
+                                <p className="text-[10px] font-bold uppercase text-gray-500 opacity-70">© AEGIS 2026</p>
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-sm leading-relaxed font-medium">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-sm leading-relaxed font-medium text-gray-800">
                             <p>Information within the Insider Trading System is strictly for surveillance and compliance oversight. Users must ensure all data handled complies with the Securities and Exchange Board of India (SEBI) privacy mandates.</p>
                             <p>This surveillance engine provides decision support, not legal conclusions. Investigative protocols and human verification remain the essential final steps in all compliance escalations.</p>
                         </div>
