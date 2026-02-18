@@ -18,12 +18,24 @@ import {
   ArrowUp,
   ArrowDown,
   Link,
-  ChevronRight
+  ChevronRight,
+  User as UserIcon,
+  LogOut,
+  BookOpen as BookOpenIcon
 } from "lucide-react";
 import Orb from "@/components/Orb";
 import ChatbotFab from "@/components/ChatbotFab";
 import { useRef, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import UserManualModal from "@/components/UserManualModal";
 
 // Add fetch for visit count
 const fetchVisitCount = async (): Promise<number> => {
@@ -245,6 +257,7 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const [visitCount, setVisitCount] = useState<number>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
+  const [isUserManualOpen, setIsUserManualOpen] = useState<boolean>(false);
   const { user, login, logout, isAuthenticated, ssoEnabled } = useAuth();
 
   // Auto-login as Guest if SSO is disabled
@@ -323,29 +336,50 @@ const LandingPage = () => {
     }
   };
 
-
-
   return (
     <div className="min-h-screen bg-white relative">
       {/* SSO Login/User Profile Section */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
         {isAuthenticated && (
-          <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm p-2 rounded-lg border shadow-sm">
-            <div className="flex flex-col items-end">
-              <span className="text-xs font-semibold text-gray-900">{user?.name}</span>
-              <span className="text-[10px] text-gray-500">{user?.email}</span>
-            </div>
-            <Button
-              onClick={logout}
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-medium border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-            >
-              Sign Out
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-3 bg-white/80 backdrop-blur-sm p-2 rounded-lg border shadow-sm hover:bg-white transition-colors">
+                <div className="flex flex-col items-end">
+                  <span className="text-xs font-semibold text-gray-900">{user?.name}</span>
+                  <span className="text-[10px] text-gray-500">{user?.email}</span>
+                </div>
+                <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-[#0B74B0]">
+                  <UserIcon size={16} />
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 mt-1 font-mono">
+              <DropdownMenuLabel>Account Shortcuts</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setIsUserManualOpen(true)}
+                className="flex items-center gap-2 cursor-pointer font-bold text-slate-700"
+              >
+                <BookOpenIcon size={14} className="text-[#0B74B0]" />
+                User Manual (SOPs)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={logout}
+                className="flex items-center gap-2 cursor-pointer text-red-600 focus:text-red-700 focus:bg-red-50 font-bold"
+              >
+                <LogOut size={14} />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
+
+      <UserManualModal
+        isOpen={isUserManualOpen}
+        onClose={() => setIsUserManualOpen(false)}
+      />
 
       {/* Orbit Section with Background Image - Fully responsive */}
       <div className="flex flex-col items-center justify-center min-h-screen relative overflow-hidden bg-white w-full">

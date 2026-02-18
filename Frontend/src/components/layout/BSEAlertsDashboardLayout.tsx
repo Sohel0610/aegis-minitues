@@ -11,8 +11,11 @@ import {
   Globe,
   Database,
   Activity,
+  BookOpen, // Import BookOpen icon
   LucideIcon
 } from "lucide-react";
+import UserManualModal from "../UserManualModal"; // Import UserManualModal
+
 
 interface BSEAlertsDashboardLayoutProps {
   children: ReactNode;
@@ -29,7 +32,9 @@ interface NavigationItem {
 const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state for manual modal
   const navigate = useNavigate();
+
   const location = useLocation();
 
   const navigationItems: NavigationItem[] = [
@@ -67,12 +72,25 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
       icon: Globe,
       href: '/websitedata',
       isActive: location.pathname === '/websitedata'
+    },
+    {
+      id: 'manual',
+      label: 'User Manual',
+      icon: BookOpen,
+      href: '#', // No navigation, opens modal
+      isActive: false
     }
   ];
 
   const handleNavigation = (item: NavigationItem): void => {
+    if (item.id === 'manual') {
+      setIsUserManualOpen(true);
+      if (isMobileOpen) setIsMobileOpen(false);
+      return;
+    }
     navigate(item.href);
   };
+
 
   const sidebarVariants = {
     expanded: { width: "256px" }, // Fixed width instead of percentage
@@ -301,8 +319,16 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
       >
         {children}
       </main>
-    </div>
+
+      {/* User Manual Modal */}
+      <UserManualModal
+        isOpen={isUserManualOpen}
+        onClose={() => setIsUserManualOpen(false)}
+        initialAgent="BSE Analysis Agent"
+      />
+    </div >
   );
 };
+
 
 export default BSEAlertsDashboardLayout;

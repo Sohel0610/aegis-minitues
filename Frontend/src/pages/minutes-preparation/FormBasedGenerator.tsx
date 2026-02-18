@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, Download, Building, Calendar, Users, Hash, Clock, CheckCircle, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download, Building, Calendar, Users, Hash, Clock, CheckCircle, Upload, BookOpen } from 'lucide-react';
 import Stepper from '@/components/Stepper';
 import PlaceSelector from '@/components/PlaceSelector';
 import MultiDirectorSelector from '@/components/MultiDirectorSelector';

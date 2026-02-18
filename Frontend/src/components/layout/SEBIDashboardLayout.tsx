@@ -1,26 +1,31 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { 
-  LayoutDashboard, 
-  Bell, 
+import {
+  LayoutDashboard,
+  Bell,
   BarChart3,
   Home,
   Menu,
   X,
-  Mail
+  Mail,
+  BookOpen // Import BookOpen
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import UserManualModal from "../UserManualModal"; // Import UserManualModal
 
-const SEBIDashboardLayout = ({ 
+
+const SEBIDashboardLayout = ({
   children,
   title = "SEBI Dashboard"
-}: { 
+}: {
   children: React.ReactNode;
   title?: string;
 }) => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state
+
 
   // Navigation items
   const navItems = [
@@ -41,6 +46,13 @@ const SEBIDashboardLayout = ({
       href: "/sebi-emaildata",
       icon: Mail,
       active: location.pathname === "/sebi-emaildata"
+    },
+    {
+      name: "User Manual",
+      href: "#",
+      icon: BookOpen,
+      active: false,
+      action: "modal"
     }
   ];
 
@@ -53,17 +65,17 @@ const SEBIDashboardLayout = ({
             {/* Logo and Title */}
             <div className="flex items-center">
               <Link to="/sebi-dashboard" className="flex items-center space-x-2">
-                <div 
+                <div
                   className="flex items-center justify-center rounded-lg p-2"
-                  style={{ 
+                  style={{
                     background: "linear-gradient(135deg, #0B74B0, #BD3861)",
                   }}
                 >
                   <BarChart3 className="h-6 w-6 text-white" />
                 </div>
-                <span 
+                <span
                   className="text-xl font-bold"
-                  style={{ 
+                  style={{
                     background: "linear-gradient(135deg, #0B74B0, #BD3861)",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
@@ -79,15 +91,26 @@ const SEBIDashboardLayout = ({
             <nav className="hidden md:flex items-center space-x-4">
               {navItems.map((item) => {
                 const Icon = item.icon;
+                if ((item as any).action === 'modal') {
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => setIsUserManualOpen(true)}
+                      className="flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors text-gray-700 hover:text-gray-900"
+                    >
+                      <Icon className="h-4 w-4 mr-2" />
+                      {item.name}
+                    </button>
+                  );
+                }
                 return (
                   <Link
                     key={item.name}
                     to={item.href}
-                    className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      item.active
-                        ? "text-white"
-                        : "text-gray-700 hover:text-gray-900"
-                    }`}
+                    className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${item.active
+                      ? "text-white"
+                      : "text-gray-700 hover:text-gray-900"
+                      }`}
                     style={{
                       backgroundColor: item.active ? "#BD3861" : "transparent"
                     }}
@@ -128,15 +151,29 @@ const SEBIDashboardLayout = ({
             <div className="px-2 pt-2 pb-3 space-y-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
+                if ((item as any).action === 'modal') {
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => {
+                        setIsUserManualOpen(true);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="flex items-center px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900"
+                    >
+                      <Icon className="h-5 w-5 mr-3" />
+                      {item.name}
+                    </button>
+                  );
+                }
                 return (
                   <Link
                     key={item.name}
                     to={item.href}
-                    className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${
-                      item.active
-                        ? "text-white"
-                        : "text-gray-700 hover:text-gray-900"
-                    }`}
+                    className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${item.active
+                      ? "text-white"
+                      : "text-gray-700 hover:text-gray-900"
+                      }`}
                     style={{
                       backgroundColor: item.active ? "#BD3861" : "transparent"
                     }}
@@ -165,8 +202,8 @@ const SEBIDashboardLayout = ({
               © 2025 Adani Green Energy Limited . All rights reserved.
             </div>
             <div className="flex items-center space-x-4 mt-4 md:mt-0">
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className="text-sm flex items-center text-gray-600 hover:text-gray-900"
               >
                 <Home className="h-4 w-4 mr-1" />
@@ -176,6 +213,11 @@ const SEBIDashboardLayout = ({
           </div>
         </div>
       </footer>
+      <UserManualModal
+        isOpen={isUserManualOpen}
+        onClose={() => setIsUserManualOpen(false)}
+        initialAgent="SEBI Analysis Agent"
+      />
     </div>
   );
 };

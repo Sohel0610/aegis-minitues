@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, Download, Sparkles, Home, History, FileSpreadsheet, Plus, HelpCircle } from 'lucide-react';
+import { Upload, FileText, Download, Sparkles, Home, History, FileSpreadsheet, Plus, HelpCircle, BookOpen } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
@@ -26,6 +26,7 @@ const CreateAgenda = () => {
         { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
         { id: 'ai-mom', label: 'AI MOM', icon: Sparkles, href: '/minutes-preparation/ai-assistant' },
         { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
+        { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
     ];
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

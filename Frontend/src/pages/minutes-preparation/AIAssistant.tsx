@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { DownloadIcon, FileTextIcon, UploadIcon, XIcon, HomeIcon, PlusIcon, FileSpreadsheetIcon, HistoryIcon } from 'lucide-react';
+import { DownloadIcon, FileTextIcon, UploadIcon, XIcon, HomeIcon, PlusIcon, FileSpreadsheetIcon, HistoryIcon, BookOpen } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 
 interface Attendee {
@@ -36,6 +36,7 @@ const AIAssistant = () => {
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheetIcon, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileTextIcon, href: '/minutes-preparation/ai-assistant', isActive: true },
     { id: 'template-resolution', label: 'Template Resolution', icon: HistoryIcon, href: '/minutes-preparation/template-resolution' },
+    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
   const [files, setFiles] = useState<File[]>([]);

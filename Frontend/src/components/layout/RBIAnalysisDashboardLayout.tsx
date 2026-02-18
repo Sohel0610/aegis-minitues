@@ -10,8 +10,11 @@ import {
   Menu,
   Bell,
   Mail,
+  BookOpen, // Import BookOpen icon
   LucideIcon
 } from "lucide-react";
+import UserManualModal from "../UserManualModal"; // Import UserManualModal
+
 
 interface RBIAnalysisDashboardLayoutProps {
   children: ReactNode;
@@ -28,7 +31,9 @@ interface NavigationItem {
 const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state for manual modal
   const navigate = useNavigate();
+
   const location = useLocation();
 
   const navigationItems: NavigationItem[] = [
@@ -59,12 +64,25 @@ const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProp
       icon: Mail,
       href: '/rbi-emaildata',
       isActive: location.pathname === '/rbi-emaildata'
+    },
+    {
+      id: 'manual',
+      label: 'User Manual',
+      icon: BookOpen,
+      href: '#', // No navigation, opens modal
+      isActive: false
     }
   ];
 
   const handleNavigation = (item: NavigationItem): void => {
+    if (item.id === 'manual') {
+      setIsUserManualOpen(true);
+      if (isMobileOpen) setIsMobileOpen(false);
+      return;
+    }
     navigate(item.href);
   };
+
 
   const sidebarVariants = {
     expanded: { width: "256px" },
@@ -293,8 +311,16 @@ const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProp
       >
         {children}
       </main>
+
+      {/* User Manual Modal */}
+      <UserManualModal
+        isOpen={isUserManualOpen}
+        onClose={() => setIsUserManualOpen(false)}
+        initialAgent="RBI Analysis Agent"
+      />
     </div>
   );
 };
+
 
 export default RBIAnalysisDashboardLayout;

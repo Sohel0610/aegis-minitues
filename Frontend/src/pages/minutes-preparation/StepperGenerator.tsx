@@ -1,7 +1,7 @@
 import React from 'react';
 import StepperForm from '@/components/minutes-preparation/StepperForm';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { FileText } from 'lucide-react';
+import { FileText, BookOpen } from 'lucide-react';
 
 const StepperGenerator = () => {
   // Define navigation items for this product
@@ -12,6 +12,7 @@ const StepperGenerator = () => {
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
     { id: 'template-resolution', label: 'Template Resolution', icon: FileText, href: '/minutes-preparation/template-resolution' },
+    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
   return (

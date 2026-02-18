@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { FileText, Search, Filter, Download, Eye, Trash, Calendar, Clock } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet, History } from 'lucide-react';
+import { Home, FileSpreadsheet, History, BookOpen } from 'lucide-react';
 
 const MeetingMinutes = () => {
   // Define navigation items for this product
@@ -15,7 +15,8 @@ const MeetingMinutes = () => {
     { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
     { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes', isActive: true },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' }
+    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
   const [meetingMinutes, setMeetingMinutes] = React.useState<any[]>([]);

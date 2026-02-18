@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { FileText, Upload, Download, Plus, Edit, Trash, Eye } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet, History } from 'lucide-react';
+import { Home, FileSpreadsheet, History, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const Templates = () => {
@@ -16,7 +16,8 @@ const Templates = () => {
     { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
     { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates', isActive: true }
+    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates', isActive: true },
+    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
   const [templates, setTemplates] = React.useState<any[]>([]);

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Download, Users, Calendar, Clock, MapPin, AlertCircle, Eye, Plus, X } from 'lucide-react';
+import { FileText, Download, Users, Calendar, Clock, MapPin, AlertCircle, Eye, Plus, X, BookOpen } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Home, FileSpreadsheet, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +25,7 @@ const TemplateRenderer = () => {
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
     { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
     { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer', isActive: true },
+    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
   const navigate = useNavigate();

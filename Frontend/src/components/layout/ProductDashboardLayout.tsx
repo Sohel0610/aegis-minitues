@@ -14,8 +14,11 @@ import {
   Shield,
   FileText,
   Receipt,
+  BookOpen, // Import BookOpen icon
   LucideIcon
 } from "lucide-react";
+import UserManualModal from "../UserManualModal"; // Import UserManualModal
+
 
 interface ProductDashboardLayoutProps {
   children: ReactNode;
@@ -40,12 +43,20 @@ const ProductDashboardLayout = ({
 }: ProductDashboardLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state for manual modal
   const navigate = useNavigate();
+
   const location = useLocation();
 
   const handleNavigation = (item: NavigationItem): void => {
+    if (item.id === 'manual') {
+      setIsUserManualOpen(true);
+      if (isMobileOpen) setIsMobileOpen(false);
+      return;
+    }
     navigate(item.href);
   };
+
 
   const sidebarVariants = {
     expanded: { width: "256px" },
@@ -274,8 +285,16 @@ const ProductDashboardLayout = ({
       >
         {children}
       </main>
+
+      {/* User Manual Modal */}
+      <UserManualModal
+        isOpen={isUserManualOpen}
+        onClose={() => setIsUserManualOpen(false)}
+        initialAgent={productName === "Generate Minutes" ? "Generate Minutes Agent" : undefined}
+      />
     </div>
   );
 };
+
 
 export default ProductDashboardLayout;
