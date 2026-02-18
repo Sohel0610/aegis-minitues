@@ -1,90 +1,60 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Search, Filter, Download, Eye, Trash } from 'lucide-react';
+import { FileText, Search, Filter, Download, Eye, Trash, Calendar, Clock } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet } from 'lucide-react';
+import { Home, FileSpreadsheet, History } from 'lucide-react';
 
 const MeetingMinutes = () => {
   // Define navigation items for this product
   const navigationItems = [
-    {
-      id: 'home',
-      label: 'Home',
-      icon: Home,
-      href: '/',
-    },
-    {
-      id: 'dashboard',
-      label: 'Minutes Generator',
-      icon: FileText,
-      href: '/minutes-preparation',
-    },
-    {
-      id: 'generator',
-      label: 'Generate Minutes',
-      icon: FileText,
-      href: '/minutes-preparation/generate',
-    },
-    {
-      id: 'ai-mom',
-      label: 'AI MOM',
-      icon: FileText,
-      href: '/minutes-preparation/ai-assistant',
-    },
-    {
-      id: 'minutes',
-      label: 'Meeting Minutes',
-      icon: FileText,
-      href: '/minutes-preparation/minutes',
-    },
-    {
-      id: 'templates',
-      label: 'Templates',
-      icon: FileSpreadsheet,
-      href: '/minutes-preparation/templates',
-    }
+    { id: 'home', label: 'Home', icon: Home, href: '/' },
+    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
+    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
+    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+    { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
+    { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes', isActive: true },
+    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' }
   ];
 
-  // Mock meeting minutes data
-  const meetingMinutes = [
-    {
-      id: 1,
-      title: 'Board Meeting - Q3 2025',
-      date: '2025-09-15',
-      type: 'Board of Directors',
-      status: 'Approved',
-      attendees: 7
-    },
-    {
-      id: 2,
-      title: 'Audit Committee Meeting',
-      date: '2025-08-22',
-      type: 'Committee',
-      status: 'Pending Approval',
-      attendees: 5
-    },
-    {
-      id: 3,
-      title: 'Annual General Meeting',
-      date: '2025-07-30',
-      type: 'AGM',
-      status: 'Approved',
-      attendees: 15
-    },
-    {
-      id: 4,
-      title: 'Board Meeting - Q2 2025',
-      date: '2025-06-10',
-      type: 'Board of Directors',
-      status: 'Approved',
-      attendees: 7
+  const [meetingMinutes, setMeetingMinutes] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchHistory = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/generated-minutes');
+        if (res.ok) {
+          const data = await res.json();
+          setMeetingMinutes(data.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch history", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this meeting minute?')) return;
+    try {
+      const res = await fetch(`/api/generated-minutes/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMeetingMinutes(prev => prev.filter(m => m.id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to delete", err);
     }
-  ];
+  };
+
 
   return (
-    <ProductDashboardLayout 
-      productName="Minutes Generator" 
+    <ProductDashboardLayout
+      productName="Generate Minutes"
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
@@ -106,65 +76,103 @@ const MeetingMinutes = () => {
           </div>
         </div>
 
-        <Card className="max-w-4xl mx-auto">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-6 w-6" />
+        <Card className="max-w-5xl mx-auto border-none shadow-xl bg-white/80 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl flex items-center gap-3">
+              <div className="bg-primary/10 p-2 rounded-lg text-primary">
+                <FileText className="h-6 w-6" />
+              </div>
               Generated Minutes
             </CardTitle>
-            <CardDescription>
-              List of all meeting minutes generated using the system
+            <CardDescription className="text-base">
+              Manage and access all meeting minutes generated using the Project AEGIS system
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {meetingMinutes.map((minute) => (
-                <div key={minute.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-blue-100 p-3 rounded-lg">
-                      <FileText className="h-6 w-6 text-blue-500" />
+                <div
+                  key={minute.id}
+                  className="group flex flex-col md:flex-row items-start md:items-center justify-between p-6 border rounded-2xl hover:bg-slate-50 transition-all duration-300 gap-6 shadow-sm hover:shadow-md border-slate-100"
+                >
+                  <div className="flex items-center gap-6 flex-1">
+                    <div className="hidden sm:flex bg-blue-600/10 p-4 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-all duration-500 shadow-inner">
+                      <FileText className="h-8 w-8 text-blue-600 group-hover:text-white transition-colors" />
                     </div>
-                    <div>
-                      <h3 className="font-semibold">{minute.title}</h3>
-                      <div className="flex gap-4 text-sm text-muted-foreground">
-                        <span>Date: {minute.date}</span>
-                        <span>Type: {minute.type}</span>
-                        <span>Status: 
-                          <span className={`ml-1 ${minute.status === 'Approved' ? 'text-green-600' : 'text-yellow-600'}`}>
-                            {minute.status}
-                          </span>
-                        </span>
-                        <span>Attendees: {minute.attendees}</span>
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-xl text-slate-900 group-hover:text-primary transition-colors">{minute.company_name}</h3>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                        <div className="flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full font-medium">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          {minute.meeting_date}
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full font-medium">
+                          <FileSpreadsheet className="h-3.5 w-3.5 text-slate-400" />
+                          {minute.meeting_type}
+                        </div>
+                        <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-medium text-xs">
+                          <Clock className="h-3.5 w-3.5 mr-1" />
+                          {new Date(minute.created_at).toLocaleDateString()}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex items-center gap-1">
-                      <Eye className="h-4 w-4" />
-                      View
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex items-center gap-1">
-                      <Download className="h-4 w-4" />
-                      Download
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex items-center gap-1">
-                      <Trash className="h-4 w-4" />
-                      Delete
-                    </Button>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-slate-100">
+                    <span className="px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">
+                      Generated
+                    </span>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-none h-10 px-4 rounded-xl border-slate-200 bg-white hover:bg-slate-50 hover:text-primary transition-all"
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = minute.download_url;
+                          link.download = minute.file_path;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                      >
+                        <Download className="h-4 w-4 mr-2" /> Download
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-10 px-4 rounded-xl text-red-500 hover:text-white hover:bg-red-500 transition-all"
+                        onClick={() => handleDelete(minute.id)}
+                      >
+                        <Trash className="h-4 w-4 mr-2" /> Delete
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
+              {!loading && meetingMinutes.length === 0 && (
+                <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-500 font-medium">No meeting minutes found in your history.</p>
+                </div>
+              )}
+              {loading && (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-4 text-slate-500 font-medium">Loading history...</p>
+                </div>
+              )}
             </div>
-            
-            <div className="mt-6 flex justify-between items-center">
-              <p className="text-sm text-muted-foreground">
-                Showing {meetingMinutes.length} of {meetingMinutes.length} meeting minutes
+
+            <div className="mt-10 flex flex-col sm:flex-row justify-between items-center bg-slate-50 p-4 rounded-2xl gap-4">
+              <p className="text-sm font-medium text-slate-500">
+                Showing <span className="text-slate-900 font-bold">{meetingMinutes.length}</span> of <span className="text-slate-900 font-bold">{meetingMinutes.length}</span> meeting minutes
               </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled>
+              <div className="flex gap-3">
+                <Button variant="outline" size="sm" disabled className="h-10 px-6 rounded-xl border-slate-200 bg-white shadow-sm">
                   Previous
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" className="h-10 px-6 rounded-xl border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white transition-all">
                   Next
                 </Button>
               </div>

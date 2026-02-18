@@ -19,9 +19,15 @@ import BSEIndiaAnalysis from "./pages/BSEIndiaAnalysis";
 import RBIAnalysis from "./pages/RBIAnalysis";
 import InsiderTrading from "./pages/InsiderTrading";
 import DirectorsDisclosure from "./pages/DirectorsDisclosure";
-import MinutesPreparation from "./pages/MinutesPreparation";
+import MinutesPreparation from "./pages/minutes-preparation/MinutesGenerator";
 import FormBasedGenerator from "./pages/minutes-preparation/FormBasedGenerator";
 import AIAssistant from "./pages/minutes-preparation/AIAssistant";
+import TemplateResolution from "./pages/minutes-preparation/TemplateResolution";
+import CreateAgenda from "./pages/minutes-preparation/CreateAgenda";
+import SecretarialCompliances from "./pages/minutes-preparation/SecretarialCompliances";
+import MeetingMinutes from "./pages/minutes-preparation/MeetingMinutes";
+import Templates from "./pages/minutes-preparation/Templates";
+import TemplateRenderer from "./pages/minutes-preparation/TemplateRenderer";
 // Removed unused imports
 
 // Import SEBI specific pages
@@ -39,6 +45,8 @@ import RBIEmailData from "./pages/RBIEmailData";
 import BSEAlertsDashboardLayout from "@/components/layout/BSEAlertsDashboardLayout";
 import RBIAnalysisDashboardLayout from "@/components/layout/RBIAnalysisDashboardLayout";
 import HierarchyStructure from "./pages/HierarchyStructure";
+import { AuthProvider } from "@/contexts/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 // Import Directors Disclosure sub-pages
 // DirectorsDisclosureMasterData import removed – module not found
@@ -56,52 +64,67 @@ const App = () => (
       <Toaster />
       <SonnerToaster />
       <BrowserRouter>
-        <Routes>
-          {/* Main landing page */}
-          <Route path="/" element={<LandingPage />} />
-          
-          {/* Current BSE India Analysis routes (main product) */}
-          <Route path="/bse-alerts" element={<Dashboard />} />
-          <Route path="/notifications" element={<TotalNotifications />} />
-          <Route path="/emaildata" element={<EmailData />} />
-          <Route path="/websitedata" element={<WebsiteData />} />
-          <Route path="/workbook-data" element={<WorkbookData />} />
-          <Route path="/total-workbook-notifications" element={<TotalWorkbookNotifications />} />
-          <Route path="/weekly-analysis" element={<WeeklyAnalysis />} />
-          
-          {/* SEBI Analysis routes */}
-          <Route path="/sebi-dashboard" element={<SEBIDashboard />} />
-          <Route path="/sebi-notifications" element={<SEBITotalNotifications />} />
-          <Route path="/sebi-emaildata" element={<SEBIEmailData />} />
-          
-          {/* RBI Analysis routes */}
-          <Route path="/rbi-analysis" element={<RBIAnalysis />} />
-          <Route path="/rbi-dashboard" element={<RBIDashboard />} />
-          <Route path="/rbi-notifications" element={<RBITotalNotifications />} />
-          <Route path="/rbi-emaildata" element={<RBIEmailData />} />
-          
-          {/* Excel Data page */}
-          <Route path="/excel-data" element={<ExcelDataPage />} />
-          
-          {/* Future product routes */}
-          <Route path="/insider-trading/*" element={<InsiderTrading />} />
-          <Route path="/directors-disclosure/*" element={<DirectorsDisclosure />} />
-          {/* Removed individual routes for sub-pages as they should be rendered within the main layout */}
-          <Route path="/minutes-preparation/directors" element={<MinutesPreparation />} />
-          <Route path="/minutes-preparation" element={<MinutesPreparation />} />
-          <Route path="/minutes-preparation/form-generator" element={<FormBasedGenerator />} />
-          <Route path="/minutes-preparation/ai-assistant" element={<AIAssistant />} />
-          {/* Removed unused routes */}
-          <Route path="/hierarchy-structure" element={<HierarchyStructure />} />
-          
-          {/* Legacy product routes - redirect to main product */}
-          <Route path="/ageis-wind" element={<Dashboard />} />
-          <Route path="/ageis-solar" element={<Dashboard />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/directors-disclosure/*" element={<DirectorsDisclosure />} />
+
+            {/* Protected routes - Require SSO Login */}
+            <Route element={<ProtectedRoute />}>
+              {/* Routes restricted to compliance_user (Email Data users) */}
+              <Route element={<ProtectedRoute allowedRoles={['compliance_user']} />}>
+                {/* Current BSE India Analysis routes (main product) */}
+                <Route path="/bse-alerts" element={<Dashboard />} />
+                <Route path="/notifications" element={<TotalNotifications />} />
+                <Route path="/emaildata" element={<EmailData />} />
+                <Route path="/websitedata" element={<WebsiteData />} />
+                <Route path="/workbook-data" element={<WorkbookData />} />
+                <Route path="/total-workbook-notifications" element={<TotalWorkbookNotifications />} />
+                <Route path="/weekly-analysis" element={<WeeklyAnalysis />} />
+
+                {/* SEBI Analysis routes */}
+                <Route path="/sebi-dashboard" element={<SEBIDashboard />} />
+                <Route path="/sebi-notifications" element={<SEBITotalNotifications />} />
+                <Route path="/sebi-emaildata" element={<SEBIEmailData />} />
+
+                {/* RBI Analysis routes */}
+                <Route path="/rbi-analysis" element={<RBIAnalysis />} />
+                <Route path="/rbi-dashboard" element={<RBIDashboard />} />
+                <Route path="/rbi-notifications" element={<RBITotalNotifications />} />
+                <Route path="/rbi-emaildata" element={<RBIEmailData />} />
+
+                {/* Excel Data page */}
+                <Route path="/excel-data" element={<ExcelDataPage />} />
+
+                {/* Legacy product routes - redirect to main product */}
+                <Route path="/ageis-wind" element={<Dashboard />} />
+                <Route path="/ageis-solar" element={<Dashboard />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+              </Route>
+
+              {/* Future product routes */}
+              <Route path="/insider-trading/*" element={<InsiderTrading />} />
+
+              <Route path="/minutes-preparation/directors" element={<MinutesPreparation />} />
+              <Route path="/minutes-preparation" element={<MinutesPreparation />} />
+              <Route path="/minutes-preparation/generate" element={<FormBasedGenerator />} />
+              <Route path="/minutes-preparation/ai-assistant" element={<AIAssistant />} />
+              <Route path="/minutes-preparation/template-resolution" element={<TemplateResolution />} />
+              <Route path="/minutes-preparation/create-agenda" element={<CreateAgenda />} />
+              <Route path="/minutes-preparation/compliances" element={<SecretarialCompliances />} />
+              <Route path="/minutes-preparation/minutes" element={<MeetingMinutes />} />
+              <Route path="/minutes-preparation/templates" element={<Templates />} />
+              <Route path="/minutes-preparation/renderer" element={<TemplateRenderer />} />
+              <Route path="/hierarchy-structure" element={<HierarchyStructure />} />
+
+
+            </Route>
+
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

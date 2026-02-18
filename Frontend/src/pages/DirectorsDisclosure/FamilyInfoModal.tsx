@@ -26,6 +26,7 @@ interface DirectorFamilyInfo {
   match_score: number;
   section_2_77_i: string | null;
   section_2_77_ii: string | null;
+  section_2_77_ii_pan?: string | null;
   section_2_77_iii: string | null;
   family_members: FamilyMember[];
   created_at: string;
@@ -107,6 +108,7 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
         body: JSON.stringify({
           section_2_77_i: editedFamilyInfo.section_2_77_i,
           section_2_77_ii: editedFamilyInfo.section_2_77_ii,
+          section_2_77_ii_pan: editedFamilyInfo.section_2_77_ii_pan,
           section_2_77_iii: editedFamilyInfo.section_2_77_iii,
           family_members: editedFamilyInfo.family_members
         }),
@@ -137,7 +139,7 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
 
   const handleFamilyMemberChange = (relationship: string, field: keyof FamilyMember, value: string) => {
     if (editedFamilyInfo) {
-      // Check if this relationship already exists
+      // Find member by relationship
       const existingIndex = editedFamilyInfo.family_members.findIndex(
         member => member.relationship === relationship
       );
@@ -155,18 +157,57 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
           family_members: updatedMembers
         });
       } else {
-        // Add new member
-        const newMember: FamilyMember = {
-          relationship,
-          details: field === 'details' ? value : "",
-          [field]: value
-        };
+        // Add new member if it has content
+        if (value.trim() !== "") {
+          const newMember: FamilyMember = {
+            relationship,
+            details: field === 'details' ? value : "",
+            pan_number: field === 'pan_number' ? value : ""
+          };
 
-        setEditedFamilyInfo({
-          ...editedFamilyInfo,
-          family_members: [...editedFamilyInfo.family_members, newMember]
-        });
+          setEditedFamilyInfo({
+            ...editedFamilyInfo,
+            family_members: [...editedFamilyInfo.family_members, newMember]
+          });
+        }
       }
+    }
+  };
+
+  const addAdditionalMember = () => {
+    if (editedFamilyInfo) {
+      const newMember: FamilyMember = {
+        relationship: "Other",
+        details: "",
+        pan_number: ""
+      };
+      setEditedFamilyInfo({
+        ...editedFamilyInfo,
+        family_members: [...editedFamilyInfo.family_members, newMember]
+      });
+    }
+  };
+
+  const removeAdditionalMember = (index: number) => {
+    if (editedFamilyInfo) {
+      const updatedMembers = [...editedFamilyInfo.family_members];
+      updatedMembers.splice(index, 1);
+      setEditedFamilyInfo({
+        ...editedFamilyInfo,
+        family_members: updatedMembers
+      });
+    }
+  };
+
+  const updateMemberRelationship = (oldRelationship: string, newRelationship: string) => {
+    if (editedFamilyInfo) {
+      const updatedMembers = editedFamilyInfo.family_members.map(member =>
+        member.relationship === oldRelationship ? { ...member, relationship: newRelationship } : member
+      );
+      setEditedFamilyInfo({
+        ...editedFamilyInfo,
+        family_members: updatedMembers
+      });
     }
   };
 
@@ -321,37 +362,52 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
                     {isEditing ? (
                       <>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Section 2(77)(i)</label>
+                          <label className="block text-sm font-medium mb-1">Section 2(77)(i) – HUF</label>
                           <Textarea
                             value={editedFamilyInfo.section_2_77_i || ""}
                             onChange={(e) => handleInputChange("section_2_77_i", e.target.value)}
-                            placeholder="Enter information for Section 2(77)(i)"
+                            placeholder="Enter information for Section 2(77)(i) – HUF"
                             className="min-h-[80px]"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Section 2(77)(ii)</label>
-                          <Textarea
-                            value={editedFamilyInfo.section_2_77_ii || ""}
-                            onChange={(e) => handleInputChange("section_2_77_ii", e.target.value)}
-                            placeholder="Enter information for Section 2(77)(ii)"
-                            className="min-h-[80px]"
-                          />
+                          <label className="block text-sm font-medium mb-1">Section 2(77)(i) – Wife’s name</label>
+                          <div className="space-y-2">
+                            <Textarea
+                              value={editedFamilyInfo.section_2_77_ii || ""}
+                              onChange={(e) => handleInputChange("section_2_77_ii", e.target.value)}
+                              placeholder="Enter Wife's name"
+                              className="min-h-[60px]"
+                            />
+                            <Input
+                              value={editedFamilyInfo.section_2_77_ii_pan || ""}
+                              onChange={(e) => handleInputChange("section_2_77_ii_pan", e.target.value)}
+                              placeholder="Wife's PAN Number (Optional)"
+                              className="text-sm"
+                            />
+                          </div>
                         </div>
                       </>
                     ) : (
                       <>
                         <div>
-                          <h4 className="font-medium text-sm mb-1">Section 2(77)(i)</h4>
+                          <h4 className="font-medium text-sm mb-1">Section 2(77)(i) – HUF</h4>
                           <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
                             {editedFamilyInfo.section_2_77_i || "Not specified"}
                           </p>
                         </div>
                         <div>
-                          <h4 className="font-medium text-sm mb-1">Section 2(77)(ii)</h4>
-                          <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
-                            {editedFamilyInfo.section_2_77_ii || "Not specified"}
-                          </p>
+                          <h4 className="font-medium text-sm mb-1">Section 2(77)(i) – Wife’s name</h4>
+                          <div className="bg-gray-50 p-3 rounded space-y-1">
+                            <p className="text-sm text-gray-700">
+                              {editedFamilyInfo.section_2_77_ii || "Not specified"}
+                            </p>
+                            {editedFamilyInfo.section_2_77_ii_pan && (
+                              <Badge variant="outline" className="text-[10px] py-0 h-4 border-gray-300">
+                                PAN: {editedFamilyInfo.section_2_77_ii_pan}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </>
                     )}
@@ -371,65 +427,120 @@ const FamilyInfoModal = ({ directorName, isOpen, onClose }: FamilyInfoModalProps
                   </CardHeader>
                   <CardContent>
                     {isEditing ? (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {specifiedRelationships.map((relationship) => (
+                            <div key={relationship} className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50/30">
+                              <div className="mt-0.5">
+                                {getRelationshipIcon(relationship)}
+                              </div>
+                              <div className="flex-grow">
+                                <Badge className={`${getRelationshipColor(relationship)} mb-2`}>
+                                  {relationship}
+                                </Badge>
+                                <div className="space-y-2">
+                                  <Input
+                                    value={getFamilyMember(relationship)?.details || ""}
+                                    onChange={(e) => handleFamilyMemberChange(relationship, 'details', e.target.value)}
+                                    placeholder={`Enter ${relationship} Name`}
+                                    className="text-sm bg-white"
+                                  />
+                                  <Input
+                                    value={getFamilyMember(relationship)?.pan_number || ""}
+                                    onChange={(e) => handleFamilyMemberChange(relationship, 'pan_number', e.target.value)}
+                                    placeholder="PAN Number (Optional)"
+                                    className="text-xs h-8 bg-white"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Additional Family Members Section */}
+                        <div className="pt-4 border-t">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-semibold text-sm">Additional Family Members</h4>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={addAdditionalMember}
+                              className="h-8 gap-2 text-xs border-dashed border-gray-400"
+                            >
+                              <Users className="h-3 w-3" />
+                              Add Family Member
+                            </Button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {editedFamilyInfo.family_members
+                              .filter(m => !specifiedRelationships.includes(m.relationship))
+                              .map((member, idx) => {
+                                // Find actual index in full array for removal
+                                const actualIdx = editedFamilyInfo.family_members.findIndex(m => m === member);
+                                return (
+                                  <div key={`extra-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-dashed bg-gray-50/10">
+                                    <div className="flex-grow space-y-2">
+                                      <div className="flex gap-2">
+                                        <Input
+                                          value={member.relationship}
+                                          onChange={(e) => updateMemberRelationship(member.relationship, e.target.value)}
+                                          placeholder="Relationship (e.g. Spouse)"
+                                          className="text-xs h-7 font-semibold"
+                                          style={{ width: '120px' }}
+                                        />
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-red-400 hover:text-red-600 ml-auto"
+                                          onClick={() => removeAdditionalMember(actualIdx)}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                      <Input
+                                        value={member.details}
+                                        onChange={(e) => handleFamilyMemberChange(member.relationship, 'details', e.target.value)}
+                                        placeholder="Name"
+                                        className="text-sm"
+                                      />
+                                      <Input
+                                        value={member.pan_number || ""}
+                                        onChange={(e) => handleFamilyMemberChange(member.relationship, 'pan_number', e.target.value)}
+                                        placeholder="PAN Number (Optional)"
+                                        className="text-xs h-8"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {specifiedRelationships.map((relationship) => (
-                          <div key={relationship} className="flex items-start gap-3 p-3 rounded-lg border">
-                            <div className="mt-0.5">
-                              {getRelationshipIcon(relationship)}
+                        {editedFamilyInfo.family_members.map((member, idx) => (
+                          <div key={idx} className="flex items-start gap-3 p-3 rounded-lg border">
+                            <div className="mt-1">
+                              {getRelationshipIcon(member.relationship)}
                             </div>
                             <div className="flex-grow">
-                              <Badge className={`${getRelationshipColor(relationship)} mb-2`}>
-                                {relationship}
+                              <Badge className={`${getRelationshipColor(member.relationship)} mb-1`}>
+                                {member.relationship}
                               </Badge>
-                              <div className="space-y-2">
-                                <Input
-                                  value={getFamilyMember(relationship)?.details || ""}
-                                  onChange={(e) => handleFamilyMemberChange(relationship, 'details', e.target.value)}
-                                  placeholder={`Enter ${relationship} Name`}
-                                  className="text-sm"
-                                />
-                                {(relationship === "Father" || relationship === "Mother") && (
-                                  <div className="flex gap-2 items-center">
-                                    <Input
-                                      value={getFamilyMember(relationship)?.pan_number || ""}
-                                      onChange={(e) => handleFamilyMemberChange(relationship, 'pan_number', e.target.value)}
-                                      placeholder="PAN Number (Optional)"
-                                      className="text-xs h-8"
-                                    />
+                              <div>
+                                <p className="text-sm font-medium">{member.details || "Not specified"}</p>
+                                {member.pan_number && (
+                                  <div className="mt-1 flex items-center gap-2">
+                                    <Badge variant="outline" className="text-[10px] py-0 h-4 border-gray-300">
+                                      PAN: {member.pan_number}
+                                    </Badge>
                                   </div>
                                 )}
                               </div>
                             </div>
                           </div>
                         ))}
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {specifiedRelationships.map((relationship) => {
-                          const member = getFamilyMember(relationship);
-                          return (
-                            <div key={relationship} className="flex items-start gap-3 p-3 rounded-lg border">
-                              <div className="mt-0.5">
-                                {getRelationshipIcon(relationship)}
-                              </div>
-                              <div className="flex-grow">
-                                <Badge className={`${getRelationshipColor(relationship)} mb-1`}>
-                                  {relationship}
-                                </Badge>
-                                <div>
-                                  <p className="text-sm font-medium">{member?.details || "Not specified"}</p>
-                                  {(relationship === "Father" || relationship === "Mother") && (
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px] py-0 h-4 border-gray-300">
-                                        PAN: {member?.pan_number || ""}
-                                      </Badge>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     )}
                   </CardContent>

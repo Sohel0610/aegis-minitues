@@ -68,7 +68,7 @@ const fetchRBIData = async (limit: number = 100, offset: number = 0): Promise<an
     }
 
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
       throw new Error('Request timeout - server is taking too long to respond (15 seconds elapsed)');
@@ -77,267 +77,144 @@ const fetchRBIData = async (limit: number = 100, offset: number = 0): Promise<an
   }
 };
 
+// Helper to parse DD-MM-YYYY string safely
+const parseDateString = (dateStr: string): Date | null => {
+  if (!dateStr) return null;
+  try {
+    // Handle DD-MM-YYYY format
+    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(dateStr)) {
+      const [day, month, year] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    // Handle YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  } catch (e) {
+    return null;
+  }
+};
+
 // Process data for charts (updated to work with RBI data)
-const processDataForRBIData = (data: RBIMasterSummary[]) => {
+const processDataForRBIData = (data: any[]) => {
+  // Sort all data by date once to find latest range
+  const sortedRawData = [...data].map(item => ({
+    ...item,
+    parsedDate: parseDateString(item.date_key || item.Date || "")
+  })).filter(item => item.parsedDate !== null).sort((a, b) => b.parsedDate!.getTime() - a.parsedDate!.getTime());
+
   // Group data by date for daily trend
   const dailyMap: { [key: string]: number } = {};
 
-  // Get current month and year for filtering
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth();
-  const currentYear = currentDate.getFullYear();
+  // Decide which month to use for Daily/Weekly views
+  // Default to current month, but if empty, use the latest month with data
+  const now = new Date();
+  let targetMonth = now.getMonth();
+  let targetYear = now.getFullYear();
 
-  // Filter data to only include current month
-  const currentMonthData = data.filter(item => {
-    if (!item.date_key) return false;
-    try {
-      // Parse DD-MM-YYYY format
-      const parts = item.date_key.split('-');
-      if (parts.length === 3) {
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
-        const year = parseInt(parts[2], 10);
-        return month === currentMonth && year === currentYear;
-      }
-    } catch (e) {
-      // If parsing fails, skip this record
-    }
-    return false;
+  const currentMonthDataRaw = data.filter(item => {
+    const d = parseDateString(item.date_key || item.Date || "");
+    return d && d.getMonth() === targetMonth && d.getFullYear() === targetYear;
   });
 
-  // Process only current month data for daily trend
-  currentMonthData.forEach(item => {
-    const date = item.date_key;  // Use date_key instead of run_date
-    if (date) {
-      // Handle DD-MM-YYYY format from the database
-      try {
-        // Parse DD-MM-YYYY format correctly without timezone issues
-        const parts = date.split('-');
-        if (parts.length === 3) {
-          // Use the date string directly to avoid timezone conversion issues
-          // Format: DD-MM-YYYY -> YYYY-MM-DD for consistent sorting
-          const formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          if (!dailyMap[formattedDate]) {
-            dailyMap[formattedDate] = 0;
-          }
-          dailyMap[formattedDate] += 1;
-        }
-      } catch (e) {
-        // If parsing fails, use the original date string
-        if (!dailyMap[date]) {
-          dailyMap[date] = 0;
-        }
-        dailyMap[date] += 1;
-      }
+  if (currentMonthDataRaw.length === 0 && sortedRawData.length > 0) {
+    targetMonth = sortedRawData[0].parsedDate!.getMonth();
+    targetYear = sortedRawData[0].parsedDate!.getFullYear();
+  }
+
+  const chartMonthData = data.filter(item => {
+    const d = parseDateString(item.date_key || item.Date || "");
+    return d && d.getMonth() === targetMonth && d.getFullYear() === targetYear;
+  });
+
+  // Process data for daily trend (using selected month)
+  chartMonthData.forEach(item => {
+    const d = parseDateString(item.date_key || item.Date || "");
+    if (d) {
+      const formattedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      dailyMap[formattedDate] = (dailyMap[formattedDate] || 0) + 1;
     }
   });
 
-  // Convert to array format for daily chart data (matching DailyTrendChart expectations)
   const dailyChartData = Object.keys(dailyMap).map(date => ({
     date,
-    total_notifications: dailyMap[date]  // Use total_notifications for DailyTrendChart
-  })).sort((a, b) => {
-    // Sort by date string (YYYY-MM-DD format)
-    return a.date.localeCompare(b.date);
-  });
+    total_notifications: dailyMap[date]
+  })).sort((a, b) => a.date.localeCompare(b.date));
 
-  // Group data by month/year for monthly chart (all months across all years)
+  // Monthly processing (all time)
   const monthlyMap: { [key: string]: number } = {};
-
-  // Track all unique month-year combinations
   const monthYearSet = new Set<string>();
 
   data.forEach(item => {
-    const date = item.date_key;  // Use date_key instead of run_date
-    if (date) {
-      try {
-        // Parse DD-MM-YYYY format
-        const parts = date.split('-');
-        if (parts.length === 3) {
-          const month = parseInt(parts[1], 10);
-          const year = parseInt(parts[2], 10);
+    const d = parseDateString(item.date_key || item.Date || "");
+    if (d) {
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear();
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const key = `${monthNames[month - 1]}-${year}`;
 
-          // Create month-year key (e.g., "Sep-2025")
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          const monthName = monthNames[month - 1] || 'Unknown';
-          const key = `${monthName}-${year}`;
-
-          // Add to set of unique month-year combinations
-          monthYearSet.add(key);
-
-          if (!monthlyMap[key]) {
-            monthlyMap[key] = 0;
-          }
-          monthlyMap[key] += 1;
-        }
-      } catch (e) {
-        // If parsing fails, skip this record
-      }
+      monthYearSet.add(key);
+      monthlyMap[key] = (monthlyMap[key] || 0) + 1;
     }
   });
 
-  // Convert monthYearSet to sorted array - ASCENDING ORDER (Jan, Feb, Mar...)
-  const sortedMonthYears = Array.from(monthYearSet).sort((a, b) => {
-    const [monthA, yearA] = a.split('-');
-    const [monthB, yearB] = b.split('-');
+  // Ensure 2026 is visible if we want 2026 analysis
+  let minYear = 2025;
+  let maxYear = 2026;
 
-    // Sort by year first (ascending), then by month (ascending)
-    if (yearA !== yearB) {
-      return parseInt(yearA) - parseInt(yearB); // Ascending by year
-    }
-
-    // Month names in order
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return monthNames.indexOf(monthA) - monthNames.indexOf(monthB); // Ascending by month
-  });
-
-  // Ensure we show all months for the years that have data
-  // Find the min and max years in our data
-  let minYear = Infinity;
-  let maxYear = -Infinity;
-
-  if (sortedMonthYears.length > 0) {
-    sortedMonthYears.forEach(key => {
-      const [, year] = key.split('-');
-      const yearNum = parseInt(year);
-      if (yearNum < minYear) minYear = yearNum;
-      if (yearNum > maxYear) maxYear = yearNum;
-    });
-
-    // Create a complete set of month-year combinations for all years in range
-    const completeMonthYearSet = new Set<string>();
-    for (let year = minYear; year <= maxYear; year++) {
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      monthNames.forEach(month => {
-        completeMonthYearSet.add(`${month}-${year}`);
-      });
-    }
-
-    // Add any missing months to the monthlyMap with 0 count
-    completeMonthYearSet.forEach(key => {
-      if (!monthlyMap[key]) {
-        monthlyMap[key] = 0;
-      }
-    });
-
-    // Re-sort with the complete set - ASCENDING ORDER (Jan, Feb, Mar...)
-    const completeSortedMonthYears = Array.from(completeMonthYearSet).sort((a, b) => {
-      const [monthA, yearA] = a.split('-');
-      const [monthB, yearB] = b.split('-');
-
-      // Sort by year first (ascending), then by month (ascending)
-      if (yearA !== yearB) {
-        return parseInt(yearA) - parseInt(yearB); // Ascending by year
-      }
-
-      // Month names in order
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return monthNames.indexOf(monthA) - monthNames.indexOf(monthB); // Ascending by month
-    });
-
-    // Convert to array format for monthly chart data (matching MonthlyTrendChart expectations)
-    const monthlyChartData = completeSortedMonthYears.map(key => {
-      const [month, year] = key.split('-');
-      return {
-        month,
-        year,
-        total_notifications: monthlyMap[key] || 0,  // Use actual count or 0 if no data
-        entity_name: "RBI"  // Add entity_name for MonthlyTrendChart
-      };
-    });
-
-    // If no data, create default months for current year - ASCENDING ORDER (Jan, Feb, Mar...)
-    if (monthlyChartData.length === 0) {
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const displayYear = new Date().getFullYear().toString();
-
-      return monthNames.map(month => ({
-        month,
-        year: displayYear,
-        total_notifications: 0,
-        entity_name: "RBI"
-      }));
-    }
-
-    // Group data by week for weekly chart (only for current month)
-    const weeklyMap: { [key: string]: number } = {};
-
-    // Process only current month data for weekly chart
-    currentMonthData.forEach(item => {
-      const date = item.date_key;  // Use date_key instead of run_date
-      if (date) {
-        try {
-          // Parse DD-MM-YYYY format
-          const parts = date.split('-');
-          if (parts.length === 3) {
-            const day = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
-            const year = parseInt(parts[2], 10);
-
-            const dateObj = new Date(year, month, day);
-            if (!isNaN(dateObj.getTime())) {
-              // Only process data for the current month and year
-              if (dateObj.getMonth() === currentMonth && dateObj.getFullYear() === currentYear) {
-                // Calculate week number within the month (1-5)
-                // Week 1: 1-7, Week 2: 8-14, Week 3: 15-21, Week 4: 22-28, Week 5: 29-31
-                const dayOfMonth = dateObj.getDate();
-                const weekNumber = Math.ceil(dayOfMonth / 7);
-
-                // Use format like "Week 1", "Week 2", etc.
-                const key = `Week ${weekNumber}`;
-
-                if (!weeklyMap[key]) {
-                  weeklyMap[key] = 0;
-                }
-                weeklyMap[key] += 1;
-              }
-            }
-          }
-        } catch (e) {
-          // If parsing fails, skip this record
-        }
-      }
-    });
-
-    // Convert to array format for weekly time data (matching WeeklyTrendChart expectations)
-    // Sort the weeks in order
-    const weekNumbers = Object.keys(weeklyMap)
-      .map(key => parseInt(key.replace('Week ', '')))
-      .sort((a, b) => a - b);
-
-    const weeklyTimeData = weekNumbers.map(weekNum => {
-      const key = `Week ${weekNum}`;
-      return {
-        week: key,
-        total_notifications: weeklyMap[key]  // Use total_notifications for WeeklyTrendChart
-      };
-    });
-
-    return {
-      daily: dailyChartData,   // Current month daily data
-      monthly: monthlyChartData,       // All months with default zero, ascending sorted
-      weekly: weeklyTimeData          // Time-based weekly data for current month
-    };
-  } else {
-    // If no data, create default months for current year - ASCENDING ORDER (Jan, Feb, Mar...)
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const displayYear = new Date().getFullYear().toString();
-
-    const monthlyChartData = monthNames.map(month => ({
-      month,
-      year: displayYear,
-      total_notifications: 0,
-      entity_name: "RBI"
-    }));
-
-    // Return default data structure
-    return {
-      daily: [],   // Empty daily data
-      monthly: monthlyChartData,       // All months with default zero, ascending sorted
-      weekly: []                       // Empty weekly data
-    };
+  if (data.length > 0) {
+    const years = Array.from(monthYearSet).map(k => parseInt(k.split('-')[1]));
+    minYear = Math.min(minYear, ...years);
+    maxYear = Math.max(maxYear, ...years);
   }
+
+  const completeSortedMonthYears: string[] = [];
+  for (let y = minYear; y <= maxYear; y++) {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    monthNames.forEach(m => completeSortedMonthYears.push(`${m}-${y}`));
+  }
+
+  const monthlyChartData = completeSortedMonthYears.map(key => {
+    const [month, year] = key.split('-');
+    return {
+      month,
+      year,
+      total_notifications: monthlyMap[key] || 0,
+      entity_name: "RBI"
+    };
+  });
+
+  // Weekly processing (using same target month)
+  const weeklyMap: { [key: string]: number } = {};
+  chartMonthData.forEach(item => {
+    const d = parseDateString(item.date_key || item.Date || "");
+    if (d) {
+      const dayOfMonth = d.getDate();
+      const weekNumber = Math.ceil(dayOfMonth / 7);
+      const key = `Week ${weekNumber}`;
+      weeklyMap[key] = (weeklyMap[key] || 0) + 1;
+    }
+  });
+
+  const weeklyTimeData = [1, 2, 3, 4, 5].map(weekNum => {
+    const key = `Week ${weekNum}`;
+    return {
+      week: key,
+      total_notifications: weeklyMap[key] || 0
+    };
+  });
+
+  return {
+    daily: dailyChartData,
+    monthly: monthlyChartData,
+    weekly: weeklyTimeData,
+    targetMonthText: `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][targetMonth]} ${targetYear}`
+  };
 };
+
 
 // Transform RBI data to match ExcelView format
 const transformRBIDataForExcelView = (data: RBIMasterSummary[]) => {
@@ -535,55 +412,30 @@ const RBIDashboard = () => {
   useEffect(() => {
     if (!rbiData) return;
 
-    if (!dateRange.from && !dateRange.to) {
-      setFilteredRbiData(rbiData);
-      return;
-    }
+    let filtered = rbiData;
+    if (dateRange.from || dateRange.to) {
+      filtered = rbiData.filter(row => {
+        const dateValue = row["Date"];
+        if (!dateValue) return true;
 
-    const filtered = rbiData.filter(row => {
-      const dateValue = row["Date"];
-      if (!dateValue) return true;
+        const rowDate = parseDateString(String(dateValue));
+        if (!rowDate) return true;
 
-      try {
-        // Parse the date string
-        let rowDate: Date;
-        const dateString = String(dateValue);
-
-        // Check if date is in YYYY-MM-DD format (from API)
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-          const [year, month, day] = dateString.split('-').map(Number);
-          rowDate = new Date(year, month - 1, day); // JS months are 0-indexed
-        } else if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(dateString)) {
-          // Handle DD-MM-YYYY format
-          const [day, month, year] = dateString.split('-').map(Number);
-          rowDate = new Date(year, month - 1, day);
-        } else {
-          // Try to parse with Date constructor
-          rowDate = new Date(dateString);
-        }
-
-        // Check if rowDate is valid
-        if (isNaN(rowDate.getTime())) return true;
-
-        // Check if date is within range
         const fromValid = !dateRange.from || rowDate >= dateRange.from;
         const toValid = !dateRange.to || rowDate <= dateRange.to;
 
         return fromValid && toValid;
-      } catch (e) {
-        console.error("Error parsing date:", dateValue, e);
-        return true;
-      }
-    });
+      });
+    }
 
     setFilteredRbiData(filtered);
 
     // Update chart data with filtered data
-    if (filtered.length > 0) {
-      const processedChartData = processDataForRBIData(filtered);
-      setChartData(processedChartData);
-    }
+    // ALWAYS update chart data, even if it uses the same rbiData, to ensure consistency
+    const processedChartData = processDataForRBIData(filtered);
+    setChartData(processedChartData);
   }, [rbiData, dateRange]);
+
 
   // Load RBI data on component mount
   useEffect(() => {
@@ -736,8 +588,12 @@ const RBIDashboard = () => {
               transition={{ duration: 1.2, delay: 0.6 }}
               className="lg:col-span-1 h-[250px]"
             >
-              <DailyTrendChart data={chartData?.daily || []} />
+              <DailyTrendChart
+                data={chartData?.daily || []}
+                title={`Daily Analysis Trend (${chartData?.targetMonthText || 'Current'})`}
+              />
             </motion.div>
+
 
             {/* Monthly Trend Chart - Bottom Left */}
             <motion.div
@@ -756,8 +612,12 @@ const RBIDashboard = () => {
               transition={{ duration: 1.2, delay: 1.2 }}
               className="lg:col-span-1 h-[250px]"
             >
-              <WeeklyTrendChart data={chartData?.weekly || []} />
+              <WeeklyTrendChart
+                data={chartData?.weekly || []}
+                title={`Weekly Trend (${chartData?.targetMonthText || 'Current'})`}
+              />
             </motion.div>
+
           </div>
 
           {/* Excel View Section with proper spacing */}

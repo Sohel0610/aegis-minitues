@@ -4,11 +4,11 @@ import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Badge with tiny pulse for "live"
-const StatusBadge = ({ status }: { status: "live" | "coming-soon" | "offline"  }) => {
+const StatusBadge = ({ status }: { status: "live" | "coming-soon" | "offline" }) => {
   const cfg = {
-    live:   { wrap: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500 animate-ping" },
-    "coming-soon":   { wrap: "bg-yellow-50 text-yellow-700",   dot: "bg-yellow-500 animate-pulse" },
-    offline:{ wrap: "bg-gray-100 text-gray-600",      dot: "bg-gray-400" },
+    live: { wrap: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500 animate-ping" },
+    "coming-soon": { wrap: "bg-yellow-50 text-yellow-700", dot: "bg-yellow-500 animate-pulse" },
+    offline: { wrap: "bg-gray-100 text-gray-600", dot: "bg-gray-400" },
   }[status];
   return (
     <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium rounded-lg px-2 py-0.5 ${cfg.wrap}`}>
@@ -24,7 +24,7 @@ const HierarchyStructure = () => {
   const [bseTotalCount, setBseTotalCount] = useState<number | null>(null);
   const [rbiTotalCount, setRbiTotalCount] = useState<number | null>(null);
   const [sebiTotalCount, setSebiTotalCount] = useState<number | null>(null);
-  
+
   // Automation start dates and hours saved per day
   const BSE_AUTOMATION_START_DATE = new Date('2025-08-10');
   const RBI_AUTOMATION_START_DATE = new Date('2025-08-10');
@@ -33,7 +33,7 @@ const HierarchyStructure = () => {
   const BSE_HOURS_SAVED_PER_DAY = 3.5;
   const RBI_HOURS_SAVED_PER_DAY = 2.5;
   const SEBI_HOURS_SAVED_PER_DAY = 2.5;
-  
+
   // Calculate total hours saved since automation start
   const calculateTotalHoursSaved = (startDate: Date, hoursPerDay: number) => {
     const today = new Date();
@@ -41,7 +41,7 @@ const HierarchyStructure = () => {
     const daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
     return Math.max(0, daysDiff * hoursPerDay); // Ensure non-negative value
   };
-  
+
   // Map child IDs to their respective routes
   const getChildRoute = (childId: string): string | null => {
     const routeMap: { [key: string]: string } = {
@@ -53,14 +53,14 @@ const HierarchyStructure = () => {
     };
     return routeMap[childId] || null;
   };
-  
+
   const handleChildClick = (childId: string) => {
     const route = getChildRoute(childId);
     if (route) {
       navigate(route);
     }
   };
-  
+
   useEffect(() => {
     // Fetch the BSE monthly stats (average and total)
     const fetchBseMonthlyStats = async () => {
@@ -112,7 +112,7 @@ const HierarchyStructure = () => {
       id: "Pragnesh Darji",
       name: "Pragnesh Darji",
       image: "images/pragnesh.jpg",
-      email:"pragnesh.darji@adani.com",
+      email: "pragnesh.darji@adani.com",
       children: [
         { id: "bse-analysis", name: "BSE Analysis Agent", status: "live" as const },
         { id: "rbi-analysis", name: "RBI Analysis Agent", status: "live" as const },
@@ -123,11 +123,11 @@ const HierarchyStructure = () => {
       id: "kamlesh-bhagia",
       name: "Kamlesh Bhagia",
       image: "images/kamlesh.jpg",
-      email:"kamlesh.bhagia@adani.com",
+      email: "kamlesh.bhagia@adani.com",
       children: [
         { id: "insider-trading", name: "Insider Trading Agent", status: "live" as const },
         { id: "directors-disclosure", name: "Directors Disclosure Agent", status: "live" as const },
-        { id: "minutes-preparation", name: "Minutes Generator Agent", status: "live" as const },
+        { id: "minutes-preparation", name: "Generate Minutes Agent", status: "live" as const },
       ],
     },
   ];
@@ -158,11 +158,11 @@ const HierarchyStructure = () => {
               {hierarchyData.map((person) => (
                 <div key={person.id} className="flex flex-col items-center">
                   {/* Parent */}
-                  <div onClick={() => {window.location.href = `mailto:${person.email}`}} className="cursor-pointer text-primary-foreground rounded-lg px-6 py-3 font-semibold  relative z-10 flex flex-col items-center gap-3">
+                  <div onClick={() => { window.location.href = `mailto:${person.email}` }} className="cursor-pointer text-primary-foreground rounded-lg px-6 py-3 font-semibold  relative z-10 flex flex-col items-center gap-3">
                     {/* Placeholder for photo - you would replace this with actual image */}
-                    <img 
-                      src={person.image} 
-                      alt={person.name} 
+                    <img
+                      src={person.image}
+                      alt={person.name}
                       className="w-36 h-40 rounded-lg object-cover border-2 border-white "
                     />
                     <span>{person.name}</span>
@@ -182,12 +182,12 @@ const HierarchyStructure = () => {
                     >
                       {person.children.map((child) => {
                         const hasRoute = getChildRoute(child.id) !== null;
-                        
+
                         return (
                           <div key={child.id} className="relative flex flex-col items-center">
                             {/* cell-local connector aligned to the cell center */}
                             <div className="absolute -top-6 left-1/2 -translate-x-1/2 h-6 w-0.5 bg-gray-400" />
-                            <div 
+                            <div
                               className={`bg-muted rounded-lg px-4 py-2 text-sm shadow-sm text-center min-w-[150px] flex flex-col items-center gap-1 cursor-pointer hover:bg-muted/80 transition-colors`}
                               onClick={() => handleChildClick(child.id)}
                             >

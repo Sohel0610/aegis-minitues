@@ -23,10 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Globe, ExternalLink, Plus, Loader2, AlertCircle, Lock, Trash2 } from "lucide-react";
+import { Globe, ExternalLink, Plus, Loader2, AlertCircle, Trash2 } from "lucide-react";
 import NotificationBar from "@/components/ui/NotificationBar";
-// Import admin authentication utilities
-import { isAdmin, authenticateAdmin, logoutAdmin } from "@/utils/adminAuth";
 
 // Generic interface for Excel data
 interface ExcelRow {
@@ -47,19 +45,9 @@ const WebsiteData = () => {
   const [newWebsiteUrl, setNewWebsiteUrl] = useState<string>('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  // Admin authentication state
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
-  const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
-  const [adminUsername, setAdminUsername] = useState<string>('');
-  const [adminPassword, setAdminPassword] = useState<string>('');
   // Delete confirmation state
   const [websiteToDelete, setWebsiteToDelete] = useState<ExcelRow | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
-
-  // Check admin status on component mount
-  useEffect(() => {
-    setIsAdminMode(isAdmin());
-  }, []);
 
   // Load websites from Excel file via FastAPI server
   useEffect(() => {
@@ -67,40 +55,31 @@ const WebsiteData = () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log('Attempting to load Entity.xlsx data from FastAPI server');
-        
+
         // Use relative path since frontend and backend are served from the same origin
         const apiUrl = '';
         const response = await fetch(`${apiUrl}/excel-data/Entity.xlsx?sheet_name=Sheet1`);
-        console.log('Fetch response status:', response.status);
-        console.log('Fetch response ok:', response.ok);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`Failed to load entity data: ${response.statusText} (${response.status}) - ${errorText}`);
         }
-        
+
         const result = await response.json();
-        console.log('Server response:', result);
-        
+
         const jsonData = result.data;
         const columns = result.columns;
-        
-        console.log('Parsed data length:', jsonData.length);
-        if (jsonData.length > 0) {
-          console.log('First few rows:', jsonData.slice(0, 5));
-          console.log('Column names:', columns);
-        }
-        
+
         setWebsiteData(jsonData);
         setColumnNames(columns);
       } catch (err) {
         console.error('Error loading website data:', err);
         const errorMessage = err instanceof Error ? err.message : 'Failed to load website data';
         setError(errorMessage);
-        setWebsiteData([]); // Empty array instead of fallback data
-        setColumnNames([]); // Empty column names
+        setWebsiteData([]);
+        setColumnNames([]);
       } finally {
         setLoading(false);
       }
@@ -109,40 +88,22 @@ const WebsiteData = () => {
     loadWebsiteData();
   }, []);
 
-  // Handle admin login
-  const handleAdminLogin = () => {
-    if (authenticateAdmin(adminUsername, adminPassword)) {
-      setIsAdminMode(true);
-      setShowAdminLogin(false);
-      setAdminUsername('');
-      setAdminPassword('');
-    } else {
-      alert('Invalid admin credentials');
-    }
-  };
-
-  // Handle admin logout
-  const handleAdminLogout = () => {
-    logoutAdmin();
-    setIsAdminMode(false);
-  };
-
   // Add new website
   const handleAddWebsite = (): void => {
     if (!newEntityName.trim() || !newWebsiteUrl.trim()) {
       alert('Please fill in both fields');
       return;
     }
-    
+
     // Basic URL validation
     const urlRegex = /^https?:\/\/.+\..+/;
     let formattedUrl = newWebsiteUrl.trim();
-    
+
     // Add https:// if no protocol specified
     if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
       formattedUrl = 'https://' + formattedUrl;
     }
-    
+
     if (!urlRegex.test(formattedUrl)) {
       alert('Please enter a valid website URL');
       return;
@@ -152,8 +113,8 @@ const WebsiteData = () => {
     const firstColumnName = columnNames[0] || "Sr. No";
     const urlColumnName = columnNames.find(col => col.toLowerCase().includes("website") || col.toLowerCase().includes("url")) || "Website";
     const nameColumnName = columnNames.find(col => col.toLowerCase().includes("entity") || col.toLowerCase().includes("name")) || "Entity";
-    
-    if (websiteData.some(website => 
+
+    if (websiteData.some(website =>
       website[nameColumnName]?.toString().toLowerCase() === newEntityName.trim().toLowerCase() ||
       website[urlColumnName]?.toString().toLowerCase() === formattedUrl.toLowerCase()
     )) {
@@ -162,23 +123,23 @@ const WebsiteData = () => {
     }
 
     setIsLoading(true);
-    
+
     // Create new website entry with dynamic column names
     const newWebsiteEntry: ExcelRow = {};
-    
+
     // Set the first column (serial number)
     newWebsiteEntry[firstColumnName] = Math.max(...websiteData.map(w => {
       const value = w[firstColumnName];
       return typeof value === 'number' ? value : 0;
     }), 0) + 1;
-    
+
     // Set other columns
     newWebsiteEntry[nameColumnName] = newEntityName.trim();
     newWebsiteEntry[urlColumnName] = formattedUrl;
 
     const updatedWebsites = [...websiteData, newWebsiteEntry];
     setWebsiteData(updatedWebsites);
-    
+
     // Reset form
     setNewEntityName('');
     setNewWebsiteUrl('');
@@ -202,11 +163,11 @@ const WebsiteData = () => {
   // Confirm and delete website
   const confirmDeleteWebsite = () => {
     if (!websiteToDelete) return;
-    
-    const updatedWebsites = websiteData.filter(website => 
+
+    const updatedWebsites = websiteData.filter(website =>
       website !== websiteToDelete
     );
-    
+
     setWebsiteData(updatedWebsites);
     setIsDeleteDialogOpen(false);
     setWebsiteToDelete(null);
@@ -251,8 +212,8 @@ const WebsiteData = () => {
             <p className="mb-4 text-sm" style={{ color: "#666666" }}>
               Please make sure the FastAPI server is running and the Entity.xlsx file exists in the backend public/excel folder.
             </p>
-            <Button 
-              onClick={() => window.location.reload()} 
+            <Button
+              onClick={() => window.location.reload()}
               style={{
                 backgroundColor: '#1E40AF',
                 borderColor: '#1E40AF',
@@ -275,13 +236,13 @@ const WebsiteData = () => {
     <BSEAlertsDashboardLayout>
       {/* Notification Bar at top of page */}
       <NotificationBar />
-      
+
       <div className="min-h-screen" style={{
         background: "#ffffff",
       }}>
         <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           {/* Header Section */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.0, ease: "easeOut" }}
@@ -294,13 +255,6 @@ const WebsiteData = () => {
                   <CardTitle className="text-2xl sm:text-3xl lg:text-4xl font-bold " style={{ color: "#000000" }}>
                     WEBSITE DATA
                   </CardTitle>
-                  {/* Admin mode indicator */}
-                  {isAdminMode && (
-                    <Badge variant="outline" style={{ color: '#1E40AF', borderColor: '#1E40AF', background: 'transparent' }}>
-                      <Lock className="h-3 w-3 mr-1" />
-                      Admin Mode
-                    </Badge>
-                  )}
                 </div>
                 <CardDescription className="text-lg" style={{ color: '#000000' }}>
                   Entity websites and digital presence information
@@ -308,111 +262,6 @@ const WebsiteData = () => {
               </CardHeader>
             </Card>
           </motion.div>
-
-          {/* Admin Controls */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.0, delay: 0.2 }}
-            className="mb-4"
-          >
-            <div className="flex justify-end">
-              {isAdminMode ? (
-                <Button 
-                  variant="outline"
-                  onClick={handleAdminLogout}
-                  className="flex items-center gap-2"
-                  style={{
-                    color: '#EF4444',
-                    borderColor: '#EF4444'
-                  }}
-                >
-                  <Lock className="h-4 w-4" />
-                  Logout Admin
-                </Button>
-              ) : (
-                <Button 
-                  variant="outline"
-                  onClick={() => setShowAdminLogin(true)}
-                  className="flex items-center gap-2"
-                  style={{
-                    color: '#1E40AF',
-                    borderColor: '#1E40AF'
-                  }}
-                >
-                  <Lock className="h-4 w-4" />
-                  Admin Login
-                </Button>
-              )}
-            </div>
-          </motion.div>
-
-          {/* Admin Login Dialog */}
-          <Dialog open={showAdminLogin} onOpenChange={setShowAdminLogin}>
-            <DialogContent className="sm:max-w-md" style={{ background: '#ffffff' }}>
-              <DialogHeader>
-                <DialogTitle style={{ color: '#000000' }}>Admin Login</DialogTitle>
-                <DialogDescription style={{ color: '#000000' }}>
-                  Enter admin credentials to access website management features.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username" style={{ color: '#000000' }}>Username</Label>
-                  <Input
-                    id="username"
-                    type="text"
-                    placeholder="Enter username"
-                    value={adminUsername}
-                    onChange={(e) => setAdminUsername(e.target.value)}
-                    style={{
-                      borderColor: '#000000'
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password" style={{ color: '#000000' }}>Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter password"
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAdminLogin();
-                      }
-                    }}
-                    style={{
-                      borderColor: '#000000'
-                    }}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowAdminLogin(false)}
-                    style={{
-                      color: '#000000',
-                      borderColor: '#000000'
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleAdminLogin}
-                    style={{
-                      backgroundColor: '#1E40AF',
-                      borderColor: '#1E40AF',
-                      color: 'white'
-                    }}
-                  >
-                    Login
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           {/* Delete Confirmation Dialog */}
           <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
@@ -435,8 +284,8 @@ const WebsiteData = () => {
                   </div>
                   <div className="flex justify-end gap-2">
                     <DialogClose asChild>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         style={{
                           color: '#000000',
                           borderColor: '#000000'
@@ -445,7 +294,7 @@ const WebsiteData = () => {
                         Cancel
                       </Button>
                     </DialogClose>
-                    <Button 
+                    <Button
                       onClick={confirmDeleteWebsite}
                       style={{
                         backgroundColor: '#EF4444',
@@ -478,20 +327,18 @@ const WebsiteData = () => {
                       {websiteData.length} entities in the system
                     </CardDescription>
                   </div>
-                  {isAdminMode && (
-                    <Button 
-                      onClick={() => setIsAddDialogOpen(true)}
-                      className="flex items-center gap-2"
-                      style={{
-                        backgroundColor: '#1E40AF',
-                        borderColor: '#1E40AF',
-                        color: 'white'
-                      }}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Website
-                    </Button>
-                  )}
+                  <Button
+                    onClick={() => setIsAddDialogOpen(true)}
+                    className="flex items-center gap-2"
+                    style={{
+                      backgroundColor: '#1E40AF',
+                      borderColor: '#1E40AF',
+                      color: 'white'
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Website
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="px-0 py-0">
@@ -501,33 +348,31 @@ const WebsiteData = () => {
                       <TableHeader>
                         <TableRow style={{ backgroundColor: 'rgba(30, 64, 175, 0.1)' }}>
                           {columnNames.map((column) => (
-                            <TableHead 
-                              key={column} 
+                            <TableHead
+                              key={column}
                               className="font-bold"
                               style={{ color: '#000000' }}
                             >
                               {column}
                             </TableHead>
                           ))}
-                          {isAdminMode && (
-                            <TableHead 
-                              className="font-bold text-right"
-                              style={{ color: '#000000' }}
-                            >
-                              Actions
-                            </TableHead>
-                          )}
+                          <TableHead
+                            className="font-bold text-right"
+                            style={{ color: '#000000' }}
+                          >
+                            Actions
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {websiteData.map((row, index) => (
-                          <TableRow 
+                          <TableRow
                             key={index}
                             className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                           >
                             {columnNames.map((column) => (
-                              <TableCell 
-                                key={column} 
+                              <TableCell
+                                key={column}
                                 style={{ color: '#000000' }}
                               >
                                 {column.toLowerCase().includes("website") || column.toLowerCase().includes("url") ? (
@@ -548,21 +393,19 @@ const WebsiteData = () => {
                                 )}
                               </TableCell>
                             ))}
-                            {isAdminMode && (
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteWebsite(row)}
-                                  style={{
-                                    color: '#EF4444',
-                                    borderColor: '#EF4444'
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </TableCell>
-                            )}
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteWebsite(row)}
+                                style={{
+                                  color: '#EF4444',
+                                  borderColor: '#EF4444'
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -622,8 +465,8 @@ const WebsiteData = () => {
                 </div>
                 <div className="flex justify-end gap-2">
                   <DialogClose asChild>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => {
                         setNewEntityName('');
                         setNewWebsiteUrl('');
@@ -636,7 +479,7 @@ const WebsiteData = () => {
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button 
+                  <Button
                     onClick={handleAddWebsite}
                     disabled={isLoading || !newEntityName.trim() || !newWebsiteUrl.trim()}
                     style={{

@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, ArrowLeft, Lock, Users, Plus, Edit, Trash2 } from 'lucide-react';
+import { FileText, Lock, Users, Plus, Edit, Trash2 } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { authenticateAdmin, isAdmin, logoutAdmin } from '@/utils/adminAuth';
-
 interface Director {
   id: number;
   name: string;
@@ -20,11 +18,7 @@ interface Director {
 export default function MinutesPreparation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [showLogin, setShowLogin] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
   const [directors, setDirectors] = useState<Director[]>([]);
   const [isLoadingDirectors, setIsLoadingDirectors] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,41 +30,17 @@ export default function MinutesPreparation() {
 
   // Define navigation items for this product
   const navigationItems = [
-    {
-      id: 'home',
-      label: 'Home',
-      icon: FileText,
-      href: '/',
-    },
-    {
-      id: 'dashboard',
-      label: 'Minutes Generator',
-      icon: FileText,
-      href: '/minutes-preparation',
-    },
-    {
-      id: 'ai-mom',
-      label: 'AI MOM',
-      icon: FileText,
-      href: '/minutes-preparation/ai-assistant',
-    },
-    {
-      id: 'directors',
-      label: 'Directors',
-      icon: Users,
-      href: '/minutes-preparation/directors',
-    }
+    { id: 'home', label: 'Home', icon: FileText, href: '/' },
+    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
+    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
+    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+    { id: 'template-resolution', label: 'Template Resolution', icon: FileText, href: '/minutes-preparation/template-resolution' },
+    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
   ];
-
-  // Check authentication status on component mount
-  useEffect(() => {
-    setIsAuthenticated(isAdmin());
-  }, []);
 
   // Fetch directors data
   const fetchDirectorsData = async () => {
-    if (!isAuthenticated) return;
-    
     setIsLoadingDirectors(true);
     try {
       const response = await fetch('/directors');
@@ -89,72 +59,15 @@ export default function MinutesPreparation() {
 
   useEffect(() => {
     fetchDirectorsData();
-  }, [isAuthenticated]);
-
-  // Handle login
-  const handleLogin = async () => {
-    try {
-      const success = await authenticateAdmin(username, password);
-      if (success) {
-        setIsAuthenticated(true);
-        setShowLogin(false);
-        setUsername('');
-        setPassword('');
-        setLoginError('');
-        
-        // Dispatch a storage event to notify other components
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'isAdmin',
-          newValue: 'true'
-        }));
-        
-        // Also dispatch for adminToken if it exists
-        const token = localStorage.getItem('adminToken');
-        if (token) {
-          window.dispatchEvent(new StorageEvent('storage', {
-            key: 'adminToken',
-            newValue: token
-          }));
-        }
-      } else {
-        setLoginError('Invalid credentials. Please try again.');
-      }
-    } catch (error) {
-      setLoginError('An error occurred during login. Please try again.');
-    }
-  };
-
-  // Handle logout
-  const handleLogout = () => {
-    logoutAdmin();
-    setIsAuthenticated(false);
-    
-    // Dispatch storage events to notify other components
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'isAdmin',
-      newValue: null
-    }));
-    
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'adminToken',
-      newValue: null
-    }));
-  };
+  }, []);
 
   // Handle navigation to form generator
   const handleNavigateToFormGenerator = () => {
     navigate('/minutes-preparation/form-generator');
   };
 
-  // Handle key press for login form
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleLogin();
-    }
-  };
-
   // Filter directors based on search term
-  const filteredDirectors = directors.filter(director => 
+  const filteredDirectors = directors.filter(director =>
     director.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     director.din.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -238,42 +151,21 @@ export default function MinutesPreparation() {
   };
 
   return (
-    <ProductDashboardLayout 
-      productName="Minutes Generator" 
+    <ProductDashboardLayout
+      productName="Generate Minutes"
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
       <div className="container mx-auto py-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Minutes Generator</h1>
+            <h1 className="text-3xl font-bold">Generate Minutes</h1>
             <p className="text-muted-foreground">Automated meeting minutes generation</p>
-          </div>
-          <div className="flex gap-2">
-            {isAuthenticated ? (
-              <Button 
-                variant="outline" 
-                onClick={handleLogout}
-                className="flex items-center gap-2"
-              >
-                <Lock className="h-4 w-4" />
-                Logout
-              </Button>
-            ) : (
-              <Button 
-                variant="outline" 
-                onClick={() => setShowLogin(true)}
-                className="flex items-center gap-2"
-              >
-                <Lock className="h-4 w-4" />
-                Admin Login
-              </Button>
-            )}
           </div>
         </div>
 
         {/* Directors List Section */}
-        {location.pathname === '/minutes-preparation/directors' && isAuthenticated ? (
+        {location.pathname === '/minutes-preparation/directors' ? (
           <div className="mt-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
               <div>
@@ -361,27 +253,6 @@ export default function MinutesPreparation() {
               </CardContent>
             </Card>
           </div>
-        ) : location.pathname === '/minutes-preparation/directors' && !isAuthenticated ? (
-          <Card className="max-w-2xl mx-auto mt-12">
-            <CardHeader className="text-center">
-              <div className="flex justify-center mb-4">
-                <Lock className="h-12 w-12 text-red-500" />
-              </div>
-              <CardTitle className="text-2xl">Access Denied</CardTitle>
-              <CardDescription>
-                You need to be logged in as an administrator to view directors information.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <Button 
-                className="w-full flex items-center justify-center gap-2 py-6 text-lg"
-                onClick={() => setShowLogin(true)}
-              >
-                <Lock className="h-5 w-5" />
-                Login to View Directors
-              </Button>
-            </CardContent>
-          </Card>
         ) : (
           <>
             {/* Generate Minutes Card - Only Feature */}
@@ -397,23 +268,13 @@ export default function MinutesPreparation() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
-                  {isAuthenticated ? (
-                    <Button 
-                      className="w-full flex items-center justify-center gap-2 py-6 text-lg"
-                      onClick={handleNavigateToFormGenerator}
-                    >
-                      <FileText className="h-5 w-5" />
-                      Generate Minutes
-                    </Button>
-                  ) : (
-                    <Button 
-                      className="w-full flex items-center justify-center gap-2 py-6 text-lg"
-                      onClick={() => setShowLogin(true)}
-                    >
-                      <Lock className="h-5 w-5" />
-                      Login to Generate Minutes
-                    </Button>
-                  )}
+                  <Button
+                    className="w-full flex items-center justify-center gap-2 py-6 text-lg"
+                    onClick={handleNavigateToFormGenerator}
+                  >
+                    <FileText className="h-5 w-5" />
+                    Generate Minutes
+                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -443,65 +304,6 @@ export default function MinutesPreparation() {
           </>
         )}
       </div>
-
-      {/* Login Dialog */}
-      <Dialog open={showLogin} onOpenChange={setShowLogin}>
-        <DialogContent className="sm:max-w-md bg-white border border-gray-200 shadow-lg">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">Admin Login</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Enter your credentials to access the minutes generation tool.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-gray-700">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="Enter username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-gray-700">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
-            {loginError && (
-              <div className="text-red-500 text-sm">{loginError}</div>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowLogin(false);
-                  setLoginError('');
-                }}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleLogin}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                Login
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Add Director Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>

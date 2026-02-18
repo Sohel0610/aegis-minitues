@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Download, 
-  Upload, 
-  Plus, 
-  Edit3, 
+import {
+  Download,
+  Upload,
+  Plus,
+  Edit3,
   FileSpreadsheet,
   X,
   ExternalLink,
@@ -23,6 +23,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ExcelData {
   [key: string]: string | number;
@@ -55,8 +56,8 @@ interface ExcelViewProps {
   initialDateRange?: DateRange; // Initial date range
 }
 
-const ExcelView = ({ 
-  initialData = [], 
+const ExcelView = ({
+  initialData = [],
   columns = ['Date', 'PDF Link', 'Summary'],
   title = 'Excel View',
   onClose,
@@ -69,19 +70,22 @@ const ExcelView = ({
   onDateRangeChange, // Callback for date range changes
   initialDateRange // Initial date range
 }: ExcelViewProps) => {
+  const { user } = useAuth();
   const [data, setData] = useState<ExcelData[]>(initialData);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
-  const [adminCredentials, setAdminCredentials] = useState({ username: '', password: '' });
+
+  // Users with 'admin' or 'bse_manager' role are considered admins for this view
+  // auth is needed only to open app once opened no more auth
+  const isAdmin = true;
+
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [rowsPerPage] = useState<number>(customRowsPerPage); // Use custom rows per page
   const [dateRange, setDateRange] = useState<DateRange>(initialDateRange || { from: undefined, to: undefined }); // Date range state
   const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false); // Calendar open state
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Handle filter change
   const handleFilterChange = useCallback((column: string, value: string) => {
     setFilters(prev => ({
@@ -131,14 +135,6 @@ const ExcelView = ({
     return "Select date range";
   };
 
-  // Check for admin status in localStorage on component mount
-  useEffect(() => {
-    const storedAdminStatus = localStorage.getItem('isAdmin');
-    if (storedAdminStatus === 'true') {
-      setIsAdmin(true);
-    }
-  }, []);
-
   // Calculate column widths based on content
   // This function is no longer needed as we're using CSS grid with minmax
   // const calculateColumnWidths = useCallback(() => {
@@ -164,6 +160,14 @@ const ExcelView = ({
     }
   }, [data.length, initialData, columns, initializeWithEmptyRows]);
 
+  // Sync data when initialData changes from parent
+  useEffect(() => {
+    if (initialData.length > 0) {
+      setData(initialData);
+    }
+  }, [initialData]);
+
+
   // Filter data based on filter values and date range
   const filteredData = useMemo(() => {
     let result = data.filter(row => {
@@ -178,18 +182,18 @@ const ExcelView = ({
     if (enableDateRangeFilter && (dateRange.from || dateRange.to) && columns.includes('Date')) {
       console.log('Applying date range filter:', dateRange);
       console.log('Data before filtering:', result.length, 'rows');
-      
+
       result = result.filter(row => {
         const dateValue = row["Date"];
         if (!dateValue) {
           console.log('Skipping row without date:', row);
           return true; // Include rows without dates
         }
-        
+
         try {
           // Parse the date string (now handling YYYY-MM-DD format from API)
           let rowDate: Date;
-          
+
           const dateString = String(dateValue);
           // Check if date is in YYYY-MM-DD format (from API)
           if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
@@ -203,16 +207,16 @@ const ExcelView = ({
               console.log('Skipping row with invalid date format:', dateValue);
               return true; // Include rows with invalid date format
             }
-            
+
             const day = parseInt(dateParts[0], 10);
             const month = parseInt(dateParts[1], 10) - 1; // JS months are 0-indexed
             const year = parseInt(dateParts[2], 10);
-            
+
             rowDate = new Date(year, month, day);
           }
-          
+
           console.log('Parsed date:', rowDate, 'from:', dateValue);
-          
+
           // Check if rowDate is within the selected range
           let inRange = true;
           if (dateRange.from) {
@@ -224,7 +228,7 @@ const ExcelView = ({
             toDate.setHours(23, 59, 59, 999);
             inRange = inRange && rowDate <= toDate;
           }
-          
+
           console.log('Date in range:', inRange, 'Row date:', rowDate, 'From:', dateRange.from, 'To:', dateRange.to);
           return inRange;
         } catch (e) {
@@ -233,7 +237,7 @@ const ExcelView = ({
           return true;
         }
       });
-      
+
       console.log('Data after filtering:', result.length, 'rows');
     }
 
@@ -255,34 +259,11 @@ const ExcelView = ({
     setCurrentPage(page);
   };
 
-  // Handle admin login
-  const handleAdminLogin = () => {
-    if (
-      adminCredentials.username === DEFAULT_ADMIN_CREDENTIALS.username &&
-      adminCredentials.password === DEFAULT_ADMIN_CREDENTIALS.password
-    ) {
-      setIsAdmin(true);
-      setShowAdminLogin(false);
-      setAdminCredentials({ username: '', password: '' });
-      // Store admin status in localStorage
-      localStorage.setItem('isAdmin', 'true');
-    } else {
-      alert('Invalid credentials. Use default: admin / admin123');
-    }
-  };
-
-  // Handle admin logout
-  const handleAdminLogout = () => {
-    setIsAdmin(false);
-    // Remove admin status from localStorage
-    localStorage.removeItem('isAdmin');
-  };
-
   // Export to Excel
   const exportToExcel = (): void => {
     const worksheet = XLSX.utils.json_to_sheet(filteredData);
     const workbook = XLSX.utils.book_new();
-    
+
     // Set column widths based on content with improved calculation
     const columnWidths = columns.map((col) => {
       const maxLength = Math.max(
@@ -294,7 +275,7 @@ const ExcelView = ({
       return { wch: Math.min(Math.max(Math.ceil(maxLength * 1.2), 15), 50) };
     });
     worksheet['!cols'] = columnWidths;
-    
+
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
     const fileName = `${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(workbook, fileName);
@@ -313,14 +294,14 @@ const ExcelView = ({
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelData[];
-        
+
         setData(jsonData);
       } catch (error) {
         console.error('Error reading Excel file:', error);
       }
     };
     reader.readAsBinaryString(file);
-    
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -329,10 +310,10 @@ const ExcelView = ({
   // Add new row (admin only)
   const addRow = (): void => {
     if (!isAdmin) {
-      setShowAdminLogin(true);
+      alert("Permission denied. You must be an administrator to add rows.");
       return;
     }
-    
+
     const newRow: ExcelData = {};
     columns.forEach((col) => {
       newRow[col] = '';
@@ -344,16 +325,16 @@ const ExcelView = ({
   const startEditing = (rowIndex: number, column: string): void => {
     // Adjust rowIndex for pagination
     const actualRowIndex = (currentPage - 1) * rowsPerPage + rowIndex;
-    
+
     // Allow editing for all users on non-sensitive columns
     // Restrict editing for sensitive columns to admin only
     const sensitiveColumns = ['Link to Intimation', 'PDF Link']; // Add more columns as needed
-    
+
     if (sensitiveColumns.includes(column) && !isAdmin) {
-      setShowAdminLogin(true);
+      alert("Permission denied. You must be an administrator to edit this column.");
       return;
     }
-    
+
     setEditingCell({ row: actualRowIndex, col: column });
     setEditValue(String(data[actualRowIndex][column] || ''));
   };
@@ -361,7 +342,7 @@ const ExcelView = ({
   // Save cell edit
   const saveCellEdit = (): void => {
     if (!editingCell) return;
-    
+
     const newData = [...data];
     newData[editingCell.row][editingCell.col] = editValue;
     setData(newData);
@@ -417,7 +398,7 @@ const ExcelView = ({
                 {title}
               </CardTitle>
             </div>
-            
+
             <div className="flex items-center gap-2">
               {/* Date Range Picker - only show if enabled */}
               {enableDateRangeFilter && (
@@ -428,7 +409,7 @@ const ExcelView = ({
                         variant="outline"
                         size="sm"
                         className="h-8 px-3 text-xs"
-                        style={{ 
+                        style={{
                           borderColor: '#46798E',
                           color: '#46798E',
                           backgroundColor: 'transparent'
@@ -449,7 +430,7 @@ const ExcelView = ({
                       />
                     </PopoverContent>
                   </Popover>
-                  
+
                   {/* Clear date filter button */}
                   {(dateRange.from || dateRange.to) && (
                     <Button
@@ -464,13 +445,13 @@ const ExcelView = ({
                   )}
                 </div>
               )}
-              
+
               {/* Admin Status Indicator */}
               {isAdmin && (
-                <Badge 
-                  variant="secondary" 
+                <Badge
+                  variant="secondary"
                   className="text-xs"
-                  style={{ 
+                  style={{
                     backgroundColor: 'rgba(30, 64, 175, 0.1)',
                     color: '#1E40AF',
                     border: '1px solid rgba(30, 64, 175, 0.3)'
@@ -479,7 +460,7 @@ const ExcelView = ({
                   ADMIN MODE
                 </Badge>
               )}
-              
+
               {/* Excel Controls */}
               <Button
                 variant="outline"
@@ -495,22 +476,7 @@ const ExcelView = ({
                 <Download size={14} />
                 Export
               </Button>
-              
-              {/* Admin Login/Logout Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={isAdmin ? handleAdminLogout : () => setShowAdminLogin(true)}
-                className="flex items-center gap-2"
-                style={{
-                  backgroundColor: isAdmin ? 'rgba(220, 38, 38, 0.1)' : 'rgba(30, 64, 175, 0.1)',
-                  borderColor: isAdmin ? 'rgba(220, 38, 38, 0.3)' : 'rgba(30, 64, 175, 0.3)',
-                  color: isAdmin ? '#dc2626' : '#1E40AF'
-                }}
-              >
-                {isAdmin ? 'Logout' : 'Admin'}
-              </Button>
-              
+
               {onClose && (
                 <Button
                   variant="outline"
@@ -523,68 +489,7 @@ const ExcelView = ({
               )}
             </div>
           </div>
-          
-          {/* Admin Login Modal */}
-          {showAdminLogin && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <Card className="w-full max-w-md">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold" style={{ color: '#301B89' }}>
-                    Admin Login
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" style={{ color: '#301B89' }}>
-                      Username
-                    </label>
-                    <Input
-                      type="text"
-                      value={adminCredentials.username}
-                      onChange={(e) => setAdminCredentials({...adminCredentials, username: e.target.value})}
-                      placeholder="Enter username"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" style={{ color: '#301B89' }}>
-                      Password
-                    </label>
-                    <Input
-                      type="password"
-                      value={adminCredentials.password}
-                      onChange={(e) => setAdminCredentials({...adminCredentials, password: e.target.value})}
-                      placeholder="Enter password"
-                    />
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    Default credentials: admin / admin123
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowAdminLogin(false)}
-                      style={{
-                        borderColor: 'rgba(97, 150, 254, 0.3)',
-                        color: '#6196FE'
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleAdminLogin}
-                      style={{
-                        backgroundColor: '#1E40AF',
-                        color: 'white'
-                      }}
-                    >
-                      Login
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-          
+
           <input
             ref={fileInputRef}
             type="file"
@@ -593,7 +498,7 @@ const ExcelView = ({
             style={{ display: 'none' }}
           />
         </CardHeader>
-        
+
         <CardContent className="p-0">
           <div className={`overflow-auto ${onClose ? 'max-h-[calc(90vh-140px)]' : 'max-h-[500px]'}`} style={{ height: containerHeight }}>
             <div className="grid gap-0 border" style={{
@@ -602,10 +507,10 @@ const ExcelView = ({
             }}>
               {/* Header Row */}
               {columns.map((column) => (
-                <div 
+                <div
                   key={column}
                   className="bg-gray-100 p-2 border-r text-xs font-semibold"
-                  style={{ 
+                  style={{
                     borderColor: 'rgba(97, 150, 254, 0.2)',
                     color: '#301B89'
                   }}
@@ -613,19 +518,19 @@ const ExcelView = ({
                   {column}
                 </div>
               ))}
-              <div className="bg-gray-100 p-2 text-xs text-center" style={{ 
+              <div className="bg-gray-100 p-2 text-xs text-center" style={{
                 borderColor: 'rgba(97, 150, 254, 0.2)',
                 width: '80px'
               }}>
                 View
               </div>
-              
+
               {/* Filter Row */}
               {columns.map((column, index) => (
-                <div 
+                <div
                   key={`filter-${column}`}
                   className="bg-gray-50 p-1 border-r border-b text-xs"
-                  style={{ 
+                  style={{
                     borderColor: 'rgba(97, 150, 254, 0.2)'
                   }}
                 >
@@ -639,7 +544,7 @@ const ExcelView = ({
                   />
                 </div>
               ))}
-              <div className="bg-gray-50 p-1 border-b text-center" style={{ 
+              <div className="bg-gray-50 p-1 border-b text-center" style={{
                 borderColor: 'rgba(97, 150, 254, 0.2)',
                 width: '80px'
               }}>
@@ -657,7 +562,7 @@ const ExcelView = ({
                   Clear
                 </Button>
               </div>
-              
+
               {/* Data Rows */}
               {paginatedData.map((row, rowIndex) => (
                 <React.Fragment key={rowIndex}>
@@ -666,7 +571,7 @@ const ExcelView = ({
                     <div
                       key={`${rowIndex}-${column}`}
                       className="p-1 border-r border-b relative group hover:bg-blue-50 cursor-pointer"
-                      style={{ 
+                      style={{
                         borderColor: 'rgba(97, 150, 254, 0.2)'
                       }}
                       onClick={() => startEditing(rowIndex, column)}
@@ -702,18 +607,18 @@ const ExcelView = ({
                               {String(row[column] || '')}
                             </span>
                           )}
-                          <Edit3 
-                            size={12} 
-                            className="ml-auto opacity-0 group-hover:opacity-50 transition-opacity" 
+                          <Edit3
+                            size={12}
+                            className="ml-auto opacity-0 group-hover:opacity-50 transition-opacity"
                             style={{ color: '#6196FE' }}
                           />
                         </div>
                       )}
                     </div>
                   ))}
-                  
+
                   {/* Actions Cell */}
-                  <div className="p-2 border-b text-center" style={{ 
+                  <div className="p-2 border-b text-center" style={{
                     borderColor: 'rgba(97, 150, 254, 0.2)',
                     width: '80px'
                   }}>
@@ -736,7 +641,7 @@ const ExcelView = ({
               ))}
             </div>
           </div>
-          
+
           {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t" style={{ borderColor: 'rgba(97, 150, 254, 0.2)' }}>

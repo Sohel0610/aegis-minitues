@@ -17,6 +17,7 @@ export const authService = {
   /**
    * Initiates the SSO login process
    * Gets the redirect URL from backend and redirects the window
+   * If SSO is disabled, returns mock user data
    */
   login: async () => {
     try {
@@ -25,12 +26,42 @@ export const authService = {
         throw new Error("Failed to initiate login");
       }
       const data = await response.json();
+
+      // If SSO is disabled, handle local login with mock user
+      if (data.sso_enabled === false && data.mock_user) {
+        return {
+          sso_enabled: false,
+          user: {
+            id: data.mock_user.email,
+            email: data.mock_user.email,
+            name: data.mock_user.name,
+            roles: data.mock_user.roles
+          },
+          token: data.mock_user.token
+        };
+      }
+
       if (data.redirect_url) {
         window.location.href = data.redirect_url;
       }
+
+      return { sso_enabled: true };
     } catch (error) {
       console.error("Login failed:", error);
       throw error;
+    }
+  },
+
+  /**
+   * Checks if SSO is enabled on the backend
+   */
+  getConfig: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/config`);
+      if (!response.ok) return { sso_enabled: true };
+      return await response.json();
+    } catch (error) {
+      return { sso_enabled: true };
     }
   },
 

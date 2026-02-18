@@ -6,6 +6,7 @@ interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    ssoEnabled: boolean | null;
     login: () => Promise<void>;
     logout: () => Promise<void>;
 }
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null);
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -65,8 +67,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(false);
     }, [location, navigate]);
 
+    useEffect(() => {
+        authService.getConfig().then(config => setSsoEnabled(config.sso_enabled));
+    }, []);
+
     const login = async () => {
-        await authService.login();
+        const result = await authService.login();
+
+        // If SSO was disabled, authService.login returns user and token directly
+        if (result && result.sso_enabled === false && result.user && result.token) {
+            localStorage.setItem("aegis_auth_token", result.token);
+            localStorage.setItem("aegis_user", JSON.stringify(result.user));
+            setUser(result.user);
+        }
     };
 
     const logout = async () => {
@@ -78,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>
+        <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, ssoEnabled, login, logout }}>
             {children}
         </AuthContext.Provider>
     );

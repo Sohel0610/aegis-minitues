@@ -48,15 +48,15 @@ const formatSummaryContent = (content: string) => {
   if (formattedContent.startsWith("Here is a concise summary of the director's disclosure document:")) {
     formattedContent = formattedContent.substring("Here is a concise summary of the director's disclosure document:".length).trim();
   }
-  
+
   // Split content into lines
   const lines = formattedContent.split('\n');
   let htmlContent = '';
   let inList = false;
-  
+
   lines.forEach((line, index) => {
     const trimmedLine = line.trim();
-    
+
     // Skip empty lines
     if (!trimmedLine) {
       // Add a break if we're not in a list
@@ -65,7 +65,7 @@ const formatSummaryContent = (content: string) => {
       }
       return;
     }
-    
+
     // Check if it's a section header (ends with colon)
     if (trimmedLine.endsWith(':')) {
       // Close previous list if open
@@ -73,11 +73,11 @@ const formatSummaryContent = (content: string) => {
         htmlContent += '</ul>';
         inList = false;
       }
-      
+
       // Add header
       const headerText = trimmedLine.slice(0, -1); // Remove the colon
       htmlContent += `<h4 class="font-semibold text-lg mt-4 mb-2">${headerText}</h4>`;
-    } 
+    }
     // Check if it's a bullet point
     else if (trimmedLine.startsWith('•')) {
       // Start list if not already open
@@ -85,7 +85,7 @@ const formatSummaryContent = (content: string) => {
         htmlContent += '<ul class="list-disc pl-5 space-y-1">';
         inList = true;
       }
-      
+
       // Add list item
       const listItem = trimmedLine.substring(1).trim(); // Remove bullet and trim
       if (listItem) {
@@ -99,17 +99,17 @@ const formatSummaryContent = (content: string) => {
         htmlContent += '</ul>';
         inList = false;
       }
-      
+
       // Add paragraph
       htmlContent += `<p class="mb-2">${trimmedLine}</p>`;
     }
   });
-  
+
   // Close list if still open
   if (inList) {
     htmlContent += '</ul>';
   }
-  
+
   return htmlContent || '<p>No summary available</p>';
 };
 
@@ -126,6 +126,7 @@ const DirectorsDisclosureDataSource = () => {
   const [isFamilyInfoModalOpen, setIsFamilyInfoModalOpen] = useState<boolean>(false);
   const [selectedDirectorName, setSelectedDirectorName] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     fetchDisclosures();
@@ -150,11 +151,11 @@ const DirectorsDisclosureDataSource = () => {
       setLoading(true);
       setError(null);
       const response = await fetch('/api/directors-disclosures');
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch disclosures');
       }
-      
+
       const data = await response.json();
       setDisclosures(data.data || []);
       setFilteredDisclosures(data.data || []);
@@ -171,7 +172,7 @@ const DirectorsDisclosureDataSource = () => {
       // The file_path from backend includes the filename
       const filename = disclosure.file_path.split('/').pop() || `${disclosure.director_name}_disclosure.docx`;
       const downloadUrl = `/api/directors-disclosures/${disclosure.id}/download`;
-      
+
       // Create a temporary link and trigger download
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -188,11 +189,11 @@ const DirectorsDisclosureDataSource = () => {
     try {
       setLoadingSummary(true);
       const response = await fetch(`/api/directors-disclosures/${disclosure.id}/summary`);
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch document summary');
       }
-      
+
       const data = await response.json();
       setDocumentSummary(data);
     } catch (err) {
@@ -214,6 +215,22 @@ const DirectorsDisclosureDataSource = () => {
   const handleViewFamilyInfo = (directorName: string) => {
     setSelectedDirectorName(directorName);
     setIsFamilyInfoModalOpen(true);
+  };
+
+  const handleDownloadTemplate = async (templateName: string) => {
+    try {
+      const downloadUrl = `/api/directors-disclosures/templates/${templateName}`;
+
+      // Create a temporary link and trigger download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = templateName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Error downloading template:', err);
+    }
   };
 
   if (loading) {
@@ -269,9 +286,17 @@ const DirectorsDisclosureDataSource = () => {
                 </CardDescription>
               </div>
             </div>
-            
-            {/* Search Bar */}
+
             <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsTemplateModalOpen(true)}
+                className="gap-2"
+                style={{ borderColor: '#75479C', color: '#75479C' }}
+              >
+                <Download className="h-4 w-4" />
+                Download Templates
+              </Button>
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" style={{ color: '#666666' }} />
                 <Input
@@ -365,7 +390,7 @@ const DirectorsDisclosureDataSource = () => {
               </DialogDescription>
             )}
           </DialogHeader>
-          
+
           {/* Tab Navigation */}
           <div className="flex border-b mt-4">
             <button
@@ -381,7 +406,7 @@ const DirectorsDisclosureDataSource = () => {
               Full Text
             </button>
           </div>
-          
+
           <div className="mt-4">
             {loadingSummary ? (
               <div className="flex items-center justify-center py-12">
@@ -396,17 +421,18 @@ const DirectorsDisclosureDataSource = () => {
                       {activeTab === 'summary' ? (
                         <div>
                           <h3 className="text-lg font-semibold mb-2">Summary</h3>
-                          <div 
+                          <div
                             className="bg-gray-50 p-4 rounded"
-                            style={{ 
+                            style={{
                               whiteSpace: 'normal',
                               lineHeight: '1.6',
                               fontSize: '0.95rem'
                             }}
-                            dangerouslySetInnerHTML={{ 
-                              __html: formatSummaryContent(documentSummary.summary) 
+                            dangerouslySetInnerHTML={{
+                              __html: formatSummaryContent(documentSummary.summary)
                             }}
                           />
+                          <p className="text-xs text-gray-500 mt-2 italic">* Showing active shareholdings only.</p>
                         </div>
                       ) : (
                         <div>
@@ -452,13 +478,62 @@ const DirectorsDisclosureDataSource = () => {
           </div>
         </DialogContent>
       </Dialog>
-      
+
       {/* Family Info Modal */}
       <FamilyInfoModal
         directorName={selectedDirectorName}
         isOpen={isFamilyInfoModalOpen}
         onClose={() => setIsFamilyInfoModalOpen(false)}
       />
+
+      {/* Template Download Modal */}
+      <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle style={{ color: '#75479C' }}>Download Templates</DialogTitle>
+            <DialogDescription>
+              Select a template to download
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between p-4 border rounded hover:bg-gray-50 cursor-pointer" onClick={() => handleDownloadTemplate('MBP-1.docx')}>
+              <div className="flex items-center gap-3">
+                <FileText className="h-8 w-8 text-blue-500" />
+                <div>
+                  <h4 className="font-medium">MBP-1 Form</h4>
+                  <p className="text-sm text-gray-500">Standard Disclosure Form</p>
+                </div>
+              </div>
+              <Download className="h-5 w-5 text-gray-400" />
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded hover:bg-gray-50 cursor-pointer" onClick={() => handleDownloadTemplate('DIR-8.docx')}>
+              <div className="flex items-center gap-3">
+                <FileText className="h-8 w-8 text-green-500" />
+                <div>
+                  <h4 className="font-medium">DIR-8 Form</h4>
+                  <p className="text-sm text-gray-500">Director Declaration Form</p>
+                </div>
+              </div>
+              <Download className="h-5 w-5 text-gray-400" />
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded hover:bg-gray-50 cursor-pointer" onClick={() => handleDownloadTemplate('Disclosure_with_CIN.docx')}>
+              <div className="flex items-center gap-3">
+                <FileText className="h-8 w-8 text-purple-500" />
+                <div>
+                  <h4 className="font-medium">Disclosure with CI Number</h4>
+                  <p className="text-sm text-gray-500">Includes Corporate Identity Number</p>
+                </div>
+              </div>
+              <Download className="h-5 w-5 text-gray-400" />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setIsTemplateModalOpen(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Download, Users, Calendar, Clock, MapPin, AlertCircle, Eye, Plus, X } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet } from 'lucide-react';
+import { Home, FileSpreadsheet, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { isAdmin } from '@/utils/adminAuth';
 // Import template structures
@@ -16,47 +16,20 @@ import templateStructures from '@/template_structures.json';
 const TemplateRenderer = () => {
   // Define navigation items for this product
   const navigationItems = [
-    {
-      id: 'home',
-      label: 'Home',
-      icon: Home,
-      href: '/',
-    },
-    {
-      id: 'dashboard',
-      label: 'Minutes Generator',
-      icon: FileText,
-      href: '/minutes-preparation',
-    },
-    {
-      id: 'generator',
-      label: 'Generate Minutes',
-      icon: FileText,
-      href: '/minutes-preparation/generate',
-    },
-    {
-      id: 'minutes',
-      label: 'Meeting Minutes',
-      icon: FileText,
-      href: '/minutes-preparation/minutes',
-    },
-    {
-      id: 'templates',
-      label: 'Templates',
-      icon: FileSpreadsheet,
-      href: '/minutes-preparation/templates',
-    },
-    {
-      id: 'renderer',
-      label: 'Template Renderer',
-      icon: Eye,
-      href: '/minutes-preparation/renderer',
-    }
+    { id: 'home', label: 'Home', icon: Home, href: '/' },
+    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
+    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
+    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+    { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
+    { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
+    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+    { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer', isActive: true },
   ];
 
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
+
   // Check authentication status on component mount
   useEffect(() => {
     setIsAuthenticated(isAdmin());
@@ -71,10 +44,10 @@ const TemplateRenderer = () => {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    
+
     // Also check authentication status when component mounts in case it changed
     setIsAuthenticated(isAdmin());
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
@@ -123,10 +96,10 @@ const TemplateRenderer = () => {
 
   // State for validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+
   // State for submission status
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // State for template preview
   const [templateContent, setTemplateContent] = useState<any[]>([]);
 
@@ -134,7 +107,7 @@ const TemplateRenderer = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => {
@@ -148,7 +121,7 @@ const TemplateRenderer = () => {
   // Handle select changes
   const handleSelectChange = (name: string, value: string) => {
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+
     // Clear error when user makes a selection
     if (errors[name]) {
       setErrors(prev => {
@@ -166,7 +139,7 @@ const TemplateRenderer = () => {
       newDirectors[index] = { ...newDirectors[index], [field]: value };
       return { ...prev, directors: newDirectors };
     });
-    
+
     // Clear error when user starts typing
     const errorKey = `director${field.charAt(0).toUpperCase() + field.slice(1)}${index}`;
     if (errors[errorKey]) {
@@ -193,7 +166,7 @@ const TemplateRenderer = () => {
       newDirectors.splice(index, 1);
       return { ...prev, directors: newDirectors };
     });
-    
+
     // Remove errors for this director
     setErrors(prev => {
       const newErrors = { ...prev };
@@ -206,41 +179,41 @@ const TemplateRenderer = () => {
   // Validation function
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
+
     // Validate template selection
     if (!formData.template) {
       newErrors.template = 'Please select a template';
     }
-    
+
     // Required fields validation
     if (!formData.companyName.trim()) {
       newErrors.companyName = 'Company name is required';
     }
-    
+
     if (!formData.meetingNumber.trim()) {
       newErrors.meetingNumber = 'Meeting number is required';
     }
-    
+
     if (!formData.meetingDate) {
       newErrors.meetingDate = 'Meeting date is required';
     }
-    
+
     if (!formData.meetingStartTime) {
       newErrors.meetingStartTime = 'Start time is required';
     }
-    
+
     if (!formData.meetingEndTime) {
       newErrors.meetingEndTime = 'End time is required';
     }
-    
+
     if (!formData.meetingPlace.trim()) {
       newErrors.meetingPlace = 'Meeting place is required';
     }
-    
+
     if (!formData.chairmanName.trim()) {
       newErrors.chairmanName = 'Chairman name is required';
     }
-    
+
     // Validate directors
     if (formData.directors.length === 0) {
       newErrors.directors = 'At least one director is required';
@@ -254,14 +227,14 @@ const TemplateRenderer = () => {
         }
       });
     }
-    
+
     // Validate financial year
     if (!formData.financialYear.trim()) {
       newErrors.financialYear = 'Financial year is required';
     } else if (!/^\d{4}$/.test(formData.financialYear)) {
       newErrors.financialYear = 'Financial year must be a 4-digit number';
     }
-    
+
     // Validate dates
     if (formData.meetingDate && formData.previousMeetingDate) {
       const meetingDate = new Date(formData.meetingDate);
@@ -270,7 +243,7 @@ const TemplateRenderer = () => {
         newErrors.meetingDate = 'Meeting date must be after previous meeting date';
       }
     }
-    
+
     // Validate AGM date if provided
     if (formData.agmDate && formData.meetingDate) {
       const meetingDate = new Date(formData.meetingDate);
@@ -279,7 +252,7 @@ const TemplateRenderer = () => {
         newErrors.agmDate = 'AGM date must be after meeting date';
       }
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -287,14 +260,14 @@ const TemplateRenderer = () => {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate form
     if (!validateForm()) {
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       // Use the full backend URL for the API call
       const response = await fetch('/generate-minutes', {
@@ -304,7 +277,7 @@ const TemplateRenderer = () => {
         },
         body: JSON.stringify(formData),
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         // Trigger download of the generated file
@@ -395,7 +368,7 @@ const TemplateRenderer = () => {
                 {element.segments.map((segment: any, segIndex: number) => {
                   if (segment.is_placeholder) {
                     const fieldName = placeholderToFieldMap[segment.text] || segment.text.replace(/[\[\]]/g, '');
-                    
+
                     // Special handling for different types of placeholders
                     if (segment.text === '[from MCA]') {
                       // For director placeholders, show the first director's name
@@ -504,11 +477,11 @@ const TemplateRenderer = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button 
+              <Button
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={() => navigate('/minutes-preparation')}
               >
-                
+
                 Return to Login
               </Button>
             </CardContent>
@@ -519,8 +492,8 @@ const TemplateRenderer = () => {
   }
 
   return (
-    <ProductDashboardLayout 
-      productName="Minutes Generator" 
+    <ProductDashboardLayout
+      productName="Generate Minutes"
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
@@ -548,11 +521,11 @@ const TemplateRenderer = () => {
               <div className="border rounded-lg p-4 min-h-[400px] bg-muted/10">
                 {renderTemplateContent()}
               </div>
-              
+
               <div className="mt-4 space-y-2">
                 <Label htmlFor="template">Select Template</Label>
-                <Select 
-                  value={formData.template} 
+                <Select
+                  value={formData.template}
                   onValueChange={(value) => handleSelectChange('template', value)}
                 >
                   <SelectTrigger className={`bg-white ${errors.template ? "border-red-500" : ""}`}>
@@ -600,7 +573,7 @@ const TemplateRenderer = () => {
                   </ul>
                 </div>
               )}
-              
+
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Company & Meeting Metadata */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg">
@@ -610,7 +583,7 @@ const TemplateRenderer = () => {
                       Company & Meeting Metadata
                     </h3>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="companyName">Company Name *</Label>
                     <Input
@@ -628,7 +601,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="meetingNumber">Meeting Number *</Label>
                     <Input
@@ -646,11 +619,11 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="meetingType">Meeting Type</Label>
-                    <Select 
-                      value={formData.meetingType} 
+                    <Select
+                      value={formData.meetingType}
                       onValueChange={(value) => handleSelectChange('meetingType', value)}
                     >
                       <SelectTrigger className="bg-white">
@@ -665,7 +638,7 @@ const TemplateRenderer = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="meetingDay">Day of Meeting</Label>
                     <Input
@@ -676,7 +649,7 @@ const TemplateRenderer = () => {
                       placeholder="e.g., Monday"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="meetingDate">Date of Meeting *</Label>
                     <div className="relative">
@@ -697,7 +670,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="meetingStartTime">Time: COMMENCED AT *</Label>
                     <div className="relative">
@@ -718,7 +691,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="meetingEndTime">Time: CONCLUDED AT *</Label>
                     <div className="relative">
@@ -739,7 +712,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="meetingPlace">Place of Meeting *</Label>
                     <div className="relative">
@@ -761,7 +734,7 @@ const TemplateRenderer = () => {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Attendees / Directors */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="md:col-span-2">
@@ -770,7 +743,7 @@ const TemplateRenderer = () => {
                       Attendees / Directors
                     </h3>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="chairmanName">Chairman Name *</Label>
                     <Input
@@ -788,7 +761,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label>Directors *</Label>
                     {formData.directors.map((director, index) => (
@@ -851,7 +824,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="authorisedOfficer">Authorised Officer</Label>
                     <Input
@@ -863,13 +836,13 @@ const TemplateRenderer = () => {
                     />
                   </div>
                 </div>
-                
+
                 {/* Minutes Confirmation & Legal Sections */}
                 <div className="grid grid-cols-1 gap-6 p-4 border rounded-lg">
                   <div>
                     <h3 className="text-lg font-semibold mb-4">Minutes Confirmation & Legal Sections</h3>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="previousMeetingDate">Previous Meeting Date</Label>
                     <div className="relative">
@@ -884,7 +857,7 @@ const TemplateRenderer = () => {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="quorum">Quorum Assessment</Label>
                     <Textarea
@@ -896,7 +869,7 @@ const TemplateRenderer = () => {
                       rows={3}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="previousMinutes">Previous Meeting Minutes</Label>
                     <Textarea
@@ -908,7 +881,7 @@ const TemplateRenderer = () => {
                       rows={3}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="concerns">Concerns/Interests (Section 184)</Label>
                     <Textarea
@@ -920,7 +893,7 @@ const TemplateRenderer = () => {
                       rows={3}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="declarations">Declarations (Section 164(2))</Label>
                     <Textarea
@@ -933,13 +906,13 @@ const TemplateRenderer = () => {
                     />
                   </div>
                 </div>
-                
+
                 {/* Financial Information */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="md:col-span-2">
                     <h3 className="text-lg font-semibold mb-4">Financial Information</h3>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="auditorPaymentAmount">Payment to Auditor (Amount)</Label>
                     <Input
@@ -950,7 +923,7 @@ const TemplateRenderer = () => {
                       placeholder="e.g., 25000"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="auditorPaymentWords">Payment to Auditor (In Words)</Label>
                     <Input
@@ -961,7 +934,7 @@ const TemplateRenderer = () => {
                       placeholder="e.g., Twenty Five Thousand Only"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="financialYear">Financial Year *</Label>
                     <Input
@@ -979,7 +952,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="auditorPayment">Auditor Payment Approval</Label>
                     <Textarea
@@ -991,7 +964,7 @@ const TemplateRenderer = () => {
                       rows={3}
                     />
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="financialStatements">Financial Statements Approval</Label>
                     <Textarea
@@ -1003,7 +976,7 @@ const TemplateRenderer = () => {
                       rows={3}
                     />
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="directorsReport">Directors' Report Approval</Label>
                     <Textarea
@@ -1016,13 +989,13 @@ const TemplateRenderer = () => {
                     />
                   </div>
                 </div>
-                
+
                 {/* Annual General Meeting Section */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 border rounded-lg">
                   <div className="md:col-span-3">
                     <h3 className="text-lg font-semibold mb-4">Annual General Meeting Section</h3>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="agmNumber">AGM Number</Label>
                     <Input
@@ -1033,7 +1006,7 @@ const TemplateRenderer = () => {
                       placeholder="e.g., 10th"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="agmDay">AGM Day</Label>
                     <Input
@@ -1044,7 +1017,7 @@ const TemplateRenderer = () => {
                       placeholder="e.g., Friday"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="agmDate">AGM Date</Label>
                     <div className="relative">
@@ -1065,7 +1038,7 @@ const TemplateRenderer = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="agmTime">AGM Time</Label>
                     <div className="relative">
@@ -1080,7 +1053,7 @@ const TemplateRenderer = () => {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="agmPlace">AGM Place</Label>
                     <div className="relative">
@@ -1096,13 +1069,13 @@ const TemplateRenderer = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Footer Section */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 border rounded-lg">
                   <div className="md:col-span-3">
                     <h3 className="text-lg font-semibold mb-4">Footer Section</h3>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="recordingDate">Date of Recording</Label>
                     <div className="relative">
@@ -1117,7 +1090,7 @@ const TemplateRenderer = () => {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="signingDate">Date of Signing</Label>
                     <div className="relative">
@@ -1133,11 +1106,11 @@ const TemplateRenderer = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Submit Button */}
                 <div className="flex justify-center pt-4">
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="flex items-center gap-2 px-6 py-3"
                     disabled={isSubmitting}
                   >

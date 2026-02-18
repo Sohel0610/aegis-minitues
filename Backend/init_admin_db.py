@@ -22,13 +22,13 @@ try:
     cursor.execute("""
         INSERT OR IGNORE INTO admin_credentials (username, password)
         VALUES (?, ?)
-    """, ("admin@aegis.com", "aegis"))
+    """, ("admin@aegis.adani.com", "aegis"))
     
     # Commit changes
     conn.commit()
     
     # Verify the admin user was inserted
-    cursor.execute("SELECT * FROM admin_credentials WHERE username = ?", ("admin@aegis.com",))
+    cursor.execute("SELECT * FROM admin_credentials WHERE username = ?", ("admin@aegis.adani.com",))
     admin_user = cursor.fetchone()
     
     if admin_user:

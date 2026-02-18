@@ -31,8 +31,9 @@ CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("AZURE_AD_CLIENT_SECRET")
 TENANT_ID = os.getenv("AZURE_AD_TENANT_ID")
 REDIRECT_URI = os.getenv("AZURE_AD_REDIRECT_URI", "https://aegis.adani.com/api/auth/callback")
+SSO_ENABLED = os.getenv("SSO_ENABLED", "true").lower() == "true"
 
-if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
+if SSO_ENABLED and not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
     logger.warning("Azure AD configuration not fully set. Authentication endpoints may not work properly.")
 
 # In-memory local user role storage (temporary solution)
@@ -41,20 +42,40 @@ LOCAL_USER_ROLES = {
 }
 
 def get_user_roles_with_default(email: str) -> List[str]:
-    """Get roles from mapping, providing a default 'viewer' role for corporate accounts"""
+    """Get roles from mapping and email database, providing a default 'viewer' role for corporate accounts"""
     if not email:
         return []
         
+    roles = []
+    
     # Check if user is in our explicit mapping
-    roles = LOCAL_USER_ROLES.get(email.lower())
-    if roles:
-        return roles
+    local_roles = LOCAL_USER_ROLES.get(email.lower())
+    if local_roles:
+        roles.extend(local_roles)
+        
+    # Check if user exists in email_data.db
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "email_data.db")
+        if os.path.exists(db_path):
+            # Connect to database in read-only mode if possible, but standard connect is fine
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # Check if email exists (case-insensitive)
+            cursor.execute("SELECT 1 FROM email WHERE LOWER(email) = ?", (email.lower(),))
+            if cursor.fetchone():
+                roles.append("compliance_user")
+                
+            conn.close()
+    except Exception as e:
+        logger.error(f"Error checking user permissions in email DB: {e}")
         
     # Default behavior: any @adani.com email gets 'viewer' access
+    # Only add viewer if they don't have other specific roles, or always add it as base role
     if email.lower().endswith("@adani.com"):
-        return ["viewer"]
+        roles.append("viewer")
         
-    return []
+    return list(set(roles))
 
 # Response models
 class AuthResponse(BaseModel):
@@ -67,6 +88,18 @@ class AuthResponse(BaseModel):
 @router.get("/api/auth/login")
 async def azure_ad_login():
     """Redirect user to Azure AD for authentication"""
+    if not SSO_ENABLED:
+        return {
+            "redirect_url": None,
+            "sso_enabled": False,
+            "mock_user": {
+                "email": "dev@adani.com",
+                "name": "Developer (SSO Disabled)",
+                "roles": ["admin", "viewer", "compliance_user"],
+                "token": "mock-token-" + secrets.token_urlsafe(16)
+            }
+        }
+
     if not all([CLIENT_ID, TENANT_ID, REDIRECT_URI]):
         raise HTTPException(status_code=500, detail="Azure AD configuration is incomplete")
     
@@ -86,7 +119,13 @@ async def azure_ad_login():
     
     # In a real implementation, you'd store the state in session
     # Here we're just returning the URL to redirect to
-    return {"redirect_url": auth_url, "state": state}
+    return {"redirect_url": auth_url, "state": state, "sso_enabled": True}
+
+# Endpoint to check auth configuration
+@router.get("/api/auth/config")
+async def get_auth_config():
+    """Returns whether SSO is enabled"""
+    return {"sso_enabled": SSO_ENABLED}
 
 # Endpoint to handle Azure AD callback
 @router.get("/api/auth/callback")

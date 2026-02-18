@@ -23,6 +23,7 @@ import {
 import Orb from "@/components/Orb";
 import ChatbotFab from "@/components/ChatbotFab";
 import { useRef, useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Add fetch for visit count
 const fetchVisitCount = async (): Promise<number> => {
@@ -106,7 +107,7 @@ const products: Product[] = [
     id: '3',
     title: "SEBI Analysis",
     description: "Market regulation analysis and investor protection measures.",
-    icon: <img src="/sebi-Logo.jpg" alt="SEBI Logo" className="h-full w-full object-contain" />,
+    icon: <img src="/sebi-logo.png" alt="SEBI Logo" className="h-full w-full object-contain" />,
     color: "x11-maroon", // Using new color
     status: "Live",
     route: "/sebi-dashboard",
@@ -119,7 +120,7 @@ const products: Product[] = [
       "Standalone application"
     ]
   },
-{
+  {
     id: '4',
     title: "Insider Trading",
     description: "Monitor and analyze insider trading activities and patterns.",
@@ -153,7 +154,7 @@ const products: Product[] = [
   },
   {
     id: '6',
-    title: "Minutes Generator",
+    title: "Generate Minutes",
     description: "Automated preparation and management of meeting minutes with compliance tracking.",
     icon: <FileText className="h-6 w-6" />,
     color: "x11-maroon", // Using new color
@@ -204,7 +205,7 @@ const getColorForProduct = (color: string, status: 'Live' | 'Coming Soon') => {
   if (status === 'Live') {
     return "hsl(120, 80%, 40%)"; // Green color for live products
   }
-  
+
   // For coming soon products, use the original colors
   switch (color) {
     case "honolulu-blue":
@@ -224,7 +225,7 @@ const getButtonColorForProduct = (status: 'Live' | 'Coming Soon') => {
   if (status === 'Live') {
     return "hsl(120, 80%, 40%)"; // Green color for live products
   }
-  
+
   // For coming soon products, return null to use default styling
   return null;
 };
@@ -235,7 +236,7 @@ const getBadgeColorForProduct = (status: 'Live' | 'Coming Soon') => {
   if (status === 'Live') {
     return "hsl(120, 80%, 40%)"; // Green color for live products
   }
-  
+
   // For coming soon products, return null to use default styling
   return null;
 };
@@ -244,6 +245,14 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const [visitCount, setVisitCount] = useState<number>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
+  const { user, login, logout, isAuthenticated, ssoEnabled } = useAuth();
+
+  // Auto-login as Guest if SSO is disabled
+  useEffect(() => {
+    if (ssoEnabled === false && !isAuthenticated) {
+      login();
+    }
+  }, [ssoEnabled, isAuthenticated, login]);
 
   // Fetch visit count when component mounts
   useEffect(() => {
@@ -251,7 +260,7 @@ const LandingPage = () => {
       const count = await fetchVisitCount();
       setVisitCount(count);
     };
-    
+
     const incrementAndLoadCount = async () => {
       // First increment the visit count
       const newCount = await incrementVisitCount();
@@ -259,10 +268,10 @@ const LandingPage = () => {
       const updatedCount = await fetchVisitCount();
       setVisitCount(updatedCount);
     };
-    
+
     // Load initial count
     loadVisitCount();
-    
+
     // Increment visit count for this visit
     incrementAndLoadCount();
   }, []);
@@ -276,13 +285,19 @@ const LandingPage = () => {
         setShowScrollTop(false);
       }
     };
- 
+
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
- 
+
   const handleProductClick = (product: Product): void => {
     if (product.status === 'Live' && product.route) {
+      // Check for authentication - Skip for Director's Disclosure (id: '5')
+      if (!isAuthenticated && product.id !== '5') {
+        login();
+        return;
+      }
+
       // SEBI Analysis is a separate application, open in new tab
       if (product.id === '3') { // SEBI Analysis
         window.open(product.route, '_blank');
@@ -291,14 +306,14 @@ const LandingPage = () => {
       }
     }
   };
- 
+
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
       behavior: 'smooth'
     });
   };
- 
+
   const scrollToContent = () => {
     const contentElement = document.querySelector('.products-section');
     if (contentElement) {
@@ -307,10 +322,31 @@ const LandingPage = () => {
       });
     }
   };
- 
+
+
+
   return (
-    <div className="min-h-screen bg-white">
-     
+    <div className="min-h-screen bg-white relative">
+      {/* SSO Login/User Profile Section */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
+        {isAuthenticated && (
+          <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm p-2 rounded-lg border shadow-sm">
+            <div className="flex flex-col items-end">
+              <span className="text-xs font-semibold text-gray-900">{user?.name}</span>
+              <span className="text-[10px] text-gray-500">{user?.email}</span>
+            </div>
+            <Button
+              onClick={logout}
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs font-medium border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            >
+              Sign Out
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Orbit Section with Background Image - Fully responsive */}
       <div className="flex flex-col items-center justify-center min-h-screen relative overflow-hidden bg-white w-full">
         <div className="w-full flex justify-center">
@@ -336,20 +372,20 @@ const LandingPage = () => {
             </div>
           </div>
         </div>
-     
-      {/* Project Title Section - Responsive typography */}
-      <div className="container mx-auto flex justify-center py-4 sm:py-6 px-4">
-        <h1
-          className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-clip-text text-transparent text-center"
-          style={{
-            backgroundImage: 'linear-gradient(to right, #0B74B0, #BD3861)'
-          }}
-        >
-          Project AEGIS
-        </h1>
+
+        {/* Project Title Section - Responsive typography */}
+        <div className="container mx-auto flex justify-center py-4 sm:py-6 px-4">
+          <h1
+            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-clip-text text-transparent text-center"
+            style={{
+              backgroundImage: 'linear-gradient(to right, #0B74B0, #BD3861)'
+            }}
+          >
+            Project AEGIS
+          </h1>
+        </div>
       </div>
-      </div>
-     
+
       {/* Scroll Down FAB - Responsive positioning */}
       <button
         onClick={scrollToContent}
@@ -364,7 +400,7 @@ const LandingPage = () => {
       >
         <ArrowDown size={16} />
       </button>
-     
+
       {/* Products Section - Fully responsive grid */}
       <div className="products-section container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 min-h-screen">
         <div className="w-full">
@@ -377,7 +413,7 @@ const LandingPage = () => {
                   className={`${product.status === 'Live' ? 'cursor-pointer' : 'cursor-default'} w-full`}
                   onClick={() => handleProductClick(product)}
                 >
-                  <Card 
+                  <Card
                     className="h-full relative overflow-hidden border-2 transition-all duration-300 flex flex-col w-full"
                     style={{
                       background: "#ffffff",
@@ -434,7 +470,7 @@ const LandingPage = () => {
                         </div>
                       </div>
                     </CardHeader>
- 
+
                     <CardContent className="flex-1 flex flex-col px-5 pb-5">
                       {/* Features List */}
                       <div className="flex-1">
@@ -455,7 +491,7 @@ const LandingPage = () => {
                           ))}
                         </div>
                       </div>
- 
+
                       {/* Action Button */}
                       <div className="pt-6">
                         {product.status === 'Live' ? (
@@ -500,15 +536,15 @@ const LandingPage = () => {
           </div>
         </div>
       </div>
- 
+
       {/* Footer Section - Responsive layout */}
       <div className="border-t py-6">
         <div className="container mx-auto px-4 sm:px-6 text-center">
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
           </div>
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm text-foreground" style={{ fontFamily: 'Adani, sans-serif' }}>
-            <a 
-              href="/hierarchy-structure" 
+            <a
+              href="/hierarchy-structure"
               className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 transition-colors"
             >
               Agent Organogram
@@ -521,7 +557,7 @@ const LandingPage = () => {
           </div>
         </div>
       </div>
- 
+
       {/* Scroll to Top FAB - Responsive positioning */}
       {showScrollTop && (
         <button
@@ -539,7 +575,7 @@ const LandingPage = () => {
         </button>
       )}
       <ChatbotFab />
-      
+
     </div>
   );
 };

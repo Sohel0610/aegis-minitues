@@ -22,7 +22,12 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
-        
+
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -43,20 +48,20 @@ export default {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
-        
+
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
           glass: "hsl(var(--card-glass))",
         },
-        
+
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
           accent: "hsl(var(--sidebar-accent))",
           "accent-hover": "hsl(var(--sidebar-accent-hover))",
         },
-        
+
         chart: {
           primary: "hsl(var(--chart-primary))",
           secondary: "hsl(var(--chart-secondary))",
@@ -64,7 +69,7 @@ export default {
           success: "hsl(var(--chart-success))",
           warning: "hsl(var(--chart-warning))",
         },
-        
+
         // New color palette
         "honolulu-blue": {
           DEFAULT: "hsl(var(--honolulu-blue))",

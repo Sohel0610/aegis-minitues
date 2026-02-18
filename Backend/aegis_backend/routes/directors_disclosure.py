@@ -23,6 +23,7 @@ from llm_utils import generate_and_save_summary
 
 # Import our enhanced matching algorithm
 from routes.EnhancedIndianNameMatcher import indian_name_similarity
+from routes.director_changes import log_director_change
 
 logger = logging.getLogger(__name__)
 
@@ -1049,6 +1050,9 @@ async def update_director_family_info(director_name: str, request: UpdateFamilyI
         if not updated_info:
             raise HTTPException(status_code=404, detail="Failed to update family information")
         
+        # Log the change
+        log_director_change(None, director_name, "Family Info Update", "Updated family information details")
+
         return DirectorFamilyInfoResponse(**updated_info)
     except HTTPException:
         raise
@@ -1189,6 +1193,9 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
         loop = asyncio.get_event_loop()
         updated_profile = await loop.run_in_executor(thread_pool, update_profile)
         
+        # Log the change
+        log_director_change(None, updated_profile['name'], "Profile Update", f"Updated profile for DIN {din}")
+
         return DirectorProfileResponse(**updated_profile)
     except HTTPException:
         raise
@@ -1228,6 +1235,10 @@ async def upload_director_image(din: str, file: UploadFile = File(...)):
         
         # Return success response with image URL
         image_url = f"/api/directors-profile/{din}/image"
+        
+        # Log the change
+        log_director_change(None, f"Director (DIN: {din})", "Profile Photo Update", "Uploaded new profile photo")
+
         return ImageUploadResponse(
             success=True,
             message="Image uploaded successfully",
@@ -1336,3 +1347,31 @@ async def get_directors_for_minutes():
     except Exception as e:
         logger.error(f"Error fetching directors for minutes: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch directors: {str(e)}")
+
+# Endpoint to download template files
+@router.get("/api/directors-disclosures/templates/{template_name}")
+async def download_disclosure_template(template_name: str):
+    """Download a disclosure template file"""
+    try:
+        # Define the templates directory
+        templates_dir = os.path.join(os.path.dirname(__file__), "..", "public", "templates")
+        
+        # Valid template filenames
+        # For simplicity, allow any file in templates dir
+        potential_path = os.path.join(templates_dir, template_name)
+        
+        if not os.path.exists(potential_path):
+             # Fallback logic if needed, or error
+             logger.error(f"Template not found: {potential_path}")
+             raise HTTPException(status_code=404, detail="Template not found")
+            
+        return FileResponse(
+            path=potential_path,
+            filename=template_name,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading template {template_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to download template: {str(e)}")

@@ -4,19 +4,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { DownloadIcon, FileTextIcon, UploadIcon, XIcon, HomeIcon } from 'lucide-react';
+import { DownloadIcon, FileTextIcon, UploadIcon, XIcon, HomeIcon, PlusIcon, FileSpreadsheetIcon, HistoryIcon } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
- 
+
 interface Attendee {
   name: string;
   role: string;
 }
- 
+
 interface ActionItem {
   task: string;
   assignee: string;
 }
- 
+
 interface MoMContent {
   title: string;
   date: string;
@@ -26,30 +26,18 @@ interface MoMContent {
   action_items: ActionItem[];
   next_meeting: string;
 }
- 
+
 const AIAssistant = () => {
   // Define navigation items for this product - simplified for AI MOM
   const navigationItems = [
-    {
-      id: 'home',
-      label: 'Home',
-      icon: HomeIcon,
-      href: '/',
-    },
-    {
-      id: 'dashboard',
-      label: 'Minutes Generator',
-      icon: FileTextIcon,
-      href: '/minutes-preparation',
-    },
-    {
-      id: 'ai-mom',
-      label: 'AI MOM',
-      icon: FileTextIcon, // Removed sparkle icon
-      href: '/minutes-preparation/ai-assistant',
-    }
+    { id: 'home', label: 'Home', icon: HomeIcon, href: '/' },
+    { id: 'dashboard', label: 'Generate Minutes', icon: FileTextIcon, href: '/minutes-preparation' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: PlusIcon, href: '/minutes-preparation/create-agenda' },
+    { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheetIcon, href: '/minutes-preparation/compliances' },
+    { id: 'ai-mom', label: 'AI MOM', icon: FileTextIcon, href: '/minutes-preparation/ai-assistant', isActive: true },
+    { id: 'template-resolution', label: 'Template Resolution', icon: HistoryIcon, href: '/minutes-preparation/template-resolution' },
   ];
- 
+
   const [files, setFiles] = useState<File[]>([]);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -58,7 +46,7 @@ const AIAssistant = () => {
   const [momContent, setMomContent] = useState<MoMContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
- 
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -66,39 +54,39 @@ const AIAssistant = () => {
         'text/plain',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ];
-     
+
       if (!validTypes.includes(file.type)) {
         setError('Please upload a DOCX or TXT file.');
         return;
       }
-     
+
       setFiles([file]);
       setError(null);
-     
+
       // Auto-upload the file
       handleUpload([file]);
     }
   };
- 
+
   const handleUpload = async (filesToUpload: File[]) => {
     if (filesToUpload.length === 0) return;
-   
+
     const file = filesToUpload[0];
     setUploadStatus('uploading');
-   
+
     try {
       const formData = new FormData();
       formData.append('file', file);
-     
+
       const response = await fetch('/ai-assistant/upload', {
         method: 'POST',
         body: formData,
       });
-     
+
       if (!response.ok) {
         throw new Error('Upload failed');
       }
-     
+
       const result = await response.json();
       setTaskId(result.task_id);
       setUploadStatus('success');
@@ -108,7 +96,7 @@ const AIAssistant = () => {
       setError('Failed to upload file. Please try again.');
     }
   };
- 
+
   const handleRemoveFile = () => {
     setFiles([]);
     setUploadStatus('idle');
@@ -120,35 +108,35 @@ const AIAssistant = () => {
       fileInputRef.current.value = '';
     }
   };
- 
+
   const handleGenerateMinutes = async () => {
     if (!taskId) return;
-   
+
     setProcessingStatus('processing');
     setProgress(0);
     setError(null);
-   
+
     try {
       // Start the MoM generation
       const response = await fetch(`/ai-assistant/generate-mom?task_id=${taskId}`, {
         method: 'POST',
       });
-     
+
       if (!response.ok) {
         throw new Error('Failed to start generation');
       }
-     
+
       // Poll for status
       const pollInterval = setInterval(async () => {
         try {
           const statusResponse = await fetch(`/ai-assistant/status/${taskId}`);
           const statusResult = await statusResponse.json();
-         
+
           if (statusResult.status === 'completed') {
             clearInterval(pollInterval);
             setProcessingStatus('completed');
             setProgress(100);
-           
+
             // Fetch the generated MoM content
             const momResponse = await fetch(`/ai-assistant/mom/${taskId}`);
             const momResult = await momResponse.json();
@@ -174,16 +162,16 @@ const AIAssistant = () => {
       setError('Failed to generate minutes. Please try again.');
     }
   };
- 
+
   const handleDownload = async () => {
     if (!taskId) return;
-   
+
     try {
       const response = await fetch(`/ai-assistant/download/${taskId}`);
       if (!response.ok) {
         throw new Error('Download failed');
       }
-     
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -198,10 +186,10 @@ const AIAssistant = () => {
       setError('Failed to download minutes. Please try again.');
     }
   };
- 
+
   return (
     <ProductDashboardLayout
-      productName="AI MOM"
+      productName="Generate Minutes"
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
@@ -222,7 +210,7 @@ const AIAssistant = () => {
             Home
           </Button>
         </div>
- 
+
         <Card className="max-w-2xl mx-auto shadow-lg rounded-xl border border-gray-200">
           <CardHeader>
             <CardTitle className="text-xl font-semibold">Upload Transcript</CardTitle>
@@ -271,14 +259,14 @@ const AIAssistant = () => {
                 </label>
               </div>
             )}
-           
+
             {uploadStatus === 'uploading' && (
               <div className="mt-4 flex items-center justify-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
                 <p>Uploading...</p>
               </div>
             )}
-           
+
             {uploadStatus === 'success' && (
               <Alert className="mt-4 bg-green-50 border-green-200">
                 <AlertDescription className="text-green-800 flex items-center gap-2">
@@ -287,7 +275,7 @@ const AIAssistant = () => {
                 </AlertDescription>
               </Alert>
             )}
-           
+
             {uploadStatus === 'error' && (
               <Alert variant="destructive" className="mt-4">
                 <AlertDescription className="flex items-center gap-2">
@@ -297,7 +285,7 @@ const AIAssistant = () => {
               </Alert>
             )}
           </CardContent>
-         
+
           {uploadStatus === 'success' && (
             <CardFooter className="flex justify-center">
               <Button
@@ -320,7 +308,7 @@ const AIAssistant = () => {
             </CardFooter>
           )}
         </Card>
- 
+
         {processingStatus === 'processing' && (
           <Card className="max-w-2xl mx-auto shadow-lg rounded-xl border border-gray-200">
             <CardHeader>
@@ -342,7 +330,7 @@ const AIAssistant = () => {
             </CardContent>
           </Card>
         )}
- 
+
         {processingStatus === 'completed' && momContent && (
           <Card className="shadow-lg rounded-xl border border-gray-200 bg-white">
             <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50 border-b border-gray-200 rounded-t-xl">
@@ -358,7 +346,7 @@ const AIAssistant = () => {
                 <h3 className="text-2xl font-bold text-gray-900">{momContent.title}</h3>
                 <p className="text-muted-foreground mt-1">Date: {momContent.date}</p>
               </div>
-             
+
               <div>
                 <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-blue-500"></div>
@@ -372,7 +360,7 @@ const AIAssistant = () => {
                   ))}
                 </ul>
               </div>
-             
+
               <div>
                 <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-blue-500"></div>
@@ -384,7 +372,7 @@ const AIAssistant = () => {
                   ))}
                 </ul>
               </div>
-             
+
               <div>
                 <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-blue-500"></div>
@@ -396,7 +384,7 @@ const AIAssistant = () => {
                   ))}
                 </ul>
               </div>
-             
+
               <div>
                 <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-blue-500"></div>
@@ -410,7 +398,7 @@ const AIAssistant = () => {
                   ))}
                 </ul>
               </div>
-             
+
               <div>
                 <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-blue-500"></div>
@@ -430,7 +418,7 @@ const AIAssistant = () => {
             </CardFooter>
           </Card>
         )}
- 
+
         {error && (
           <Alert variant="destructive" className="max-w-2xl mx-auto">
             <AlertDescription>{error}</AlertDescription>
@@ -440,6 +428,5 @@ const AIAssistant = () => {
     </ProductDashboardLayout>
   );
 };
- 
+
 export default AIAssistant;
- 

@@ -639,6 +639,7 @@ const DirectorsDisclosureMasterData = () => {
                     <TableHead className="font-semibold">Director Name</TableHead>
                     <TableHead className="font-semibold">DIN</TableHead>
                     <TableHead className="font-semibold">PAN</TableHead>
+                    <TableHead className="font-semibold">Profile Photo</TableHead>
                     <TableHead className="font-semibold text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -671,6 +672,20 @@ const DirectorsDisclosureMasterData = () => {
                             ) : (
                               <span className="text-gray-400 text-[10px]"></span>
                             )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center">
+                            <div className="h-10 w-10 rounded-full overflow-hidden border flex items-center justify-center bg-gray-50">
+                              <img
+                                src={`/api/directors-profile/${director.din}/image`}
+                                alt={director.name}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(director.name)}&background=f0e6f7&color=75479C&bold=true`;
+                                }}
+                              />
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>

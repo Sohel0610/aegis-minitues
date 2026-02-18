@@ -1,10 +1,10 @@
 import { ReactNode, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
-  Mail, 
-  ChevronLeft, 
+import {
+  LayoutDashboard,
+  Mail,
+  ChevronLeft,
   ChevronRight,
   Menu,
   Bell,
@@ -127,15 +127,15 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
         <div className="p-4 border-b" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
           <div className="flex items-center justify-between">
             {!isCollapsed && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex items-center gap-2"
               >
                 <div className="w-10 h-10 flex items-center justify-center">
-                  <img 
-                    src="/adani.svg" 
-                    alt="AGEIS Logo" 
+                  <img
+                    src="/adani.svg"
+                    alt="AGEIS Logo"
                     className="w-8 h-8 object-contain"
                   />
                 </div>
@@ -163,24 +163,22 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
                 <li key={item.id}>
                   <button
                     onClick={() => handleNavigation(item)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group ${
-                      item.isActive ? 'shadow-lg' : 'hover:shadow-md'
-                    }`}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group ${item.isActive ? 'shadow-lg' : 'hover:shadow-md'
+                      }`}
                     style={{
-                      backgroundColor: item.isActive 
-                        ? 'rgba(30, 64, 175, 0.1)' 
+                      backgroundColor: item.isActive
+                        ? 'rgba(30, 64, 175, 0.1)'
                         : 'transparent',
                       color: item.isActive ? '#000000' : '#000000',
-                      border: item.isActive 
-                        ? '1px solid rgba(30, 64, 175, 0.3)' 
+                      border: item.isActive
+                        ? '1px solid rgba(30, 64, 175, 0.3)'
                         : '1px solid transparent'
                     }}
                   >
-                    <IconComponent 
-                      size={20} 
-                      className={`flex-shrink-0 transition-colors ${
-                        item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
-                      }`}
+                    <IconComponent
+                      size={20}
+                      className={`flex-shrink-0 transition-colors ${item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
+                        }`}
                     />
                     <AnimatePresence>
                       {!isCollapsed && (
@@ -204,14 +202,12 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
         {/* Sidebar Footer */}
         <div className="p-4 border-t" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
           {!isCollapsed && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="text-xs "
               style={{ color: 'rgba(0, 0, 0, 0.7)' }}
             >
-              <div>STATUS: ONLINE</div>
-              <div>VER: 1.0.0</div>
             </motion.div>
           )}
         </div>
@@ -242,18 +238,18 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
               <div className="p-4 border-b" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 flex items-center justify-center">
-                    <img 
-                      src="/adani.svg" 
-                      alt="AGEIS Logo" 
+                    <img
+                      src="/adani.svg"
+                      alt="AGEIS Logo"
                       className="w-8 h-8 object-contain"
-                  />
+                    />
                   </div>
                   <h2 className="font-bold text-lg" style={{ color: '#000000' }}>
                     BSE Alerts
                   </h2>
                 </div>
               </div>
-              
+
               <nav className="flex-1 p-4">
                 <ul className="space-y-2">
                   {navigationItems.map((item) => {
@@ -265,16 +261,15 @@ const BSEAlertsDashboardLayout = ({ children }: BSEAlertsDashboardLayoutProps) =
                             handleNavigation(item);
                             setIsMobileOpen(false);
                           }}
-                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${
-                            item.isActive ? 'shadow-lg' : 'hover:shadow-md'
-                          }`}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${item.isActive ? 'shadow-lg' : 'hover:shadow-md'
+                            }`}
                           style={{
-                            backgroundColor: item.isActive 
-                              ? 'rgba(30, 64, 175, 0.1)' 
+                            backgroundColor: item.isActive
+                              ? 'rgba(30, 64, 175, 0.1)'
                               : 'transparent',
                             color: item.isActive ? '#000000' : '#000000',
-                            border: item.isActive 
-                              ? '1px solid rgba(30, 64, 175, 0.3)' 
+                            border: item.isActive
+                              ? '1px solid rgba(30, 64, 175, 0.3)'
                               : '1px solid transparent'
                           }}
                         >

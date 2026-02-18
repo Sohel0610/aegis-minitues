@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 
 # Import our enhanced matching algorithm
-from EnhancedIndianNameMatcher import indian_name_similarity
+from .EnhancedIndianNameMatcher import indian_name_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ router = APIRouter()
 class FamilyMemberInfo(BaseModel):
     relationship: str
     details: str
+    pan_number: Optional[str] = None
 
 class DirectorFamilyInfoResponse(BaseModel):
     director_name: str
@@ -30,6 +31,7 @@ class DirectorFamilyInfoResponse(BaseModel):
     match_score: float
     section_2_77_i: Optional[str] = None
     section_2_77_ii: Optional[str] = None
+    section_2_77_ii_pan: Optional[str] = None
     section_2_77_iii: Optional[str] = None
     family_members: List[FamilyMemberInfo]
     created_at: str = datetime.now().isoformat()
@@ -37,6 +39,13 @@ class DirectorFamilyInfoResponse(BaseModel):
 class FamilyInfoListResponse(BaseModel):
     data: List[DirectorFamilyInfoResponse]
     count: int
+
+class DirectorFamilyUpdate(BaseModel):
+    section_2_77_i: Optional[str] = None
+    section_2_77_ii: Optional[str] = None
+    section_2_77_ii_pan: Optional[str] = None
+    section_2_77_iii: Optional[str] = None
+    family_members: List[FamilyMemberInfo]
 
 # Database paths
 directors_db_path = os.path.join(os.path.dirname(__file__), "..", "public", "directors.db")
@@ -72,8 +81,9 @@ def get_family_info_for_director(director_name: str):
             # If we found a match, get the detailed family information
             if best_match:
                 family_cursor.execute("""
-                    SELECT Name, "Section_2(77)(i)", "Section_2(77)(ii)", "Section_2(77)(iii)", 
-                           Father, Mother, Son, "Son's_Wife", Daughter, "Daughter's_husband", Brother, Sister 
+                    SELECT Name, "Section_2(77)(i)", "Section_2(77)(ii)", section_2_77_ii_pan, "Section_2(77)(iii)", 
+                           Father, Mother, Son, "Son's_Wife", Daughter, "Daughter's_husband", Brother, Sister,
+                           Family_Members_JSON
                     FROM Sheet1 
                     WHERE Name = ?
                 """, (best_match,))
@@ -87,26 +97,39 @@ def get_family_info_for_director(director_name: str):
                     # Add section information
                     section_2_77_i = family_data[1] if family_data[1] else None
                     section_2_77_ii = family_data[2] if family_data[2] else None
-                    section_2_77_iii = str(family_data[3]) if family_data[3] is not None else None
+                    section_2_77_ii_pan = family_data[3] if family_data[3] else None
+                    section_2_77_iii = str(family_data[4]) if family_data[4] is not None else None
                     
-                    # Add family members
-                    relationships = [
-                        ("Father", family_data[4]),
-                        ("Mother", family_data[5]),
-                        ("Son", family_data[6]),
-                        ("Son's Wife", family_data[7]),
-                        ("Daughter", family_data[8]),
-                        ("Daughter's Husband", family_data[9]),
-                        ("Brother", family_data[10]),
-                        ("Sister", family_data[11])
-                    ]
+                    # Check if we have JSON data
+                    json_data = family_data[13]
+                    if json_data:
+                        try:
+                            import json
+                            family_members = json.loads(json_data)
+                        except Exception as e:
+                            logger.error(f"Error parsing JSON for {best_match}: {str(e)}")
+                            # Fallback to legacy
                     
-                    for relationship, details in relationships:
-                        if details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']:
-                            family_members.append({
-                                "relationship": relationship,
-                                "details": str(details)
-                            })
+                    # Fallback to legacy columns if JSON is empty
+                    if not family_members:
+                        relationships = [
+                            ("Father", family_data[5]),
+                            ("Mother", family_data[6]),
+                            ("Son", family_data[7]),
+                            ("Son's Wife", family_data[8]),
+                            ("Daughter", family_data[9]),
+                            ("Daughter's Husband", family_data[10]),
+                            ("Brother", family_data[11]),
+                            ("Sister", family_data[12])
+                        ]
+                        
+                        for relationship, details in relationships:
+                            if details and str(details).strip().lower() not in ['n/a', 'none', '', 'nil']:
+                                family_members.append({
+                                    "relationship": relationship,
+                                    "details": str(details),
+                                    "pan_number": None
+                                })
                     
                     return {
                         "director_name": director_name,
@@ -114,6 +137,7 @@ def get_family_info_for_director(director_name: str):
                         "match_score": round(best_score, 2),
                         "section_2_77_i": section_2_77_i,
                         "section_2_77_ii": section_2_77_ii,
+                        "section_2_77_ii_pan": section_2_77_ii_pan,
                         "section_2_77_iii": section_2_77_iii,
                         "family_members": family_members
                     }
@@ -205,15 +229,69 @@ async def get_all_directors_family_info():
 
 # Endpoint to update family information for a director
 @router.put("/api/directors/{director_name}/family-info")
-async def update_director_family_info(director_name: str, family_info: Dict[str, Any]):
+async def update_director_family_info(director_name: str, update_data: DirectorFamilyUpdate):
     """Update family information for a director"""
     try:
-        # This would be implemented to update the family database
-        # For now, we'll just return a placeholder response
-        return {
-            "success": True,
-            "message": f"Family information update for {director_name} would be implemented here"
-        }
+        if not os.path.exists(family_db_path):
+            raise HTTPException(status_code=404, detail="Family database not found")
+            
+        def perform_update():
+            import json
+            conn = sqlite3.connect(family_db_path)
+            cursor = conn.cursor()
+            
+            try:
+                # First, find the matched name using similarity (keeping consistency with GET)
+                cursor.execute("SELECT Name FROM Sheet1")
+                all_names = [row[0] for row in cursor.fetchall()]
+                
+                best_match = None
+                best_score = 0
+                for name in all_names:
+                    score = indian_name_similarity(director_name, name)
+                    if score > best_score and score >= 0.5:
+                        best_score = score
+                        best_match = name
+                
+                if not best_match:
+                    # If no match, we create a new entry for this director
+                    best_match = director_name
+                    cursor.execute('INSERT INTO Sheet1 (Name) VALUES (?)', (director_name,))
+                
+                # Convert family members to JSON
+                family_json = json.dumps([m.dict() for m in update_data.family_members])
+                
+                # Update the database
+                cursor.execute("""
+                    UPDATE Sheet1 
+                    SET "Section_2(77)(i)" = ?, 
+                        "Section_2(77)(ii)" = ?, 
+                        section_2_77_ii_pan = ?,
+                        "Section_2(77)(iii)" = ?,
+                        Family_Members_JSON = ?,
+                        Is_Submitted = 1
+                    WHERE Name = ?
+                """, (
+                    update_data.section_2_77_i,
+                    update_data.section_2_77_ii,
+                    update_data.section_2_77_ii_pan,
+                    update_data.section_2_77_iii,
+                    family_json,
+                    best_match
+                ))
+                
+                conn.commit()
+                return best_match
+            finally:
+                conn.close()
+        
+        loop = asyncio.get_event_loop()
+        matched_name = await loop.run_in_executor(thread_pool, perform_update)
+        
+        # Return the updated info to match frontend expectation
+        updated_info = await get_director_family_info(director_name)
+        return updated_info
+        
     except Exception as e:
         logger.error(f"Error updating family info for director {director_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update family info: {str(e)}")

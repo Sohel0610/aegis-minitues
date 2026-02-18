@@ -16,7 +16,11 @@ from . import (
     minutes,
     ai_assistant,
     chat,
-    visit_tracking
+    visit_tracking,
+    auth,
+    user_management,
+    insider_trading,
+    director_family_info
 )
 
 # Export all routers
@@ -34,5 +38,9 @@ __all__ = [
     "minutes",
     "ai_assistant",
     "chat",
-    "visit_tracking"
+    "visit_tracking",
+    "auth",
+    "user_management",
+    "insider_trading",
+    "director_family_info"
 ]

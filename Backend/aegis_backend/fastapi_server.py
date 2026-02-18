@@ -66,7 +66,9 @@ from routes import (
     insider_trading,
     chat,
     auth,
-    user_management
+    user_management,
+    director_family_info,
+    director_changes
 )
 
 # Include all route modules
@@ -87,6 +89,8 @@ app.include_router(insider_trading.router)
 app.include_router(chat.router)
 app.include_router(auth.router)
 app.include_router(user_management.router)
+app.include_router(director_family_info.router)
+app.include_router(director_changes.router)
 
 # Custom thread pool for handling blocking operations
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)

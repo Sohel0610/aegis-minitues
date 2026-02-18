@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { FileText, Database, BarChart3, Home, FileSpreadsheet } from "lucide-react";
+import { FileText, Database, BarChart3, Home, FileSpreadsheet, History } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import DirectorsDisclosureDataSource from "./DirectorsDisclosure/DirectorsDisclosureDataSource";
 import DirectorsDisclosureAnalytics from "./DirectorsDisclosure/DirectorsDisclosureAnalytics";
 import DirectorsDisclosureMasterData from "./DirectorsDisclosure/DirectorsDisclosureMasterData";
 import DirectorsDisclosureCompaniesMasterData from "./DirectorsDisclosure/DirectorsDisclosureCompaniesMasterData";
+import DirectorDisclosureChanges from "./DirectorsDisclosure/DirectorDisclosureChanges";
 
 type TabType = 'analytics' | 'datasource' | 'masterdata' | 'companies';
 
@@ -18,7 +19,7 @@ const DirectorsDisclosure = () => {
   const navigationItems = useMemo(() => {
     // Get the current path without query params or hash
     const currentPath = location.pathname;
-    
+
     return [
       {
         id: 'home',
@@ -27,32 +28,39 @@ const DirectorsDisclosure = () => {
         href: '/',
       },
       {
-        id: 'analytics',
-        label: 'Analytics',
-        icon: BarChart3,
+        id: 'masterdata',
+        label: 'Directors Master Data',
+        icon: Database,
         href: '/directors-disclosure',
-        isActive: currentPath === '/directors-disclosure' || currentPath === '/directors-disclosure/'
+        isActive: currentPath === '/directors-disclosure' || currentPath === '/directors-disclosure/' || currentPath.endsWith('/master-data')
       },
       {
         id: 'datasource',
         label: 'Data Source',
         icon: FileText,
         href: '/directors-disclosure/data-source',
-        isActive: currentPath === '/directors-disclosure/data-source'
+        isActive: currentPath.endsWith('/data-source')
       },
       {
-        id: 'masterdata',
-        label: 'Directors Master Data',
-        icon: Database,
-        href: '/directors-disclosure/master-data',
-        isActive: currentPath === '/directors-disclosure/master-data'
+        id: 'changes',
+        label: 'Director Disclosure Changes',
+        icon: History,
+        href: '/directors-disclosure/changes',
+        isActive: currentPath.endsWith('/changes')
+      },
+      {
+        id: 'analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        href: '/directors-disclosure/analytics',
+        isActive: currentPath.endsWith('/analytics')
       },
       {
         id: 'companies',
         label: 'Companies Master List',
         icon: FileSpreadsheet,
         href: '/directors-disclosure/companies-master-data',
-        isActive: currentPath === '/directors-disclosure/companies-master-data'
+        isActive: currentPath.endsWith('/companies-master-data')
       }
     ];
   }, [location.pathname]);
@@ -63,17 +71,21 @@ const DirectorsDisclosure = () => {
       return <DirectorsDisclosureDataSource />;
     } else if (location.pathname.endsWith('/master-data')) {
       return <DirectorsDisclosureMasterData />;
+    } else if (location.pathname.endsWith('/analytics')) {
+      return <DirectorsDisclosureAnalytics />;
     } else if (location.pathname.endsWith('/companies-master-data')) {
       return <DirectorsDisclosureCompaniesMasterData />;
+    } else if (location.pathname.endsWith('/changes')) {
+      return <DirectorDisclosureChanges />;
     } else {
-      // Default to analytics
-      return <DirectorsDisclosureAnalytics />;
+      // Default to Directors Master Data
+      return <DirectorsDisclosureMasterData />;
     }
   };
 
   return (
-    <ProductDashboardLayout 
-      productName="Directors' Disclosure" 
+    <ProductDashboardLayout
+      productName="Directors' Disclosure"
       productRoute="/directors-disclosure"
       navigationItems={navigationItems}
     >

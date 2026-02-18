@@ -80,11 +80,11 @@ const fetchRBIData = async (limit: number = 100, offset: number = 0): Promise<an
       signal: controller.signal
     });
     clearTimeout(timeoutId);
-   
+
     if (!response.ok) {
       throw new Error(`Failed to fetch RBI data: ${response.status} ${response.statusText}`);
     }
-    
+
     // Check if response is JSON
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
@@ -92,7 +92,7 @@ const fetchRBIData = async (limit: number = 100, offset: number = 0): Promise<an
       console.error('Non-JSON response:', text);
       throw new Error('Received non-JSON response from server');
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -104,29 +104,38 @@ const fetchRBIData = async (limit: number = 100, offset: number = 0): Promise<an
   }
 };
 
+// Helper to parse DD-MM-YYYY string safely
+const parseDateString = (dateStr: string): Date | null => {
+  if (!dateStr) return null;
+  try {
+    // Handle DD-MM-YYYY format
+    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(dateStr)) {
+      const [day, month, year] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    // Handle YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  } catch (e) {
+    return null;
+  }
+};
+
 // Transform RBI data to match ExcelView format
 const transformRBIDataForExcelView = (data: RBIMasterSummary[]) => {
   // Sort data by date in descending order (newest first)
   const sortedData = [...data].sort((a, b) => {
-    if (!a.date_key || !b.date_key) return 0;
-    
-    try {
-      // Parse DD-MM-YYYY format
-      const [dayA, monthA, yearA] = a.date_key.split('-').map(Number);
-      const [dayB, monthB, yearB] = b.date_key.split('-').map(Number);
-      
-      // Create Date objects
-      const dateA = new Date(yearA, monthA - 1, dayA);
-      const dateB = new Date(yearB, monthB - 1, dayB);
-      
-      // Sort in descending order (newest first)
-      return dateB.getTime() - dateA.getTime();
-    } catch (e) {
-      console.error("Error parsing dates for sorting:", a.date_key, b.date_key, e);
-      return 0;
-    }
+    const dateA = parseDateString(a.date_key || "");
+    const dateB = parseDateString(b.date_key || "");
+
+    if (!dateA || !dateB) return 0;
+    return dateB.getTime() - dateA.getTime();
   });
-  
+
   return sortedData
     .filter(item => !(item.pdf_link === 'NIL' && item.summary === 'NIL')) // Only filter out records where both are NIL
     .map(item => ({
@@ -136,43 +145,33 @@ const transformRBIDataForExcelView = (data: RBIMasterSummary[]) => {
     }));
 };
 
+
 // Filter data to show only the latest month
 const filterDataByLatestMonth = (data: any[]) => {
   if (!data || data.length === 0) return data;
-  
+
   // Find the latest date in the data
   let latestDate: Date | null = null;
   data.forEach(item => {
-    if (item.date_key) {
-      try {
-        const date = new Date(item.date_key);
-        if (!latestDate || date > latestDate) {
-          latestDate = date;
-        }
-      } catch (e) {
-        console.error("Error parsing date:", item.date_key, e);
-      }
+    const d = parseDateString(item.Date || item.date_key || "");
+    if (d && (!latestDate || d > latestDate)) {
+      latestDate = d;
     }
   });
-  
+
   // If no valid dates found, return original data
   if (!latestDate) return data;
-  
+
   // Filter data to only include records from the latest month
   const latestMonth = latestDate.getMonth();
   const latestYear = latestDate.getFullYear();
-  
+
   return data.filter(item => {
-    if (!item.date_key) return false;
-    try {
-      const itemDate = new Date(item.date_key);
-      return itemDate.getMonth() === latestMonth && itemDate.getFullYear() === latestYear;
-    } catch (e) {
-      console.error("Error parsing date:", item.date_key, e);
-      return false;
-    }
+    const d = parseDateString(item.Date || item.date_key || "");
+    return d && d.getMonth() === latestMonth && d.getFullYear() === latestYear;
   });
 };
+
 
 const RBITotalNotifications = () => {
   // Add scroll to top effect
@@ -206,7 +205,7 @@ const RBITotalNotifications = () => {
       try {
         setLoading(true);
         setError(null);
-       
+
         // Check cache first if enabled
         if (useCache) {
           const cachedData = loadFromCache();
@@ -216,25 +215,25 @@ const RBITotalNotifications = () => {
             return;
           }
         }
-       
+
         // Fetch RBI data from the new endpoint
         const rbiDataResponse = await fetchRBIData(1000, 0); // Fetch all valid records
         const rbiData = rbiDataResponse.data;
         const totalNotificationsCount = rbiDataResponse.count; // Get total count from API response
-       
+
         // Filter out records where both pdf_link and summary are NIL
-        const filteredData = rbiData.filter((item: RBIMasterSummary) => 
+        const filteredData = rbiData.filter((item: RBIMasterSummary) =>
           !(item.pdf_link === 'NIL' && item.summary === 'NIL')
         );
-       
+
         // Transform data for ExcelView
         const transformedData = transformRBIDataForExcelView(filteredData);
-        
+
         // Filter data to show only latest month
         const latestMonthData = filterDataByLatestMonth(transformedData);
-        
+
         setRBIData(latestMonthData);
-       
+
         // Save to cache with total count
         if (useCache) {
           saveToCache({
@@ -274,8 +273,8 @@ const RBITotalNotifications = () => {
             <AlertCircle className="h-12 w-12 mx-auto mb-4" style={{ color: "#EF4444" }} />
             <h2 className="text-xl font-bold mb-2" style={{ color: "#000000" }}>Error Loading RBI Data</h2>
             <p className="mb-4" style={{ color: "#000000" }}>{error}</p>
-            <Button 
-              onClick={() => window.location.reload()} 
+            <Button
+              onClick={() => window.location.reload()}
               style={{
                 backgroundColor: '#75479C',
                 color: 'white'
@@ -293,7 +292,7 @@ const RBITotalNotifications = () => {
     <RBIAnalysisDashboardLayout>
       {/* Notification Bar at top of page */}
       <NotificationBar />
-      
+
       <div className="min-h-screen" style={{
         background: "#ffffff",
       }}>
@@ -322,8 +321,8 @@ const RBITotalNotifications = () => {
             ) : error ? (
               <div className="bg-red-50 border border-red-200 rounded p-4 text-red-700">
                 <p>Error: {error}</p>
-                <Button 
-                  onClick={() => window.location.reload()} 
+                <Button
+                  onClick={() => window.location.reload()}
                   className="mt-2"
                   style={{
                     backgroundColor: '#75479C',
@@ -380,7 +379,7 @@ const RBITotalNotifications = () => {
               Detailed information for the selected notification record
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedRecord && (
             <div className="space-y-6 mt-4 w-full">
               {/* Entity Information */}
@@ -412,9 +411,9 @@ const RBITotalNotifications = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="prose prose-sm max-w-none w-full">
-                    <div 
-                      className="text-sm leading-relaxed whitespace-pre-line p-4 rounded-lg w-full" 
-                      style={{ 
+                    <div
+                      className="text-sm leading-relaxed whitespace-pre-line p-4 rounded-lg w-full"
+                      style={{
                         background: '#ffffff',
                         border: '1px solid #75479C'
                       }}

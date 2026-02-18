@@ -97,7 +97,7 @@ def generate_summary_with_groq(content, max_tokens=1000):
         Focus on the key information such as:
         - Director's name and DIN
         - Companies and positions held
-        - Shareholding details
+        - Shareholding details (Include ONLY active shareholdings; exclude any shareholdings marked as inactive, ceased, or past)
         - Other significant disclosures
         - Any important declarations or concerns
         
@@ -110,6 +110,7 @@ def generate_summary_with_groq(content, max_tokens=1000):
         6. Do not use any markdown formatting, asterisks, or plus signs
         7. Do not include any extra formatting characters
         8. Each section should be clearly separated
+        9. CRITICAL: When listing shareholding details, strictly filter out any entries that are marked as "inactive", "ceased", "former", or have a cessation date in the past. Only list currently active shareholdings.
         
         Example format:
         
@@ -126,7 +127,7 @@ def generate_summary_with_groq(content, max_tokens=1000):
 
         Shareholding Details:
 
-        [Information about shareholding]
+        [Information about active shareholding only]
 
         Other Significant Disclosures:
 
@@ -199,7 +200,7 @@ def generate_summary_with_azure_openai(content, max_tokens=1000):
                     Focus on the key information such as:
                     - Director's name and DIN
                     - Companies and positions held
-                    - Shareholding details
+                    - Shareholding details (Include ONLY active shareholdings; exclude any shareholdings marked as inactive, ceased, or past)
                     - Other significant disclosures
                     - Any important declarations or concerns
                     
@@ -212,6 +213,7 @@ def generate_summary_with_azure_openai(content, max_tokens=1000):
                     6. Do not use any markdown formatting, asterisks, or plus signs
                     7. Do not include any extra formatting characters
                     8. Each section should be clearly separated
+                    9. CRITICAL: When listing shareholding details, strictly filter out any entries that are marked as "inactive", "ceased", "former", or have a cessation date in the past. Only list currently active shareholdings.
                     
                     Example format:
                     
@@ -228,7 +230,7 @@ def generate_summary_with_azure_openai(content, max_tokens=1000):
 
                     Shareholding Details:
 
-                    [Information about shareholding]
+                    [Information about active shareholding only]
 
                     Other Significant Disclosures:
 

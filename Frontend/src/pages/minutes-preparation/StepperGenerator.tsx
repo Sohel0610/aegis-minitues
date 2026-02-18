@@ -6,23 +6,17 @@ import { FileText } from 'lucide-react';
 const StepperGenerator = () => {
   // Define navigation items for this product
   const navigationItems = [
-    {
-      id: 'home',
-      label: 'Home',
-      icon: FileText,
-      href: '/',
-    },
-    {
-      id: 'dashboard',
-      label: 'Minutes Generator',
-      icon: FileText,
-      href: '/minutes-preparation',
-    }
+    { id: 'home', label: 'Home', icon: FileText, href: '/' },
+    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
+    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
+    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+    { id: 'template-resolution', label: 'Template Resolution', icon: FileText, href: '/minutes-preparation/template-resolution' },
   ];
 
   return (
-    <ProductDashboardLayout 
-      productName="Minutes Generator" 
+    <ProductDashboardLayout
+      productName="Generate Minutes"
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
