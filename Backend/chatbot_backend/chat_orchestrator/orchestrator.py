@@ -60,6 +60,17 @@ class ChatOrchestrator:
 
         return filtered
 
+    def detect_domain(self, query: str) -> str:
+        """Detect domain from query"""
+        q = query.lower()
+        if any(w in q for w in ["bse", "stock", "shares", "scrip", "price", "market"]):
+             return "bse"
+        if any(w in q for w in ["sebi", "circular", "regulator", "regulation", "adjudication"]):
+             return "sebi"
+        if any(w in q for w in ["rbi", "bank", "monetary", "repo", "rate", "lending"]):
+             return "rbi"
+        return None
+
     def process_query(self, user_query: str, database: str = "all", limit: int = 10, last_n_days: int = None) -> Tuple[object, List[str]]:
         """
         MAIN QUERY PROCESSOR
@@ -80,15 +91,34 @@ class ChatOrchestrator:
             entity_aliases = resolved["aliases"]
             print(f" [ENTITY_LOCK] {strict_entity_canonical}")
 
-        # Step 3: Detect Intent
+        # Step 3: Detect Domain if generic (AUTO-ROUTING)
+        if database == "all" or database is None:
+            detected = self.detect_domain(user_query)
+            if detected:
+                database = detected
+                print(f" [AUTO_ROUTING] Detected domain: {database}")
+            else:
+                # Handle greetings specifically
+                if user_query.lower().strip() in ["hi", "hello", "hey", "help"]:
+                    return "Hello! I am your AEGIS Assistant. I can help you with data from BSE, SEBI, and RBI. Which one would you like to explore?", []
+                
+                # Check for explicit clarification intent or if query is too generic
+                # Return structured request for clarification
+                return {
+                    "response_type": "clarification_needed", 
+                    "message": "I can search across BSE, SEBI, and RBI. Which domain are you referring to?",
+                    "options": ["BSE", "SEBI", "RBI"]
+                }, []
+
+        # Step 4: Detect Intent
         query_intent = self.detect_query_intent(user_query)
         print(f" [QUERY_INTENT] {query_intent}")
 
-        # Step 4: Handle Analytics
+        # Step 5: Handle Analytics
         if query_intent == "analytics":
             return self._handle_analytics_query(user_query)
 
-        # Step 5: Route Query - INCREASED LIMIT TO GET ALL DATA
+        # Step 6: Route Query - INCREASED LIMIT TO GET ALL DATA
         retrieval_method, sql_results = route_query(
             user_query,
             limit=1000,  # GET ALL DATA - NO SKIPPING
@@ -96,7 +126,7 @@ class ChatOrchestrator:
             strict_entity=strict_entity_canonical
         )
 
-        # Step 6: Get Notifications
+        # Step 7: Get Notifications
         if retrieval_method in ["structured", "date_only"]:
             notifications = convert_to_common_format(sql_results, database)
             print(f" Retrieved {len(notifications)} via SQL from {database}")
@@ -117,7 +147,7 @@ class ChatOrchestrator:
                 after_count = len(notifications)
                 print(f" [ENTITY_FILTER] {before_count} → {after_count}")
 
-        # Step 7: Format Response
+        # Step 8: Format Response
         if query_intent == "table" or self._wants_table(user_query):
             return self._generate_table_response_perfect(user_query, notifications, strict_entity_canonical)
         else:

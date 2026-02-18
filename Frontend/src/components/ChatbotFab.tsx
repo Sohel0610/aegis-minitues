@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { X, Maximize2, Minimize2, User, Bot } from "lucide-react";
 
-type Channel = "BSE" | "SEBI" | "RBI";
+type Channel = "BSE" | "SEBI" | "RBI" | "All";
 
 type Msg = {
   role: "user" | "bot";
@@ -19,18 +19,21 @@ const prompts: Record<Channel, string[]> = {
   BSE: ["Latest alerts", "Top gainers", "Sector trends"],
   SEBI: ["Weekly notifications", "Compliance highlights", "Investor updates"],
   RBI: ["Policy rates", "Regulatory updates", "Compliance status"],
+  All: ["Latest updates", "Search all", "Summarize news"]
 };
 
 export default function ChatbotFab() {
   const [open, setOpen] = useState(false);
-  const [channel, setChannel] = useState<Channel>("BSE");
+  const [channel, setChannel] = useState<Channel>("All");
   const [input, setInput] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [messages, setMessages] = useState<Record<Channel, Msg[]>>({
     BSE: [],
     SEBI: [],
     RBI: [],
+    All: []
   });
+  const [pendingQuery, setPendingQuery] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const activeMsgs = useMemo(() => messages[channel], [messages, channel]);
@@ -39,20 +42,26 @@ export default function ChatbotFab() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeMsgs.length, open, channel]);
 
-  const send = async (text?: string) => {
+  const send = async (text?: string, dbOverride?: Channel) => {
     const content = (text ?? input).trim();
     if (!content) return;
+
+    const targetChannel = dbOverride || channel;
+    const db = targetChannel === "All" ? "all" : targetChannel.toLowerCase();
+
+    // Optimistically add user message
     const u: Msg = { role: "user", text: content, ts: Date.now() };
-    setMessages((prev) => ({ ...prev, [channel]: [...prev[channel], u] }));
+    setMessages((prev) => ({ ...prev, [targetChannel]: [...prev[targetChannel], u] }));
     setInput("");
+
     try {
-      const db = channel.toLowerCase();
       let botIndex = -1;
       setMessages((prev) => {
-        const next = [...prev[channel], { role: "bot", text: "", ts: Date.now() + 1 }];
+        const next = [...prev[targetChannel], { role: "bot", text: "", ts: Date.now() + 1 }];
         botIndex = next.length - 1;
-        return { ...prev, [channel]: next };
+        return { ...prev, [targetChannel]: next };
       });
+
       const normalize = (s: string) =>
         (s || "")
           .replace(/Â/g, "")
@@ -65,8 +74,9 @@ export default function ChatbotFab() {
           .replace(/â€˜/g, "‘")
           .replace(/â€™/g, "’")
           .replace(/â€œ/g, "“")
-          .replace(/â€/g, "”")
+          .replace(/â€ /g, "”")
           .replace(/â€¦/g, "…");
+
       const res = await fetch("/api/chat/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,25 +86,52 @@ export default function ChatbotFab() {
           database: db,
         }),
       });
+
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
+
       const data = await res.json();
       const structured = data.structured ?? null;
+
+      // Check for clarification needed
+      if (structured && structured.response_type === "clarification_needed") {
+        setPendingQuery(content);
+      } else {
+        setPendingQuery(null);
+      }
+
       setMessages((prev) => {
-        const arr = [...prev[channel]];
+        const arr = [...prev[targetChannel]];
         if (botIndex >= 0 && arr[botIndex]) {
-          arr[botIndex] = { ...arr[botIndex], text: normalize(data.response ?? ""), structured };
+          // If response text is empty but we have a structured message (like clarification), use that description
+          const responseText = normalize(data.response ?? "") || (structured?.message ?? "");
+          arr[botIndex] = { ...arr[botIndex], text: responseText, structured };
         }
-        return { ...prev, [channel]: arr };
+        return { ...prev, [targetChannel]: arr };
       });
     } catch (e) {
       const b: Msg = {
         role: "bot",
-        text: `Sorry, an error occurred while contacting the ${channel} backend.`,
+        text: `Sorry, an error occurred while contacting the backend.`,
         ts: Date.now() + 1,
       };
-      setMessages((prev) => ({ ...prev, [channel]: [...prev[channel], b] }));
+      setMessages((prev) => ({ ...prev, [targetChannel]: [...prev[targetChannel], b] }));
+    }
+  };
+
+  const handleOptionClick = (option: string) => {
+    // Switch context and re-send pending query
+    const newChannel = option as Channel;
+    setChannel(newChannel);
+
+    // Move chat history? Or just start fresh?
+    // For simplicity, we just switch tabs. 
+    // But user context/history is per-tab.
+    // Ideally we should copy the history or something.
+    // But let's just re-send the query in the new channel.
+    if (pendingQuery) {
+      send(pendingQuery, newChannel);
     }
   };
 
@@ -178,12 +215,22 @@ export default function ChatbotFab() {
               <CardContent className="pt-12">
                 <Tabs value={channel} onValueChange={(v) => setChannel(v as Channel)}>
                   <TabsList
-                    className="grid grid-cols-3 h-10 rounded-xl border"
+                    className="grid grid-cols-4 h-10 rounded-xl border"
                     style={{
-                      background: "linear-gradient(135deg, rgba(11,116,176,0.10), rgba(117,71,156,0.10))",
+                      background: "linear-gradient(135deg, rgba(11,116,176,0.05), rgba(117,71,156,0.05))",
                       borderColor: "#0B74B0",
                     }}
                   >
+                    <TabsTrigger
+                      value="All"
+                      className="text-sm font-medium rounded-sm"
+                      style={{
+                        color: channel === "All" ? "#ffffff" : "#333333",
+                        backgroundColor: channel === "All" ? "#333333" : "transparent",
+                      }}
+                    >
+                      All
+                    </TabsTrigger>
                     <TabsTrigger
                       value="BSE"
                       className="text-sm font-medium rounded-sm"
@@ -311,6 +358,22 @@ export default function ChatbotFab() {
                                     ))}
                                   </tbody>
                                 </table>
+                              </div>
+                            ) : m.structured.response_type === "clarification_needed" ? (
+                              <div>
+                                <div className="mb-2 whitespace-pre-wrap">{m.structured.message}</div>
+                                <div className="flex gap-2 flex-wrap">
+                                  {m.structured.options.map((opt: string) => (
+                                    <button
+                                      key={opt}
+                                      onClick={() => handleOptionClick(opt)}
+                                      className="px-3 py-1 bg-white rounded border hover:bg-blue-50 text-xs transition-colors"
+                                      style={{ borderColor: "#0B74B0", color: "#0B74B0" }}
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             ) : (
                               <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
