@@ -22,8 +22,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     requireEdit = false,
     allowedRoles, // Deprecated
 }) => {
-    const { isAuthenticated, isLoading, hasAccess, canAdmin, canEdit } = useAuth();
+    const { isAuthenticated, isLoading, hasAccess, canAdmin, canEdit, ssoEnabled } = useAuth();
     const location = useLocation();
+
+    // When SSO is disabled, skip all auth checks — open access
+    if (!ssoEnabled) {
+        return <>{children}</>;
+    }
 
     // Show loading state
     if (isLoading) {

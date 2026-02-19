@@ -246,7 +246,7 @@ const getBadgeColorForProduct = (status: 'Live' | 'Coming Soon') => {
 
 const LandingPage = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user, login, logout, isAdmin } = useAuth();
+  const { isAuthenticated, user, login, logout, isAdmin, ssoEnabled } = useAuth();
   const [visitCount, setVisitCount] = useState<number>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
@@ -316,37 +316,39 @@ const LandingPage = () => {
   return (
     <div className="min-h-screen bg-white">
 
-      {/* SSO Login Header */}
-      <div className="fixed top-0 right-0 z-50 p-4">
-        {isAuthenticated && user ? (
-          <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">{user.name || user.email}</span>
+      {/* SSO Login Header — hidden when SSO is disabled */}
+      {ssoEnabled && (
+        <div className="fixed top-0 right-0 z-50 p-4">
+          {isAuthenticated && user ? (
+            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">{user.name || user.email}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={logout}
+                className="rounded-full"
+              >
+                Logout
+              </Button>
             </div>
+          ) : (
             <Button
-              variant="outline"
-              size="sm"
-              onClick={logout}
-              className="rounded-full"
+              onClick={login}
+              className="rounded-full shadow-lg"
+              style={{
+                backgroundColor: '#0B74B0',
+                color: 'white'
+              }}
             >
-              Logout
+              <LogIn className="h-4 w-4 mr-2" />
+              Login with SSO
             </Button>
-          </div>
-        ) : (
-          <Button
-            onClick={login}
-            className="rounded-full shadow-lg"
-            style={{
-              backgroundColor: '#0B74B0',
-              color: 'white'
-            }}
-          >
-            <LogIn className="h-4 w-4 mr-2" />
-            Login with SSO
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Orbit Section with Background Image - Fully responsive */}
       <div className="flex flex-col items-center justify-center min-h-screen relative overflow-hidden bg-white w-full">

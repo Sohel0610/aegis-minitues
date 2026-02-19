@@ -1,14 +1,15 @@
 import { ReactNode, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
+import {
+  LayoutDashboard,
   Shield,
   Mail,
-  ChevronLeft, 
+  ChevronLeft,
   ChevronRight,
   Menu,
   Bell,
+  BookOpen,
   LucideIcon
 } from "lucide-react";
 
@@ -58,6 +59,13 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
       icon: Mail,
       href: '/sebi-emaildata',
       isActive: location.pathname === '/sebi-emaildata'
+    },
+    {
+      id: 'user-guide',
+      label: 'User Guide',
+      icon: BookOpen,
+      href: '/sebi-user-guide',
+      isActive: location.pathname === '/sebi-user-guide'
     }
   ];
 
@@ -118,15 +126,15 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
         <div className="p-4 border-b" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
           <div className="flex items-center justify-between">
             {!isCollapsed && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex items-center gap-2"
               >
                 <div className="w-10 h-10 flex items-center justify-center">
-                  <img 
-                    src="/adani.svg" 
-                    alt="AGEIS Logo" 
+                  <img
+                    src="/adani.svg"
+                    alt="AGEIS Logo"
                     className="w-8 h-8 object-contain"
                   />
                 </div>
@@ -154,24 +162,22 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
                 <li key={item.id}>
                   <button
                     onClick={() => handleNavigation(item)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group ${
-                      item.isActive ? 'shadow-lg' : 'hover:shadow-md'
-                    }`}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group ${item.isActive ? 'shadow-lg' : 'hover:shadow-md'
+                      }`}
                     style={{
-                      backgroundColor: item.isActive 
+                      backgroundColor: item.isActive
                         ? 'rgba(189, 56, 97, 0.1)' // X11 Maroon with transparency
                         : 'transparent',
                       color: item.isActive ? '#000000' : '#000000',
-                      border: item.isActive 
+                      border: item.isActive
                         ? '1px solid rgba(189, 56, 97, 0.3)' // X11 Maroon border
                         : '1px solid transparent'
                     }}
                   >
-                    <IconComponent 
-                      size={20} 
-                      className={`flex-shrink-0 transition-colors ${
-                        item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
-                      }`}
+                    <IconComponent
+                      size={20}
+                      className={`flex-shrink-0 transition-colors ${item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
+                        }`}
                     />
                     <AnimatePresence>
                       {!isCollapsed && (
@@ -195,7 +201,7 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
         {/* Sidebar Footer */}
         <div className="p-4 border-t" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
           {!isCollapsed && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="text-xs "
@@ -233,18 +239,18 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
               <div className="p-4 border-b" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 flex items-center justify-center">
-                    <img 
-                      src="/adani.svg" 
-                      alt="AGEIS Logo" 
+                    <img
+                      src="/adani.svg"
+                      alt="AGEIS Logo"
                       className="w-8 h-8 object-contain"
-                  />
+                    />
                   </div>
                   <h2 className="font-bold text-lg" style={{ color: '#000000' }}>
                     SEBI Analysis
                   </h2>
                 </div>
               </div>
-              
+
               <nav className="flex-1 p-4">
                 <ul className="space-y-2">
                   {navigationItems.map((item) => {
@@ -256,15 +262,14 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
                             handleNavigation(item);
                             setIsMobileOpen(false);
                           }}
-                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${
-                            item.isActive ? 'shadow-lg' : 'hover:shadow-md'
-                          }`}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${item.isActive ? 'shadow-lg' : 'hover:shadow-md'
+                            }`}
                           style={{
-                            backgroundColor: item.isActive 
+                            backgroundColor: item.isActive
                               ? 'rgba(189, 56, 97, 0.1)' // X11 Maroon with transparency
                               : 'transparent',
                             color: item.isActive ? '#000000' : '#000000',
-                            border: item.isActive 
+                            border: item.isActive
                               ? '1px solid rgba(189, 56, 97, 0.3)' // X11 Maroon border
                               : '1px solid transparent'
                           }}

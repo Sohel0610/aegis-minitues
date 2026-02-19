@@ -26,13 +26,17 @@ tread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # Create a router instance for authentication endpoints
 router = APIRouter()
 
+# SSO Toggle - when False, the app is fully open with no login required
+SSO_ENABLED = os.getenv("SSO_ENABLED", "True").lower() in ("true", "1", "yes")
+logger.info(f"SSO_ENABLED = {SSO_ENABLED}")
+
 # Configuration from environment variables
 CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("AZURE_AD_CLIENT_SECRET")
 TENANT_ID = os.getenv("AZURE_AD_TENANT_ID")
 REDIRECT_URI = os.getenv("AZURE_AD_REDIRECT_URI", "https://aegis.adani.com/api/auth/callback")
 
-if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
+if SSO_ENABLED and not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
     logger.warning("Azure AD configuration not fully set. Authentication endpoints may not work properly.")
 
 def get_user_permissions_from_db(email: str) -> dict:
@@ -79,10 +83,18 @@ class AuthResponse(BaseModel):
     token: Optional[str] = None
     user: Optional[Dict[str, Any]] = None
 
+# Endpoint to return auth configuration to frontend
+@router.get("/api/auth/config")
+async def get_auth_config():
+    """Return authentication configuration so frontend can adapt"""
+    return {"sso_enabled": SSO_ENABLED}
+
 # Endpoint to initiate Azure AD login
 @router.get("/api/auth/login")
 async def azure_ad_login():
     """Redirect user to Azure AD for authentication"""
+    if not SSO_ENABLED:
+        raise HTTPException(status_code=403, detail="SSO is disabled. No login required.")
     if not all([CLIENT_ID, TENANT_ID, REDIRECT_URI]):
         raise HTTPException(status_code=500, detail="Azure AD configuration is incomplete")
     

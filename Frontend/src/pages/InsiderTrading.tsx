@@ -7,6 +7,7 @@ import EnhancedInsiderTradingAnalytics from "./InsiderTrading/EnhancedInsiderTra
 import InsiderTradingDataSource from "./InsiderTrading/InsiderTradingDataSource";
 import InsiderTradingMasterData from "./InsiderTrading/InsiderTradingMasterData";
 import InsiderTradingDocumentation from "./InsiderTrading/InsiderTradingDocumentation";
+import InsiderTradingUserGuide from "./InsiderTradingUserGuide";
 
 
 type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home';
@@ -66,6 +67,13 @@ const InsiderTrading = () => {
         icon: BookOpen,
         href: '/insider-trading/documentation',
         isActive: currentPath.endsWith('/documentation')
+      },
+      {
+        id: 'user-guide',
+        label: 'User Guide',
+        icon: BookOpen,
+        href: '/insider-trading/user-guide',
+        isActive: currentPath.endsWith('/user-guide')
       }
     ];
   }, [location.pathname]);
@@ -78,6 +86,8 @@ const InsiderTrading = () => {
       return <InsiderTradingMasterData />;
     } else if (location.pathname.endsWith('/documentation')) {
       return <InsiderTradingDocumentation />;
+    } else if (location.pathname.endsWith('/user-guide')) {
+      return <InsiderTradingUserGuide />;
     } else {
       // Default to analytics
       return <EnhancedInsiderTradingAnalytics />;

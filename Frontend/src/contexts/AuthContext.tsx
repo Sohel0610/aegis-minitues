@@ -7,6 +7,7 @@ interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    ssoEnabled: boolean;
     permissions: RoutePermission[];
     accessibleRoutes: string[];
     hasAccess: (route: string) => boolean;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [ssoEnabled, setSsoEnabled] = useState(true); // default true until config loads
     const [permissions, setPermissions] = useState<RoutePermission[]>([]);
     const [accessibleRoutes, setAccessibleRoutes] = useState<string[]>([]);
     const location = useLocation();
@@ -58,6 +60,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (isInitialized.current) return;
 
         const initAuth = async () => {
+            // Fetch auth configuration from backend
+            const config = await authService.getAuthConfig();
+            setSsoEnabled(config.sso_enabled);
+
+            // If SSO is disabled, auto-authenticate as guest (open access)
+            if (!config.sso_enabled) {
+                const guestUser: User = {
+                    id: "guest",
+                    email: "guest@aegis.local",
+                    name: "Guest User",
+                    roles: ["admin"]
+                };
+                setUser(guestUser);
+                // Grant full admin access to all routes when SSO is disabled
+                isInitialized.current = true;
+                setIsLoading(false);
+                return;
+            }
+
+            // SSO is enabled — existing SSO flow below (unchanged)
             const searchParams = new URLSearchParams(window.location.search);
             const tokenParams = searchParams.get("token");
 
@@ -142,15 +164,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Helper functions
     const normalizeRoute = (r: string) => r.replace(/\/+$/, "").replace(/^\/*/, "/").toLowerCase();
 
-    const isAdmin = permissions.some(p => p.can_admin);
+    // When SSO is disabled, grant full access to everything
+    const isAdmin = !ssoEnabled || permissions.some(p => p.can_admin);
 
     const hasAccess = (route: string): boolean => {
+        if (!ssoEnabled) return true; // Open access when SSO disabled
         if (isAdmin) return true;
         const normalized = normalizeRoute(route);
         return accessibleRoutes.some(r => normalizeRoute(r) === normalized);
     };
 
     const canView = (route: string): boolean => {
+        if (!ssoEnabled) return true; // Open access when SSO disabled
         if (isAdmin) return true;
         const normalized = normalizeRoute(route);
         const perm = permissions.find(p => normalizeRoute(p.route) === normalized);
@@ -158,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const canEdit = (route: string): boolean => {
+        if (!ssoEnabled) return true; // Open access when SSO disabled
         if (isAdmin) return true;
         const normalized = normalizeRoute(route);
         const perm = permissions.find(p => normalizeRoute(p.route) === normalized);
@@ -165,6 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const canAdmin = (route: string): boolean => {
+        if (!ssoEnabled) return true; // Open access when SSO disabled
         if (isAdmin) return true;
         const normalized = normalizeRoute(route);
         const perm = permissions.find(p => normalizeRoute(p.route) === normalized);
@@ -177,6 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 user,
                 isAuthenticated: !!user,
                 isLoading,
+                ssoEnabled,
                 permissions,
                 accessibleRoutes,
                 hasAccess,

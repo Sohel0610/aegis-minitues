@@ -15,6 +15,24 @@ const API_BASE_URL = "/api/auth";
 
 export const authService = {
   /**
+   * Fetch auth configuration from backend (SSO enabled/disabled)
+   */
+  getAuthConfig: async (): Promise<{ sso_enabled: boolean }> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/config`);
+      if (!response.ok) {
+        // Default to SSO enabled if config endpoint fails
+        return { sso_enabled: true };
+      }
+      return await response.json();
+    } catch (error) {
+      console.error("Failed to fetch auth config:", error);
+      // Default to SSO enabled if config endpoint is unreachable
+      return { sso_enabled: true };
+    }
+  },
+
+  /**
    * Initiates the SSO login process
    * Gets the redirect URL from backend and redirects the window
    */

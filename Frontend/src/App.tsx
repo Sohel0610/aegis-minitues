@@ -18,8 +18,12 @@ import ExcelDataPage from "./pages/ExcelDataPage";
 
 // Import financial analysis pages (future products)
 import BSEIndiaAnalysis from "./pages/BSEIndiaAnalysis";
+import UserGuide from "./pages/UserGuide";
 import RBIAnalysis from "./pages/RBIAnalysis";
+import RBIUserGuide from "./pages/RBIUserGuide";
+import SEBIUserGuide from "./pages/SEBIUserGuide";
 import InsiderTrading from "./pages/InsiderTrading";
+import InsiderTradingUserGuide from "./pages/InsiderTradingUserGuide";
 import DirectorsDisclosure from "./pages/DirectorsDisclosure";
 import MinutesPreparation from "./pages/MinutesPreparation";
 import FormBasedGenerator from "./pages/minutes-preparation/FormBasedGenerator";
@@ -105,6 +109,11 @@ const App = () => (
                 <WeeklyAnalysis />
               </ProtectedRoute>
             } />
+            <Route path="/user-guide" element={
+              <ProtectedRoute requiredRoute="/bse-alerts">
+                <UserGuide />
+              </ProtectedRoute>
+            } />
 
             {/* SEBI Analysis routes */}
             <Route path="/sebi-dashboard" element={
@@ -120,6 +129,11 @@ const App = () => (
             <Route path="/sebi-emaildata" element={
               <ProtectedRoute requiredRoute="/sebi-dashboard">
                 <SEBIEmailData />
+              </ProtectedRoute>
+            } />
+            <Route path="/sebi-user-guide" element={
+              <ProtectedRoute requiredRoute="/sebi-dashboard">
+                <SEBIUserGuide />
               </ProtectedRoute>
             } />
 
@@ -142,6 +156,11 @@ const App = () => (
             <Route path="/rbi-emaildata" element={
               <ProtectedRoute requiredRoute="/rbi-dashboard">
                 <RBIEmailData />
+              </ProtectedRoute>
+            } />
+            <Route path="/rbi-user-guide" element={
+              <ProtectedRoute requiredRoute="/rbi-dashboard">
+                <RBIUserGuide />
               </ProtectedRoute>
             } />
 
