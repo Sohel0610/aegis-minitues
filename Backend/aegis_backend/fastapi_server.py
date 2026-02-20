@@ -71,6 +71,9 @@ from routes import (
     director_changes
 )
 
+# Import and initialize integrated chatbot
+from chatbot_minutes import router as chatbot_minutes_router, init_db as init_chatbot_db
+
 # Include all route modules
 app.include_router(health.router)
 app.include_router(excel.router)
@@ -91,6 +94,8 @@ app.include_router(auth.router)
 app.include_router(user_management.router)
 app.include_router(director_family_info.router)
 app.include_router(director_changes.router)
+app.include_router(chatbot_minutes_router)
+
 
 # Custom thread pool for handling blocking operations
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -144,8 +149,12 @@ async def startup_event():
         # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(thread_pool, init_database)
+        
+        # Initialize chatbot database
+        init_chatbot_db()
 
-        logger.info("Directors data database initialized")
+        logger.info("Directors data and chatbot database initialized")
+
     except Exception as e:
         logger.error(f"Error initializing directors data database: {e}")
 

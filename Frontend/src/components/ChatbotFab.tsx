@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { X, Maximize2, Minimize2, User, Bot } from "lucide-react";
 
-type Channel = "BSE" | "SEBI" | "RBI" | "All";
+type Channel = "BSE" | "SEBI" | "RBI" | "Minutes" | "All";
 
 type Msg = {
   role: "user" | "bot";
@@ -19,6 +19,7 @@ const prompts: Record<Channel, string[]> = {
   BSE: ["Latest alerts", "Top gainers", "Sector trends"],
   SEBI: ["Weekly notifications", "Compliance highlights", "Investor updates"],
   RBI: ["Policy rates", "Regulatory updates", "Compliance status"],
+  Minutes: ["What was discussed in the last meeting?", "List all action items", "Who attended the board meeting?"],
   All: ["Latest updates", "Search all", "Summarize news"]
 };
 
@@ -31,6 +32,7 @@ export default function ChatbotFab() {
     BSE: [],
     SEBI: [],
     RBI: [],
+    Minutes: [],
     All: []
   });
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
@@ -47,7 +49,57 @@ export default function ChatbotFab() {
     if (!content) return;
 
     const targetChannel = dbOverride || channel;
+
+    // Support for minutes chatbot
+    if (targetChannel === "Minutes") {
+      // Optimistically add user message
+      const u: Msg = { role: "user", text: content, ts: Date.now() };
+      setMessages((prev) => ({ ...prev, [targetChannel]: [...prev[targetChannel], u] }));
+      setInput("");
+
+      let botMsgIndex = -1;
+      setMessages((prev) => {
+        const next = [...prev[targetChannel], { role: "bot" as const, text: "", ts: Date.now() + 1 }];
+        botMsgIndex = next.length - 1;
+        return { ...prev, [targetChannel]: next };
+      });
+
+      try {
+        const res = await fetch("/api/minutes-chatbot/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: content,
+            session_id: `session_minutes`,
+          }),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+
+        setMessages((prev) => {
+          const arr = [...prev[targetChannel]];
+          if (botMsgIndex >= 0 && arr[botMsgIndex]) {
+            arr[botMsgIndex] = { ...arr[botMsgIndex], text: data.answer };
+          }
+          return { ...prev, [targetChannel]: arr };
+        });
+      } catch (e) {
+        setMessages((prev) => {
+          const arr = [...prev[targetChannel]];
+          if (botMsgIndex >= 0 && arr[botMsgIndex]) {
+            arr[botMsgIndex] = { ...arr[botMsgIndex], text: "Sorry, an error occurred while contacting the Minutes Assistant." };
+          }
+          return { ...prev, [targetChannel]: arr };
+        });
+      }
+      return;
+    }
+
+
     const db = targetChannel === "All" ? "all" : targetChannel.toLowerCase();
+
 
     // Optimistically add user message
     const u: Msg = { role: "user", text: content, ts: Date.now() };

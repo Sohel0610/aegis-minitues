@@ -19,6 +19,41 @@ const CreateAgenda = () => {
     const [generatedAgenda, setGeneratedAgenda] = useState<string | null>(null);
     const { toast } = useToast();
 
+    // Chatbot state
+    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', text: string }[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const [isAsking, setIsAsking] = useState(false);
+
+    const handleAsk = async () => {
+        if (!chatInput.trim()) return;
+
+        const userMsg = { role: 'user' as const, text: chatInput };
+        setChatMessages(prev => [...prev, userMsg]);
+        setChatInput('');
+        setIsAsking(true);
+
+        try {
+            const res = await fetch('/api/minutes-chatbot/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: userMsg.text,
+                    session_id: 'session_agenda_page'
+                })
+            });
+
+            if (!res.ok) throw new Error('API error');
+            const data = await res.json();
+
+            setChatMessages(prev => [...prev, { role: 'assistant', text: data.answer }]);
+        } catch (error) {
+            setChatMessages(prev => [...prev, { role: 'assistant', text: 'Sorry, I encountered an error. Please try again later.' }]);
+        } finally {
+            setIsAsking(false);
+        }
+    };
+
+
     const navigationItems = [
         { id: 'home', label: 'Home', icon: Home, href: '/' },
         { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
@@ -237,7 +272,7 @@ With the permission of the Chair.
                         </div>
                     </div>
 
-                    {/* Integrated Chatbot Placeholder */}
+                    {/* Integrated Chatbot */}
                     <Card className="border-blue-200 bg-blue-50/50">
                         <CardHeader className="py-4">
                             <CardTitle className="text-lg flex items-center gap-2">
@@ -246,15 +281,40 @@ With the permission of the Chair.
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="bg-white border rounded-lg p-4 h-[100px] mb-4 flex items-center justify-center text-muted-foreground italic text-sm">
-                                Ask me anything about the meeting documents...
+                            <div className="bg-white border rounded-lg p-4 h-[200px] mb-4 overflow-y-auto flex flex-col gap-2">
+                                {chatMessages.length === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
+                                        Ask me anything about the meeting documents...
+                                    </div>
+                                ) : (
+                                    chatMessages.map((msg, i) => (
+                                        <div key={i} className={`p-2 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-100 self-end max-w-[80%]' : 'bg-gray-100 self-start max-w-[80%]'}`}>
+                                            <p className="font-semibold text-xs mb-1">{msg.role === 'user' ? 'You' : 'Assistant'}</p>
+                                            <p>{msg.text}</p>
+                                        </div>
+                                    ))
+                                )}
+                                {isAsking && (
+                                    <div className="bg-gray-100 self-start p-2 rounded-lg text-sm animate-pulse">
+                                        Thinking...
+                                    </div>
+                                )}
                             </div>
                             <div className="flex gap-2">
-                                <Input className="bg-white" placeholder="What happened in the previous audit meeting?" />
-                                <Button className="bg-blue-600">Ask</Button>
+                                <Input
+                                    className="bg-white"
+                                    placeholder="What happened in the previous audit meeting?"
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
+                                />
+                                <Button className="bg-blue-600" onClick={handleAsk} disabled={isAsking || !chatInput.trim()}>
+                                    Ask
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>
+
                 </div>
             </div>
         </ProductDashboardLayout>
