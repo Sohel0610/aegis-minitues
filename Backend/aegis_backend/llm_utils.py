@@ -1,8 +1,17 @@
 import os
-import sqlite3
+import sqlite3 # Keep for potential legacy use elsewhere if needed, but primary storage is now PG
 import logging
 import zipfile
 from xml.etree import ElementTree as ET
+from datetime import datetime
+
+# Import PostgreSQL service
+try:
+    from utils.pgsql_service import get_pg_connection, get_pg_cursor
+    PG_AVAILABLE = True
+except ImportError:
+    logger.warning("pgsql_service not available. PostgreSQL storage will fail.")
+    PG_AVAILABLE = False
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -324,62 +333,101 @@ def generate_summary(content, max_tokens=1000):
         return generate_summary_with_azure_openai(content, max_tokens)
 
 def save_summary_to_db(director_name, din, file_path, full_text, summary):
-    """Save the full text and generated summary to the database"""
-    try:
-        db_path = os.path.join(os.path.dirname(__file__), 'directors_data.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Check if a record already exists for this file
-        cursor.execute('''
-            SELECT id FROM document_summaries WHERE file_path = ?
-        ''', (file_path,))
-        
-        existing_record = cursor.fetchone()
-        
-        if existing_record:
-            # Update existing record
-            cursor.execute('''
-                UPDATE document_summaries 
-                SET director_name = ?, din = ?, full_text = ?, summary = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE file_path = ?
-            ''', (director_name, din, full_text, summary, file_path))
-        else:
-            # Insert new record
+    """Save the full text and generated summary to the Azure PostgreSQL database"""
+    if not PG_AVAILABLE:
+        logger.error("PostgreSQL service not available. Falling back to SQLite for summary storage.")
+        # Fallback to legacy SQLite for safety if PG fails (optional, but keep for now)
+        try:
+            db_path = os.path.join(os.path.dirname(__file__), 'directors_data.db')
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO document_summaries (director_name, din, file_path, full_text, summary)
                 VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(file_path) DO UPDATE SET
+                director_name=excluded.director_name, din=excluded.din, full_text=excluded.full_text, 
+                summary=excluded.summary, updated_at=CURRENT_TIMESTAMP
             ''', (director_name, din, file_path, full_text, summary))
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"Full text and summary saved for {director_name}")
-        return True
-        
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite fallback failed: {e}")
+            return False
+
+    try:
+        pg_conn = get_pg_connection()
+        if not pg_conn:
+            logger.error("Could not connect to Azure PostgreSQL to save summary")
+            return False
+            
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            
+            # Using the directors_data schema as established in director_data_analysis.py
+            schema = "directors_data"
+            
+            # Use PostgreSQL UPSERT (INSERT ... ON CONFLICT)
+            cursor.execute(f'''
+                INSERT INTO {schema}.document_summaries (director_name, din, file_path, full_text, summary, updated_at)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (file_path) 
+                DO UPDATE SET 
+                    director_name = EXCLUDED.director_name,
+                    din = EXCLUDED.din,
+                    full_text = EXCLUDED.full_text,
+                    summary = EXCLUDED.summary,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (director_name, din, file_path, full_text, summary))
+            
+            pg_conn.commit()
+            logger.info(f"Full text and summary saved to PostgreSQL for {director_name}")
+            return True
+        finally:
+            pg_conn.close()
+            
     except Exception as e:
-        logger.error(f"Error saving to database: {e}")
+        logger.error(f"Error saving to PostgreSQL: {e}")
         return False
 
 def get_summary_from_db(file_path):
-    """Retrieve a summary from the database if it exists"""
+    """Retrieve a summary from the Azure PostgreSQL database if it exists"""
+    if not PG_AVAILABLE:
+        # Fallback to legacy SQLite
+        try:
+            db_path = os.path.join(os.path.dirname(__file__), 'directors_data.db')
+            if not os.path.exists(db_path):
+                return None
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT summary FROM document_summaries WHERE file_path = ?', (file_path,))
+            result = cursor.fetchone()
+            conn.close()
+            return result[0] if result else None
+        except:
+            return None
+
     try:
-        db_path = os.path.join(os.path.dirname(__file__), 'directors_data.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT summary FROM document_summaries WHERE file_path = ?
-        ''', (file_path,))
-        
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result and result[0]:
-            return result[0]
-        return None
-        
+        pg_conn = get_pg_connection()
+        if not pg_conn:
+            return None
+            
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            # Targeting the directors_data schema
+            cursor.execute('''
+                SELECT summary FROM directors_data.document_summaries WHERE file_path = %s
+            ''', (file_path,))
+            
+            result = cursor.fetchone()
+            if result and result['summary']:
+                return result['summary']
+            return None
+        finally:
+            pg_conn.close()
+            
     except Exception as e:
-        logger.error(f"Error retrieving summary from database: {e}")
+        logger.error(f"Error retrieving summary from PostgreSQL: {e}")
         return None
 
 def generate_and_save_summary(director_name, din, file_path):

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import SEBIAnalysisDashboardLayout from "@/components/layout/SEBIAnalysisDashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,8 +26,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Plus, Loader2, AlertCircle, Lock, Trash2, X as XIcon } from "lucide-react";
 import * as XLSX from 'xlsx';
-// Import admin authentication utilities
-import { isAdmin, authenticateAdmin, logoutAdmin } from "@/utils/adminAuth";
 
 // Generic interface for Excel data
 interface ExcelRow {
@@ -46,21 +45,16 @@ const SEBIEmailData = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [columnNames, setColumnNames] = useState<string[]>([]);
-  // Admin authentication state
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
-  const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
-  const [adminUsername, setAdminUsername] = useState<string>('');
-  const [adminPassword, setAdminPassword] = useState<string>('');
+  const { canAdmin } = useAuth();
+  // Admin mode controlled by SSO permissions
+  const isAdminMode = canAdmin('/sebi-dashboard');
   // Delete confirmation state
   const [emailToDelete, setEmailToDelete] = useState<ExcelRow | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   // Filter state
   const [searchFilter, setSearchFilter] = useState<string>('');
 
-  // Check admin status on component mount
-  useEffect(() => {
-    setIsAdminMode(isAdmin());
-  }, []);
+
 
   // Load emails from database via FastAPI server
   useEffect(() => {
@@ -68,32 +62,32 @@ const SEBIEmailData = () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log('Attempting to load emails from FastAPI server');
-        
+
         // Use relative path since frontend and backend are served from the same origin
         const API_BASE_URL = '';
-        
+
         // Fetch emails from FastAPI server with optional search filter
         const searchParam = searchFilter ? `?search=${encodeURIComponent(searchFilter)}` : '';
         const response = await fetch(`${API_BASE_URL}/emails${searchParam}`);
         console.log('Fetch response status:', response.status);
         console.log('Fetch response ok:', response.ok);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`Failed to load email data: ${response.statusText} (${response.status}) - ${errorText}`);
         }
-        
+
         const result = await response.json();
         console.log('Server response:', result);
-        
+
         // Convert email list to table format with serial numbers
         const emailDataWithSerial = result.emails.map((email: string, index: number) => ({
           'Sr. No': index + 1,
           'Email ID': email
         }));
-        
+
         setEmailData(emailDataWithSerial);
         setColumnNames(['Sr. No', 'Email ID']);
       } catch (err) {
@@ -108,18 +102,7 @@ const SEBIEmailData = () => {
     loadEmailData();
   }, [searchFilter]);
 
-  // Handle admin login
-  const handleAdminLogin = async () => {
-    const success = await authenticateAdmin(adminUsername, adminPassword);
-    if (success) {
-      setIsAdminMode(true);
-      setShowAdminLogin(false);
-      setAdminUsername('');
-      setAdminPassword('');
-    } else {
-      alert('Invalid admin credentials');
-    }
-  };
+
 
   // Handle search filter change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,11 +114,7 @@ const SEBIEmailData = () => {
     setSearchFilter('');
   };
 
-  // Handle admin logout
-  const handleAdminLogout = () => {
-    logoutAdmin();
-    setIsAdminMode(false);
-  };
+
 
   // Set email to delete and open confirmation dialog
   const handleDeleteEmail = (email: ExcelRow) => {
@@ -146,14 +125,14 @@ const SEBIEmailData = () => {
   // Add new email
   const handleAddEmail = async (): Promise<void> => {
     if (!newEmail.trim()) return;
-    
+
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newEmail.trim())) {
       alert('Please enter a valid email address');
       return;
     }
-    
+
     // Validate that email is from adani.com or pspprojects.com domain (case-insensitive)
     const emailLower = newEmail.trim().toLowerCase();
     if (!emailLower.endsWith('@adani.com') && !emailLower.endsWith('@pspprojects.com')) {
@@ -162,11 +141,11 @@ const SEBIEmailData = () => {
     }
 
     setIsLoading(true);
-    
+
     try {
       // Use relative path since frontend and backend are served from the same origin
       const API_BASE_URL = '';
-      
+
       // Add email via API
       const response = await fetch(`${API_BASE_URL}/emails`, {
         method: 'POST',
@@ -180,7 +159,7 @@ const SEBIEmailData = () => {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to add email');
       }
-      
+
       // Refresh email list
       const refreshResponse = await fetch(`${API_BASE_URL}/emails`);
       if (refreshResponse.ok) {
@@ -191,7 +170,7 @@ const SEBIEmailData = () => {
         }));
         setEmailData(emailDataWithSerial);
       }
-      
+
       // Reset form
       setNewEmail('');
       setIsAddDialogOpen(false);
@@ -207,27 +186,27 @@ const SEBIEmailData = () => {
   // Confirm and delete email
   const confirmDeleteEmail = async () => {
     if (!emailToDelete) return;
-    
+
     setIsLoading(true);
-    
+
     try {
       // Get the email address from the row data
       const emailToDeleteAddress = String(emailToDelete['Email ID']);
-      
+
       // Use relative path since frontend and backend are served from the same origin
       const API_BASE_URL = '/api';
-      
+
       // Delete email via API (URL encode the email address)
       const encodedEmail = encodeURIComponent(emailToDeleteAddress);
       const response = await fetch(`${API_BASE_URL}/emails/${encodedEmail}`, {
         method: 'DELETE'
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to delete email');
       }
-      
+
       // Refresh email list
       const refreshResponse = await fetch(`${API_BASE_URL}/emails`);
       if (refreshResponse.ok) {
@@ -238,7 +217,7 @@ const SEBIEmailData = () => {
         }));
         setEmailData(emailDataWithSerial);
       }
-      
+
       setIsDeleteDialogOpen(false);
       setEmailToDelete(null);
     } catch (err) {
@@ -271,8 +250,8 @@ const SEBIEmailData = () => {
             <AlertCircle className="h-12 w-12 mx-auto mb-4" style={{ color: "#EF4444" }} />
             <h2 className="text-xl font-bold mb-2" style={{ color: "#000000" }}>Error Loading Email Data</h2>
             <p className="mb-4" style={{ color: "#000000" }}>{error}</p>
-            <Button 
-              onClick={() => window.location.reload()} 
+            <Button
+              onClick={() => window.location.reload()}
               style={{
                 backgroundColor: '#BD3861',
                 borderColor: '#BD3861',
@@ -292,12 +271,12 @@ const SEBIEmailData = () => {
 
   return (
     <SEBIAnalysisDashboardLayout>
-      
+
       <div className="min-h-screen p-8" style={{
         background: "#FFFFFF"
       }}>
         {/* Header Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.0, ease: "easeOut" }}
@@ -325,110 +304,7 @@ const SEBIEmailData = () => {
           </Card>
         </motion.div>
 
-        {/* Admin Controls */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.0, delay: 0.2 }}
-          className="mb-4"
-        >
-          <div className="flex justify-end">
-            {isAdminMode ? (
-              <Button 
-                variant="outline"
-                onClick={handleAdminLogout}
-                className="flex items-center gap-2"
-                style={{
-                  color: '#EF4444',
-                  borderColor: '#EF4444'
-                }}
-              >
-                <Lock className="h-4 w-4" />
-                Logout Admin
-              </Button>
-            ) : (
-              <Button 
-                variant="outline"
-                onClick={() => setShowAdminLogin(true)}
-                className="flex items-center gap-2"
-                style={{
-                  color: '#1E40AF',
-                  borderColor: '#1E40AF'
-                }}
-              >
-                <Lock className="h-4 w-4" />
-                Admin Login
-              </Button>
-            )}
-          </div>
-        </motion.div>
 
-        {/* Admin Login Dialog */}
-        <Dialog open={showAdminLogin} onOpenChange={setShowAdminLogin}>
-          <DialogContent className="sm:max-w-md" style={{ background: '#ffffff' }}>
-            <DialogHeader>
-              <DialogTitle style={{ color: '#000000' }}>Admin Login</DialogTitle>
-              <DialogDescription style={{ color: '#000000' }}>
-                Enter admin credentials to access email management features.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username" style={{ color: '#000000' }}>Username</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter username"
-                  value={adminUsername}
-                  onChange={(e) => setAdminUsername(e.target.value)}
-                  style={{
-                    borderColor: '#000000'
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password" style={{ color: '#000000' }}>Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAdminLogin();
-                    }
-                  }}
-                  style={{
-                    borderColor: '#000000'
-                  }}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowAdminLogin(false)}
-                  style={{
-                    color: '#000000',
-                    borderColor: '#000000'
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleAdminLogin}
-                  style={{
-                    backgroundColor: '#1E40AF',
-                    borderColor: '#1E40AF',
-                    color: 'white'
-                  }}
-                >
-                  Login
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
@@ -448,8 +324,8 @@ const SEBIEmailData = () => {
                 </div>
                 <div className="flex justify-end gap-2">
                   <DialogClose asChild>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       style={{
                         color: '#000000',
                         borderColor: '#000000'
@@ -458,7 +334,7 @@ const SEBIEmailData = () => {
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button 
+                  <Button
                     onClick={confirmDeleteEmail}
                     style={{
                       backgroundColor: '#EF4444',
@@ -492,7 +368,7 @@ const SEBIEmailData = () => {
                   </CardDescription>
                 </div>
                 {isAdminMode && (
-                  <Button 
+                  <Button
                     onClick={() => setIsAddDialogOpen(true)}
                     className="flex items-center gap-2"
                     style={{
@@ -531,7 +407,7 @@ const SEBIEmailData = () => {
                   )}
                 </div>
                 {searchFilter && (
-                  <Button 
+                  <Button
                     variant="outline"
                     onClick={clearSearchFilter}
                     className="flex items-center gap-2"
@@ -545,15 +421,15 @@ const SEBIEmailData = () => {
                   </Button>
                 )}
               </div>
-              
+
               {emailData.length > 0 ? (
                 <div className="rounded-md border" style={{ borderColor: '#000000' }}>
                   <Table>
                     <TableHeader>
                       <TableRow style={{ backgroundColor: 'rgba(30, 64, 175, 0.1)' }}>
                         {columnNames.map((column) => (
-                          <TableHead 
-                            key={column} 
+                          <TableHead
+                            key={column}
                             className="font-bold"
                             style={{ color: '#000000' }}
                           >
@@ -561,7 +437,7 @@ const SEBIEmailData = () => {
                           </TableHead>
                         ))}
                         {isAdminMode && (
-                          <TableHead 
+                          <TableHead
                             className="font-bold text-right"
                             style={{ color: '#000000' }}
                           >
@@ -572,15 +448,15 @@ const SEBIEmailData = () => {
                     </TableHeader>
                     <TableBody>
                       {emailData.map((row, index) => (
-                        <TableRow 
-                          key={index} 
-                          style={{ 
+                        <TableRow
+                          key={index}
+                          style={{
                             backgroundColor: index % 2 === 0 ? 'transparent' : 'rgba(0, 0, 0, 0.02)'
                           }}
                         >
                           {columnNames.map((column) => (
-                            <TableCell 
-                              key={`${index}-${column}`} 
+                            <TableCell
+                              key={`${index}-${column}`}
                               className="py-2"
                               style={{ color: '#000000' }}
                             >
@@ -616,8 +492,8 @@ const SEBIEmailData = () => {
                     {searchFilter ? 'No emails match your search' : 'No email addresses found'}
                   </p>
                   {searchFilter && (
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={clearSearchFilter}
                       className="mt-2"
                       style={{
@@ -664,8 +540,8 @@ const SEBIEmailData = () => {
               </div>
               <div className="flex justify-end gap-2">
                 <DialogClose asChild>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setNewEmail('')}
                     style={{
                       color: '#000000',
@@ -675,7 +551,7 @@ const SEBIEmailData = () => {
                     Cancel
                   </Button>
                 </DialogClose>
-                <Button 
+                <Button
                   onClick={handleAddEmail}
                   disabled={isLoading || !newEmail.trim()}
                   style={{
