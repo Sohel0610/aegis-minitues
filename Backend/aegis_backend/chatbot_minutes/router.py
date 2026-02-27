@@ -18,12 +18,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/minutes-chatbot", tags=["Minutes Chatbot"])
 
 # Dependency to get current user - adapting for integrated version
-async def get_current_chatbot_user(db: Session = Depends(get_db_session)):
-    """Returns a default guest user."""
-    email = "guest@adani.com" 
+async def get_current_chatbot_user(request: Request, db: Session = Depends(get_db_session)):
+    """
+    Returns the current user based on SSO state.
+    If SSO is disabled, returns a guest user.
+    If SSO is enabled, in a real implementation we would validate the session.
+    """
+    sso_enabled = os.getenv("SSO_ENABLED", "true").lower() == "true"
+    
+    if not sso_enabled:
+        email = "guest@adani.com" 
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(email=email, name="Guest User")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return user
+    
+    # When SSO is enabled, we expect user info to be passed or resolved from session
+    # For now, we'll look for an X-User-Email header as a simple integration pattern
+    email = request.headers.get("X-User-Email")
+    if not email:
+        # Fallback for development if no header is present
+        email = "guest@adani.com"
+        
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        user = User(email=email, name="Developer")
+        user = User(email=email, name=email.split("@")[0])
         db.add(user)
         db.commit()
         db.refresh(user)

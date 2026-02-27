@@ -17,6 +17,8 @@ from . import (
     ai_assistant,
     chat,
     visit_tracking,
+    auth,
+    user_management,
     insider_trading,
     director_family_info
 )
@@ -37,6 +39,8 @@ __all__ = [
     "ai_assistant",
     "chat",
     "visit_tracking",
+    "auth",
+    "user_management",
     "insider_trading",
     "director_family_info"
 ]

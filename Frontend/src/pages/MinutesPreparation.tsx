@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Lock, Users, Plus, Edit, Trash2 } from 'lucide-react';
+import { FileText, ArrowLeft, Lock, Users, Plus, Edit, Trash2 } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+
 interface Director {
   id: number;
   name: string;
@@ -18,7 +21,8 @@ interface Director {
 export default function MinutesPreparation() {
   const navigate = useNavigate();
   const location = useLocation();
-
+  const { isAuthenticated, canAdmin } = useAuth();
+  const isAdminMode = canAdmin('/minutes-preparation');
   const [directors, setDirectors] = useState<Director[]>([]);
   const [isLoadingDirectors, setIsLoadingDirectors] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,17 +34,38 @@ export default function MinutesPreparation() {
 
   // Define navigation items for this product
   const navigationItems = [
-    { id: 'home', label: 'Home', icon: FileText, href: '/' },
-    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
-    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
-    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-    { id: 'template-resolution', label: 'Template Resolution', icon: FileText, href: '/minutes-preparation/template-resolution' },
-    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
+    {
+      id: 'home',
+      label: 'Home',
+      icon: FileText,
+      href: '/',
+    },
+    {
+      id: 'dashboard',
+      label: 'Minutes Generator',
+      icon: FileText,
+      href: '/minutes-preparation',
+    },
+    {
+      id: 'ai-mom',
+      label: 'AI MOM',
+      icon: FileText,
+      href: '/minutes-preparation/ai-assistant',
+    },
+    {
+      id: 'directors',
+      label: 'Directors',
+      icon: Users,
+      href: '/minutes-preparation/directors',
+    }
   ];
+
+
 
   // Fetch directors data
   const fetchDirectorsData = async () => {
+    if (!isAuthenticated) return;
+
     setIsLoadingDirectors(true);
     try {
       const response = await fetch('/directors');
@@ -59,12 +84,18 @@ export default function MinutesPreparation() {
 
   useEffect(() => {
     fetchDirectorsData();
-  }, []);
+  }, [isAuthenticated]);
+
+
+
+
 
   // Handle navigation to form generator
   const handleNavigateToFormGenerator = () => {
     navigate('/minutes-preparation/form-generator');
   };
+
+
 
   // Filter directors based on search term
   const filteredDirectors = directors.filter(director =>
@@ -152,20 +183,21 @@ export default function MinutesPreparation() {
 
   return (
     <ProductDashboardLayout
-      productName="Generate Minutes"
+      productName="Minutes Generator"
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
       <div className="container mx-auto py-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Generate Minutes</h1>
+            <h1 className="text-3xl font-bold">Minutes Generator</h1>
             <p className="text-muted-foreground">Automated meeting minutes generation</p>
           </div>
+
         </div>
 
         {/* Directors List Section */}
-        {location.pathname === '/minutes-preparation/directors' ? (
+        {location.pathname === '/minutes-preparation/directors' && isAuthenticated ? (
           <div className="mt-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
               <div>
@@ -253,6 +285,7 @@ export default function MinutesPreparation() {
               </CardContent>
             </Card>
           </div>
+
         ) : (
           <>
             {/* Generate Minutes Card - Only Feature */}
@@ -304,6 +337,8 @@ export default function MinutesPreparation() {
           </>
         )}
       </div>
+
+
 
       {/* Add Director Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import BSEAlertsDashboardLayout from "@/components/layout/BSEAlertsDashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Globe, ExternalLink, Plus, Loader2, AlertCircle, Trash2 } from "lucide-react";
+import { Globe, ExternalLink, Plus, Loader2, AlertCircle, Lock, Trash2 } from "lucide-react";
 import NotificationBar from "@/components/ui/NotificationBar";
 
 // Generic interface for Excel data
@@ -45,9 +46,13 @@ const WebsiteData = () => {
   const [newWebsiteUrl, setNewWebsiteUrl] = useState<string>('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const { canAdmin } = useAuth();
+  const isAdminMode = canAdmin('/bse-alerts');
   // Delete confirmation state
   const [websiteToDelete, setWebsiteToDelete] = useState<ExcelRow | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
+
+
 
   // Load websites from Excel file via FastAPI server
   useEffect(() => {
@@ -61,6 +66,8 @@ const WebsiteData = () => {
         // Use relative path since frontend and backend are served from the same origin
         const apiUrl = '';
         const response = await fetch(`${apiUrl}/excel-data/Entity.xlsx?sheet_name=Sheet1`);
+        console.log('Fetch response status:', response.status);
+        console.log('Fetch response ok:', response.ok);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -68,9 +75,16 @@ const WebsiteData = () => {
         }
 
         const result = await response.json();
+        console.log('Server response:', result);
 
         const jsonData = result.data;
         const columns = result.columns;
+
+        console.log('Parsed data length:', jsonData.length);
+        if (jsonData.length > 0) {
+          console.log('First few rows:', jsonData.slice(0, 5));
+          console.log('Column names:', columns);
+        }
 
         setWebsiteData(jsonData);
         setColumnNames(columns);
@@ -78,8 +92,8 @@ const WebsiteData = () => {
         console.error('Error loading website data:', err);
         const errorMessage = err instanceof Error ? err.message : 'Failed to load website data';
         setError(errorMessage);
-        setWebsiteData([]);
-        setColumnNames([]);
+        setWebsiteData([]); // Empty array instead of fallback data
+        setColumnNames([]); // Empty column names
       } finally {
         setLoading(false);
       }
@@ -87,6 +101,10 @@ const WebsiteData = () => {
 
     loadWebsiteData();
   }, []);
+
+
+
+
 
   // Add new website
   const handleAddWebsite = (): void => {
@@ -255,6 +273,13 @@ const WebsiteData = () => {
                   <CardTitle className="text-2xl sm:text-3xl lg:text-4xl font-bold " style={{ color: "#000000" }}>
                     WEBSITE DATA
                   </CardTitle>
+                  {/* Admin mode indicator */}
+                  {isAdminMode && (
+                    <Badge variant="outline" style={{ color: '#1E40AF', borderColor: '#1E40AF', background: 'transparent' }}>
+                      <Lock className="h-3 w-3 mr-1" />
+                      Admin Mode
+                    </Badge>
+                  )}
                 </div>
                 <CardDescription className="text-lg" style={{ color: '#000000' }}>
                   Entity websites and digital presence information
@@ -262,6 +287,10 @@ const WebsiteData = () => {
               </CardHeader>
             </Card>
           </motion.div>
+
+
+
+
 
           {/* Delete Confirmation Dialog */}
           <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
@@ -327,18 +356,20 @@ const WebsiteData = () => {
                       {websiteData.length} entities in the system
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={() => setIsAddDialogOpen(true)}
-                    className="flex items-center gap-2"
-                    style={{
-                      backgroundColor: '#1E40AF',
-                      borderColor: '#1E40AF',
-                      color: 'white'
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Website
-                  </Button>
+                  {isAdminMode && (
+                    <Button
+                      onClick={() => setIsAddDialogOpen(true)}
+                      className="flex items-center gap-2"
+                      style={{
+                        backgroundColor: '#1E40AF',
+                        borderColor: '#1E40AF',
+                        color: 'white'
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Website
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="px-0 py-0">
@@ -356,12 +387,14 @@ const WebsiteData = () => {
                               {column}
                             </TableHead>
                           ))}
-                          <TableHead
-                            className="font-bold text-right"
-                            style={{ color: '#000000' }}
-                          >
-                            Actions
-                          </TableHead>
+                          {isAdminMode && (
+                            <TableHead
+                              className="font-bold text-right"
+                              style={{ color: '#000000' }}
+                            >
+                              Actions
+                            </TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -393,19 +426,21 @@ const WebsiteData = () => {
                                 )}
                               </TableCell>
                             ))}
-                            <TableCell className="text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteWebsite(row)}
-                                style={{
-                                  color: '#EF4444',
-                                  borderColor: '#EF4444'
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
+                            {isAdminMode && (
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteWebsite(row)}
+                                  style={{
+                                    color: '#EF4444',
+                                    borderColor: '#EF4444'
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            )}
                           </TableRow>
                         ))}
                       </TableBody>

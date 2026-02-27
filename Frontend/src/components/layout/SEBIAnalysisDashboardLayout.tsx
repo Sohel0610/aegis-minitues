@@ -9,11 +9,9 @@ import {
   ChevronRight,
   Menu,
   Bell,
-  BookOpen, // Import BookOpen icon
+  BookOpen,
   LucideIcon
 } from "lucide-react";
-import UserManualModal from "../UserManualModal"; // Import UserManualModal
-
 
 interface SEBIAnalysisDashboardLayoutProps {
   children: ReactNode;
@@ -30,9 +28,7 @@ interface NavigationItem {
 const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state for manual modal
   const navigate = useNavigate();
-
   const location = useLocation();
 
   const navigationItems: NavigationItem[] = [
@@ -65,23 +61,17 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
       isActive: location.pathname === '/sebi-emaildata'
     },
     {
-      id: 'manual',
-      label: 'User Manual',
+      id: 'user-guide',
+      label: 'User Guide',
       icon: BookOpen,
-      href: '#', // No navigation, opens modal
-      isActive: false
+      href: '/sebi-user-guide',
+      isActive: location.pathname === '/sebi-user-guide'
     }
   ];
 
   const handleNavigation = (item: NavigationItem): void => {
-    if (item.id === 'manual') {
-      setIsUserManualOpen(true);
-      if (isMobileOpen) setIsMobileOpen(false);
-      return;
-    }
     navigate(item.href);
   };
-
 
   const sidebarVariants = {
     expanded: { width: "256px" },
@@ -217,6 +207,8 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
               className="text-xs "
               style={{ color: 'rgba(0, 0, 0, 0.7)' }}
             >
+              <div>STATUS: ONLINE</div>
+              <div>VER: 1.0.0</div>
             </motion.div>
           )}
         </div>
@@ -310,16 +302,8 @@ const SEBIAnalysisDashboardLayout = ({ children }: SEBIAnalysisDashboardLayoutPr
       >
         {children}
       </main>
-
-      {/* User Manual Modal */}
-      <UserManualModal
-        isOpen={isUserManualOpen}
-        onClose={() => setIsUserManualOpen(false)}
-        initialAgent="SEBI Analysis Agent"
-      />
-    </div >
+    </div>
   );
 };
-
 
 export default SEBIAnalysisDashboardLayout;

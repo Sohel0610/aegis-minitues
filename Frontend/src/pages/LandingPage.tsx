@@ -19,22 +19,14 @@ import {
   ArrowDown,
   Link,
   ChevronRight,
-  User as UserIcon,
-  LogOut,
-  BookOpen as BookOpenIcon
+  LogIn,
+  User
 } from "lucide-react";
 import Orb from "@/components/Orb";
 import ChatbotFab from "@/components/ChatbotFab";
 import { useRef, useState, useEffect } from "react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import UserManualModal from "@/components/UserManualModal";
+import { useAuth } from "@/contexts/AuthContext";
+
 
 // Add fetch for visit count
 const fetchVisitCount = async (): Promise<number> => {
@@ -118,7 +110,7 @@ const products: Product[] = [
     id: '3',
     title: "SEBI Analysis",
     description: "Market regulation analysis and investor protection measures.",
-    icon: <img src="/sebi-logo.png" alt="SEBI Logo" className="h-full w-full object-contain" />,
+    icon: <img src="/sebi-Logo.jpg" alt="SEBI Logo" className="h-full w-full object-contain" />,
     color: "x11-maroon", // Using new color
     status: "Live",
     route: "/sebi-dashboard",
@@ -165,7 +157,7 @@ const products: Product[] = [
   },
   {
     id: '6',
-    title: "Generate Minutes",
+    title: "Minutes Generator",
     description: "Automated preparation and management of meeting minutes with compliance tracking.",
     icon: <FileText className="h-6 w-6" />,
     color: "x11-maroon", // Using new color
@@ -210,42 +202,55 @@ const getColorClasses = (color: string) => {
   }
 };
 
+// Add this new function to get the border color
 const getColorForProduct = (color: string, status: 'Live' | 'Coming Soon') => {
+  // If the product is live, use green color
   if (status === 'Live') {
-    return "hsl(120, 80%, 40%)";
+    return "hsl(120, 80%, 40%)"; // Green color for live products
   }
+
+  // For coming soon products, use the original colors
   switch (color) {
     case "honolulu-blue":
-      return "hsl(202, 88%, 37%)";
+      return "hsl(202, 88%, 37%)"; // #0B74B0
     case "dark-lavender":
-      return "hsl(272, 37%, 45%)";
+      return "hsl(272, 37%, 45%)"; // #75479C
     case "x11-maroon":
-      return "hsl(342, 54%, 48%)";
+      return "hsl(342, 54%, 48%)"; // #BD3861
     default:
-      return "#000000";
+      return "#000000"; // Default black border
   }
 };
 
+// Add this new function to get the button color for live products
 const getButtonColorForProduct = (status: 'Live' | 'Coming Soon') => {
+  // If the product is live, use green color
   if (status === 'Live') {
-    return "hsl(120, 80%, 40%)";
+    return "hsl(120, 80%, 40%)"; // Green color for live products
   }
+
+  // For coming soon products, return null to use default styling
   return null;
 };
 
+// Add this new function to get the badge color for live products
 const getBadgeColorForProduct = (status: 'Live' | 'Coming Soon') => {
+  // If the product is live, use green color
   if (status === 'Live') {
-    return "hsl(120, 80%, 40%)";
+    return "hsl(120, 80%, 40%)"; // Green color for live products
   }
+
+  // For coming soon products, return null to use default styling
   return null;
 };
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user, login, logout, isAdmin, ssoEnabled } = useAuth();
   const [visitCount, setVisitCount] = useState<number>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
-  const [isUserManualOpen, setIsUserManualOpen] = useState<boolean>(false);
 
+  // Fetch visit count when component mounts
   useEffect(() => {
     const loadVisitCount = async () => {
       const count = await fetchVisitCount();
@@ -253,15 +258,21 @@ const LandingPage = () => {
     };
 
     const incrementAndLoadCount = async () => {
-      await incrementVisitCount();
+      // First increment the visit count
+      const newCount = await incrementVisitCount();
+      // Then fetch the updated count to ensure consistency
       const updatedCount = await fetchVisitCount();
       setVisitCount(updatedCount);
     };
 
+    // Load initial count
     loadVisitCount();
+
+    // Increment visit count for this visit
     incrementAndLoadCount();
   }, []);
 
+  // Handle scroll to show/hide scroll to top button
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 300) {
@@ -270,13 +281,15 @@ const LandingPage = () => {
         setShowScrollTop(false);
       }
     };
+
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const handleProductClick = (product: Product): void => {
     if (product.status === 'Live' && product.route) {
-      if (product.id === '3') {
+      // SEBI Analysis is a separate application, open in new tab
+      if (product.id === '3') { // SEBI Analysis
         window.open(product.route, '_blank');
       } else {
         navigate(product.route);
@@ -285,148 +298,300 @@ const LandingPage = () => {
   };
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
   };
 
   const scrollToContent = () => {
     const contentElement = document.querySelector('.products-section');
     if (contentElement) {
-      contentElement.scrollIntoView({ behavior: 'smooth' });
+      contentElement.scrollIntoView({
+        behavior: 'smooth'
+      });
     }
   };
 
   return (
-    <div className="min-h-screen bg-white relative">
-      <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 bg-white/80 backdrop-blur-sm p-2 rounded-lg border shadow-sm hover:bg-white transition-colors">
-              <div className="flex flex-col items-end">
-                <span className="text-xs font-semibold text-gray-900">Guest User</span>
-                <span className="text-[10px] text-gray-500">guest@adani.com</span>
+    <div className="min-h-screen bg-white">
+
+      {/* SSO Login Header — hidden when SSO is disabled */}
+      {ssoEnabled && (
+        <div className="fixed top-0 right-0 z-50 p-4">
+          {isAuthenticated && user ? (
+            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">{user.name || user.email}</span>
               </div>
-              <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-[#0B74B0]">
-                <UserIcon size={16} />
-              </div>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 mt-1 font-mono">
-            <DropdownMenuLabel>Account Shortcuts</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setIsUserManualOpen(true)}
-              className="flex items-center gap-2 cursor-pointer font-bold text-slate-700"
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={logout}
+                className="rounded-full"
+              >
+                Logout
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={login}
+              className="rounded-full shadow-lg"
+              style={{
+                backgroundColor: '#0B74B0',
+                color: 'white'
+              }}
             >
-              <BookOpenIcon size={14} className="text-[#0B74B0]" />
-              User Manual (SOPs)
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+              <LogIn className="h-4 w-4 mr-2" />
+              Login with SSO
+            </Button>
+          )}
+        </div>
+      )}
 
-      <UserManualModal
-        isOpen={isUserManualOpen}
-        onClose={() => setIsUserManualOpen(false)}
-      />
-
+      {/* Orbit Section with Background Image - Fully responsive */}
       <div className="flex flex-col items-center justify-center min-h-screen relative overflow-hidden bg-white w-full">
         <div className="w-full flex justify-center">
           <div className="w-full max-w-6xl px-4">
             <div className="relative w-full" style={{ height: 'clamp(300px, 50vw, 450px)', maxWidth: '450px', margin: '0 auto' }}>
-              <Orb hoverIntensity={0} rotateOnHover={false} hue={0} forceHoverState={false} />
-              <div className="absolute inset-0 flex items-center justify-center z-10" style={{ pointerEvents: 'none' }}>
-                <img src="/adani.svg" alt="Company Logo" className="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 opacity-90" style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.2))' }} />
+              <Orb
+                hoverIntensity={0}
+                rotateOnHover={false}
+                hue={0}
+                forceHoverState={false}
+              />
+              <div
+                className="absolute inset-0 flex items-center justify-center z-10"
+                style={{ pointerEvents: 'none' }}
+              >
+                <img
+                  src="/adani.svg"
+                  alt="Company Logo"
+                  className="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 opacity-90"
+                  style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.2))' }}
+                />
               </div>
             </div>
           </div>
         </div>
+
+        {/* Project Title Section - Responsive typography */}
         <div className="container mx-auto flex justify-center py-4 sm:py-6 px-4">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-clip-text text-transparent text-center" style={{ backgroundImage: 'linear-gradient(to right, #0B74B0, #BD3861)' }}>
+          <h1
+            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-clip-text text-transparent text-center"
+            style={{
+              backgroundImage: 'linear-gradient(to right, #0B74B0, #BD3861)'
+            }}
+          >
             Project AEGIS
           </h1>
         </div>
       </div>
 
-      <button onClick={scrollToContent} className="fixed bottom-6 left-6 sm:left-8 md:left-12 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-50 hover:shadow-xl" style={{ backgroundColor: '#6196FE', color: 'white', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }} aria-label="Scroll down to content">
+      {/* Scroll Down FAB - Responsive positioning */}
+      <button
+        onClick={scrollToContent}
+        className="fixed bottom-6 left-6 sm:left-8 md:left-12 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-50 hover:shadow-xl"
+        style={{
+          backgroundColor: '#6196FE',
+          color: 'white',
+          border: 'none',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+        }}
+        aria-label="Scroll down to content"
+      >
         <ArrowDown size={16} />
       </button>
 
+      {/* Products Section - Fully responsive grid */}
       <div className="products-section container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 min-h-screen">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-          {products.map((product) => {
-            const colorClasses = getColorClasses(product.color);
-            return (
-              <div key={product.id} className={`${product.status === 'Live' ? 'cursor-pointer' : 'cursor-default'} w-full`} onClick={() => handleProductClick(product)}>
-                <Card className="h-full relative overflow-hidden border-2 transition-all duration-300 flex flex-col w-full" style={{ background: "#ffffff", boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)', borderWidth: '2px', borderColor: getColorForProduct(product.color, product.status), fontFamily: 'Adani, sans-serif' }}>
-                  <CardHeader className="pb-4 pt-5 px-5">
-                    <div className="flex items-start gap-4">
-                      <div className={`rounded-lg flex-shrink-0 flex items-center justify-center ${colorClasses.bgClass} ${colorClasses.textClass}`} style={{ width: '48px', height: '48px' }}>
-                        {product.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <CardTitle className="text-lg font-bold truncate" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>{product.title}</CardTitle>
-                          {product.status === 'Live' ? (
-                            <Badge variant="default" className="ml-2 mt-1 px-2 py-1 text-xs whitespace-nowrap flex-shrink-0 text-white" style={{ backgroundColor: getBadgeColorForProduct(product.status), fontFamily: 'Adani, sans-serif' }}>Live</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="ml-2 mt-1 px-2 py-1 text-xs whitespace-nowrap flex-shrink-0" style={{ color: '#000000', borderColor: 'black', background: 'transparent', fontWeight: 'bold', fontFamily: 'Adani, sans-serif' }}>
-                              <Clock className="h-3 w-3 mr-1 inline" />SOON
-                            </Badge>
-                          )}
+        <div className="w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
+            {products.map((product) => {
+              const colorClasses = getColorClasses(product.color);
+              return (
+                <div
+                  key={product.id}
+                  className={`${product.status === 'Live' ? 'cursor-pointer' : 'cursor-default'} w-full`}
+                  onClick={() => handleProductClick(product)}
+                >
+                  <Card
+                    className="h-full relative overflow-hidden border-2 transition-all duration-300 flex flex-col w-full"
+                    style={{
+                      background: "#ffffff",
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                      borderWidth: '2px',
+                      borderColor: getColorForProduct(product.color, product.status),
+                      fontFamily: 'Adani, sans-serif'
+                    }}
+                  >
+                    <CardHeader className="pb-4 pt-5 px-5">
+                      <div className="flex items-start gap-4">
+                        <div
+                          className={`rounded-lg flex-shrink-0 flex items-center justify-center ${colorClasses.bgClass} ${colorClasses.textClass}`}
+                          style={{
+                            width: '48px',
+                            height: '48px'
+                          }}
+                        >
+                          {product.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <CardTitle className="text-lg font-bold truncate" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
+                              {product.title}
+                            </CardTitle>
+                            {product.status === 'Live' ? (
+                              <Badge
+                                variant="default"
+                                className="ml-2 mt-1 px-2 py-1 text-xs whitespace-nowrap flex-shrink-0 text-white"
+                                style={{
+                                  backgroundColor: getBadgeColorForProduct(product.status),
+                                  fontFamily: 'Adani, sans-serif'
+                                }}
+                              >
+                                Live
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="ml-2 mt-1 px-2 py-1 text-xs whitespace-nowrap flex-shrink-0"
+                                style={{
+                                  color: '#000000',
+                                  borderColor: 'black',
+                                  background: 'transparent',
+                                  fontWeight: 'bold',
+                                  fontFamily: 'Adani, sans-serif'
+                                }}
+                              >
+                                <Clock className="h-3 w-3 mr-1 inline" />
+                                SOON
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex-1 flex flex-col px-5 pb-5">
-                    <div className="flex-1">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>Key Features:</h4>
-                      <div className="space-y-2">
-                        {product.features.slice(0, 4).map((feature, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: product.color }} />
-                            <span className="text-xs leading-snug" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>{feature}</span>
-                          </div>
-                        ))}
+                    </CardHeader>
+
+                    <CardContent className="flex-1 flex flex-col px-5 pb-5">
+                      {/* Features List */}
+                      <div className="flex-1">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
+                          Key Features:
+                        </h4>
+                        <div className="space-y-2">
+                          {product.features.slice(0, 4).map((feature, idx) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5"
+                                style={{ backgroundColor: product.color }}
+                              />
+                              <span className="text-xs leading-snug" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
+                                {feature}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div className="pt-6">
-                      {product.status === 'Live' ? (
-                        <Button className="w-full flex items-center justify-center gap-2 h-10 text-sm" style={{ backgroundColor: getButtonColorForProduct(product.status), borderColor: getButtonColorForProduct(product.status), color: 'white', fontFamily: 'Adani, sans-serif' }} onClick={(e) => { e.stopPropagation(); handleProductClick(product); }}>
-                          Launch Application<ArrowRight className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <Button variant="outline" className="w-full cursor-not-allowed h-10 text-sm" disabled style={{ color: '#000000', borderColor: '#000000', fontWeight: 'bold', fontFamily: 'Adani, sans-serif' }}>
-                          <Clock className="h-4 w-4 mr-2" />Coming Soon
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            );
-          })}
+
+                      {/* Action Button */}
+                      <div className="pt-6">
+                        {product.status === 'Live' ? (
+                          <Button
+                            className="w-full flex items-center justify-center gap-2 h-10 text-sm"
+                            style={{
+                              backgroundColor: getButtonColorForProduct(product.status),
+                              borderColor: getButtonColorForProduct(product.status),
+                              color: 'white',
+                              fontFamily: 'Adani, sans-serif'
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleProductClick(product);
+                            }}
+                          >
+                            Launch Application
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            className="w-full cursor-not-allowed h-10 text-sm"
+                            disabled
+                            style={{
+                              color: '#000000',
+                              borderColor: '#000000',
+                              fontWeight: 'bold',
+                              fontFamily: 'Adani, sans-serif'
+                            }}
+                          >
+                            <Clock className="h-4 w-4 mr-2" />
+                            Coming Soon
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
+      {/* Footer Section - Responsive layout */}
       <div className="border-t py-6">
         <div className="container mx-auto px-4 sm:px-6 text-center">
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm text-foreground" style={{ fontFamily: 'Adani, sans-serif' }}>
-            <a href="/hierarchy-structure" className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 transition-colors">
-              Agent Organogram<ChevronRight className="ml-1 w-3 h-3" />
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
+          </div>
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 text-sm text-foreground relative" style={{ fontFamily: 'Adani, sans-serif' }}>
+            {isAdmin && (
+              <div className="sm:absolute sm:left-0 sm:top-1/2 sm:-translate-y-1/2 mb-4 sm:mb-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/admin-panel')}
+                  className="gap-2 border-gray-200 hover:bg-gray-50 text-gray-700 h-9 rounded-lg"
+                >
+                  <Shield className="h-4 w-4" />
+                  <span className="text-xs font-semibold">Admin Panel</span>
+                </Button>
+              </div>
+            )}
+            <a
+              href="/hierarchy-structure"
+              className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 transition-colors"
+            >
+              Agent Organogram
+              <ChevronRight className="ml-1 w-3 h-3" />
             </a>
           </div>
+          {/* New Footer Content with Live Visit Count */}
           <div className="mt-4 text-sm" style={{ color: '#000000', fontFamily: 'Adani, sans-serif' }}>
             Total Visits: {visitCount.toLocaleString()} | Powered By – Adani Green Energy Limited
           </div>
         </div>
       </div>
 
+      {/* Scroll to Top FAB - Responsive positioning */}
       {showScrollTop && (
-        <button onClick={scrollToTop} className="fixed bottom-6 left-6 sm:left-8 md:left-12 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-50 hover:shadow-xl" style={{ backgroundColor: '#6196FE', color: 'white', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }} aria-label="Scroll to top">
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 left-6 sm:left-8 md:left-12 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-50 hover:shadow-xl"
+          style={{
+            backgroundColor: '#6196FE',
+            color: 'white',
+            border: 'none',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+          }}
+          aria-label="Scroll to top"
+        >
           <ArrowUp size={16} />
         </button>
       )}
       <ChatbotFab />
+
     </div>
   );
 };

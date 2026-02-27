@@ -10,11 +10,9 @@ import {
   Menu,
   Bell,
   Mail,
-  BookOpen, // Import BookOpen icon
+  BookOpen,
   LucideIcon
 } from "lucide-react";
-import UserManualModal from "../UserManualModal"; // Import UserManualModal
-
 
 interface RBIAnalysisDashboardLayoutProps {
   children: ReactNode;
@@ -31,9 +29,7 @@ interface NavigationItem {
 const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state for manual modal
   const navigate = useNavigate();
-
   const location = useLocation();
 
   const navigationItems: NavigationItem[] = [
@@ -66,23 +62,17 @@ const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProp
       isActive: location.pathname === '/rbi-emaildata'
     },
     {
-      id: 'manual',
-      label: 'User Manual',
+      id: 'user-guide',
+      label: 'User Guide',
       icon: BookOpen,
-      href: '#', // No navigation, opens modal
-      isActive: false
+      href: '/rbi-user-guide',
+      isActive: location.pathname === '/rbi-user-guide'
     }
   ];
 
   const handleNavigation = (item: NavigationItem): void => {
-    if (item.id === 'manual') {
-      setIsUserManualOpen(true);
-      if (isMobileOpen) setIsMobileOpen(false);
-      return;
-    }
     navigate(item.href);
   };
-
 
   const sidebarVariants = {
     expanded: { width: "256px" },
@@ -218,6 +208,8 @@ const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProp
               className="text-xs "
               style={{ color: 'rgba(0, 0, 0, 0.7)' }}
             >
+              <div>STATUS: ONLINE</div>
+              <div>VER: 1.0.0</div>
             </motion.div>
           )}
         </div>
@@ -311,16 +303,8 @@ const RBIAnalysisDashboardLayout = ({ children }: RBIAnalysisDashboardLayoutProp
       >
         {children}
       </main>
-
-      {/* User Manual Modal */}
-      <UserManualModal
-        isOpen={isUserManualOpen}
-        onClose={() => setIsUserManualOpen(false)}
-        initialAgent="RBI Analysis Agent"
-      />
     </div>
   );
 };
-
 
 export default RBIAnalysisDashboardLayout;
