@@ -19,9 +19,19 @@ import {
   ArrowDown,
   Link,
   ChevronRight,
-  LogIn,
-  User
+  User,
+  LogOut,
+  Key,
+  ChevronDown
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import Orb from "@/components/Orb";
 import ChatbotFab from "@/components/ChatbotFab";
 import { useRef, useState, useEffect } from "react";
@@ -318,32 +328,47 @@ const LandingPage = () => {
 
       {/* SSO Login Header — hidden when SSO is disabled */}
       {ssoEnabled && (
-        <div className="fixed top-0 right-0 z-50 p-4">
+        <div className="fixed top-4 right-4 z-50">
           {isAuthenticated && user ? (
-            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-gray-600" />
-                <span className="text-sm font-medium text-gray-700">{user.name || user.email}</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={logout}
-                className="rounded-full"
-              >
-                Logout
-              </Button>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg border border-gray-200 flex items-center gap-2 hover:bg-white"
+                >
+                  <User className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-700">{user.name || user.email}</span>
+                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                {/* Dynamically show Admin Panel if user has access */}
+                {isAdmin && (
+                  <DropdownMenuItem onClick={() => navigate('/admin-panel')}>
+                    <Shield className="mr-2 h-4 w-4 text-blue-600" />
+                    <span>Admin Panel</span>
+                  </DropdownMenuItem>
+                )}
+
+                <DropdownMenuItem onClick={() => navigate('/access-request')}>
+                  <Key className="mr-2 h-4 w-4" />
+                  <span>Request Access</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={logout} className="text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Logout</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
             <Button
               onClick={login}
-              className="rounded-full shadow-lg"
-              style={{
-                backgroundColor: '#0B74B0',
-                color: 'white'
-              }}
+              className="rounded-full shadow-lg bg-[#0B74B0] hover:bg-[#0B74B0]/90 text-white flex items-center gap-2"
             >
-              <LogIn className="h-4 w-4 mr-2" />
+              <Shield className="h-4 w-4" />
               Login with SSO
             </Button>
           )}
