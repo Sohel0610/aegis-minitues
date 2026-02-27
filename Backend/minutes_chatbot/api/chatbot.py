@@ -35,11 +35,10 @@ async def process_query(
     """
     Process chatbot query using RAG.
     
-    Requires SSO authentication via Bearer token.
     Searches uploaded documents and generates answer using LLM.
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"Processing query for user {user.email}: {request.query[:50]}...")
         
         # Process query

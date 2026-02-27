@@ -34,11 +34,10 @@ async def upload_document(
     """
     Upload a document.
     
-    Requires SSO authentication via Bearer token.
     Supports: PDF, Word, Excel, PowerPoint, Text files
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"User {user.email} uploading document: {file.filename}")
         
         # Validate file type
@@ -98,11 +97,9 @@ async def list_documents(
 ):
     """
     Get list of user's uploaded documents.
-    
-    Requires SSO authentication via Bearer token.
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"Listing documents for user {user.email}")
         
         # Get documents

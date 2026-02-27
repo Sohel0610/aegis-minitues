@@ -48,7 +48,6 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# Import route modules
 from routes import (
     health,
     excel,
@@ -65,8 +64,6 @@ from routes import (
     visit_tracking,
     insider_trading,
     chat,
-    auth,
-    user_management,
     director_family_info,
     director_changes
 )
@@ -90,8 +87,6 @@ app.include_router(ai_assistant.router)
 app.include_router(visit_tracking.router)
 app.include_router(insider_trading.router)
 app.include_router(chat.router)
-app.include_router(auth.router)
-app.include_router(user_management.router)
 app.include_router(director_family_info.router)
 app.include_router(director_changes.router)
 app.include_router(chatbot_minutes_router)

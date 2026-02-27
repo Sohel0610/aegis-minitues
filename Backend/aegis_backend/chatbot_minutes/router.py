@@ -19,9 +19,8 @@ router = APIRouter(prefix="/api/minutes-chatbot", tags=["Minutes Chatbot"])
 
 # Dependency to get current user - adapting for integrated version
 async def get_current_chatbot_user(db: Session = Depends(get_db_session)):
-    # In a real Aegis integration, we would get the user from SSO token
-    # For now, we'll use a default user if none exists
-    email = "dev@adani.com" 
+    """Returns a default guest user."""
+    email = "guest@adani.com" 
     user = db.query(User).filter(User.email == email).first()
     if not user:
         user = User(email=email, name="Developer")

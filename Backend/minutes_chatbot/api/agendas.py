@@ -43,8 +43,7 @@ async def create_agenda(
     """
     Create a new agenda.
     
-    Requires SSO authentication via Bearer token.
-    User is automatically extracted from the token.
+    User is automatically extracted from the session.
     
     Example:
         POST /api/agendas/create
@@ -55,7 +54,7 @@ async def create_agenda(
         }
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"Creating agenda for user {user.email}: {request.title}")
         
         # Create agenda
@@ -94,11 +93,10 @@ async def list_user_agendas(
     """
     Get all agendas for the authenticated user.
     
-    Requires SSO authentication via Bearer token.
     Returns list of agendas sorted by meeting date (most recent first).
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"Listing agendas for user {user.email}")
         
         # Get agendas

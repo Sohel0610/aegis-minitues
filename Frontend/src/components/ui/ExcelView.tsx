@@ -23,8 +23,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useAuth } from '@/contexts/AuthContext';
-
 interface ExcelData {
   [key: string]: string | number;
 }
@@ -70,7 +68,6 @@ const ExcelView = ({
   onDateRangeChange, // Callback for date range changes
   initialDateRange // Initial date range
 }: ExcelViewProps) => {
-  const { user } = useAuth();
   const [data, setData] = useState<ExcelData[]>(initialData);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');

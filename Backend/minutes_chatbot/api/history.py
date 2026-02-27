@@ -22,11 +22,10 @@ async def get_chat_history(
     """
     Get chat history for a session.
     
-    Requires SSO authentication via Bearer token.
     Returns all messages (user + assistant) for the specified session.
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"Getting chat history for user {user.email}, session {session_id}")
         
         # Get chat history
@@ -64,11 +63,9 @@ async def get_user_sessions(
 ):
     """
     Get all session IDs for the authenticated user.
-    
-    Requires SSO authentication via Bearer token.
     """
     try:
-        # User is automatically extracted from SSO token
+        # User is automatically extracted from the session
         logger.info(f"Getting sessions for user {user.email}")
         
         # Get sessions

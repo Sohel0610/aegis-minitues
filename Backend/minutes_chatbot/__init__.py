@@ -2,7 +2,7 @@
 Minutes Chatbot - Standalone Module
 
 Auto-registers with aegis_backend when imported.
-Provides RAG-based chatbot functionality with SSO authentication.
+Provides RAG-based chatbot functionality.
 """
 
 __version__ = "1.0.0"

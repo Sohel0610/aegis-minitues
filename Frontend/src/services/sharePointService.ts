@@ -1,7 +1,4 @@
-import { Client } from '@microsoft/microsoft-graph-client';
-import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
-// @ts-ignore
-import { ClientSecretCredential } from '@azure/identity';
+
 
 // SharePoint configuration - these should be moved to environment variables
 const PROXY_BASE_URL = ''; // Use relative path since frontend and backend are served from the same origin
@@ -46,7 +43,7 @@ class SharePointService {
   public async getLists(): Promise<SharePointList[]> {
     try {
       const response = await fetch(`${PROXY_BASE_URL}/lists`);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 403) {
@@ -61,7 +58,7 @@ Please check:
         }
         throw new Error(`Failed to fetch lists: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
@@ -74,7 +71,7 @@ Please check:
   public async getListItems(listId: string): Promise<SharePointListItem[]> {
     try {
       const response = await fetch(`${PROXY_BASE_URL}/lists/${listId}/items`);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 403) {
@@ -89,7 +86,7 @@ Please check:
         }
         throw new Error(`Failed to fetch list items: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
@@ -108,7 +105,7 @@ Please check:
         },
         body: JSON.stringify(fields),
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 403) {
@@ -123,7 +120,7 @@ Please check:
         }
         throw new Error(`Failed to create list item: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
@@ -137,9 +134,9 @@ Please check:
     try {
       const encodedPath = encodeURIComponent(folderPath);
       const url = `${PROXY_BASE_URL}/files?folder_path=${encodedPath}`;
-        
+
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 403) {
@@ -154,7 +151,7 @@ Please check:
         }
         throw new Error(`Failed to fetch files: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
@@ -167,7 +164,7 @@ Please check:
   public async downloadFile(fileId: string): Promise<Blob> {
     try {
       const response = await fetch(`${PROXY_BASE_URL}/files/${fileId}/content`);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 403) {
@@ -182,7 +179,7 @@ Please check:
         }
         throw new Error(`Failed to download file: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      
+
       const blob = await response.blob();
       return blob;
     } catch (error) {
@@ -204,7 +201,7 @@ Please check:
           sheet_name: sheetName
         }),
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 403) {
@@ -219,7 +216,7 @@ Please check:
         }
         throw new Error(`Failed to fetch Excel data from SharePoint: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
