@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 
 # Import our enhanced matching algorithm
-from EnhancedIndianNameMatcher import indian_name_similarity
+from routes.EnhancedIndianNameMatcher import indian_name_similarity
 
 # Import our PostgreSQL service
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
