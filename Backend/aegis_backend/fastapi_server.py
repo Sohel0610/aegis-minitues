@@ -42,8 +42,11 @@ app.add_middleware(
 from routes import (
     health, excel, bse, sebi, rbi, analytics, admin, directors,
     directors_disclosure, director_analysis, minutes, ai_assistant,
-    visit_tracking, insider_trading, chat, auth, user_management, rbac
+    visit_tracking, insider_trading, chat, auth, user_management, rbac,
+    director_family_info, director_changes
 )
+
+from chatbot_minutes.router import router as chatbot_minutes_router
 
 app.include_router(health.router)
 app.include_router(excel.router)
@@ -63,6 +66,9 @@ app.include_router(chat.router)
 app.include_router(auth.router)
 app.include_router(user_management.router)
 app.include_router(rbac.router)
+app.include_router(director_family_info.router)
+app.include_router(director_changes.router)
+app.include_router(chatbot_minutes_router)
 
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
