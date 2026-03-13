@@ -19,75 +19,153 @@ logger = logging.getLogger(__name__)
 # Import our PostgreSQL service
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
-# Database setup - We use the 'directors_data' schema in Azure PostgreSQL
+# Database setup - We use the 'directors_data' schema in PostgreSQL (primary) with SQLite fallback.
 DB_SCHEMA = "directors_data"
 
-def init_database():
-    """Verify the PostgreSQL database schema and tables."""
-    pg_conn = get_pg_connection()
-    if not pg_conn:
-        logger.error("Could not connect to Azure PostgreSQL for initialization")
-        return
-    
+def _sqlite_db_path() -> str:
+    # Stored at Backend/aegis_backend/directors_data.db (same DB used by llm_utils.py)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "directors_data.db"))
+
+def _sqlite_connect():
+    db_path = _sqlite_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def _ensure_sqlite_schema():
+    """Ensure the local SQLite schema exists for director analytics."""
+    conn = _sqlite_connect()
+    cur = conn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        
-        # Ensure schema exists
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
-        
-        # Create directors table
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors (
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS directors (
                 din TEXT PRIMARY KEY,
                 name TEXT,
                 source_file TEXT
             )
         """)
-        
-        # Create companies table
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.companies (
-                id SERIAL PRIMARY KEY,
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS companies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE,
                 type TEXT
             )
         """)
-        
-        # Create directorships table
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directorships (
-                id SERIAL PRIMARY KEY,
-                din TEXT REFERENCES {DB_SCHEMA}.directors(din),
-                company_id INTEGER REFERENCES {DB_SCHEMA}.companies(id),
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS directorships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                din TEXT REFERENCES directors(din),
+                company_id INTEGER REFERENCES companies(id),
                 position TEXT,
                 appointment_date TEXT
             )
         """)
-        
-        # Create document_summaries table
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.document_summaries (
-                id SERIAL PRIMARY KEY,
+
+        # Used by llm_utils.py and disclosures module; keep this in the same DB for portability.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS document_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 director_name TEXT NOT NULL,
                 din TEXT,
-                file_path TEXT NOT NULL UNIQUE,
+                file_path TEXT NOT NULL,
                 full_text TEXT,
                 summary TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Create indexes for document_summaries
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_file_path ON {DB_SCHEMA}.document_summaries (file_path)")
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_dir_name ON {DB_SCHEMA}.document_summaries (director_name)")
-        
-        pg_conn.commit()
-        logger.info("PostgreSQL database initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing PostgreSQL database: {e}")
+
+        # Helpful indexes; safe to run even if table already existed.
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_directorships_din ON directorships(din)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_directorships_company_id ON directorships(company_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_document_summaries_file_path ON document_summaries(file_path)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_document_summaries_director_name ON document_summaries(director_name)")
+
+        conn.commit()
     finally:
-        pg_conn.close()
+        try:
+            cur.close()
+        finally:
+            conn.close()
+
+def init_database():
+    """Verify the PostgreSQL database schema and tables (fallback to local SQLite)."""
+    pg_conn = get_pg_connection()
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+
+            # Ensure schema exists
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
+
+            # Create directors table
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors (
+                    din TEXT PRIMARY KEY,
+                    name TEXT,
+                    source_file TEXT
+                )
+            """)
+
+            # Create companies table
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.companies (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT UNIQUE,
+                    type TEXT
+                )
+            """)
+
+            # Create directorships table
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directorships (
+                    id SERIAL PRIMARY KEY,
+                    din TEXT REFERENCES {DB_SCHEMA}.directors(din),
+                    company_id INTEGER REFERENCES {DB_SCHEMA}.companies(id),
+                    position TEXT,
+                    appointment_date TEXT
+                )
+            """)
+
+            # Create document_summaries table (file_path must be unique for UPSERT)
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.document_summaries (
+                    id SERIAL PRIMARY KEY,
+                    director_name TEXT NOT NULL,
+                    din TEXT,
+                    file_path TEXT NOT NULL UNIQUE,
+                    full_text TEXT,
+                    summary TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Create indexes for document_summaries
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_file_path ON {DB_SCHEMA}.document_summaries (file_path)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_dir_name ON {DB_SCHEMA}.document_summaries (director_name)")
+
+            pg_conn.commit()
+            logger.info("PostgreSQL database initialized successfully")
+            return
+        except Exception as e:
+            logger.warning(f"PostgreSQL init failed, falling back to SQLite: {e}")
+            try:
+                pg_conn.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    # SQLite fallback init (always safe to run)
+    _ensure_sqlite_schema()
+    logger.info(f"SQLite database initialized successfully at {_sqlite_db_path()}")
 
 def extract_director_info(doc_path: str) -> Dict:
     """
@@ -439,89 +517,144 @@ def normalize_position(position: str) -> str:
 
 def store_director_data(director_info: Dict):
     """
-    Store director data in the PostgreSQL database.
+    Store director data in the PostgreSQL database (fallback to SQLite).
     
     Args:
         director_info (Dict): Director information dictionary
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        logger.error(f"Could not connect to Azure PostgreSQL to store data for {director_info['name']}")
-        return
-    
+
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+
+            # Insert or update director information
+            if director_info.get("din"):
+                cursor.execute(f"""
+                    INSERT INTO {DB_SCHEMA}.directors (din, name, source_file)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (din) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        source_file = EXCLUDED.source_file
+                """, (director_info["din"], director_info.get("name"), director_info.get("source_file")))
+
+            # Insert companies and directorships
+            for company in director_info.get("companies", []):
+                if "name" not in company:
+                    continue
+
+                company_name = normalize_company_name(company.get("name", ""))
+                if not company_name:
+                    continue
+
+                company_type = company.get("type", "Unknown")
+                position = normalize_position(company.get("position", "Director"))
+                appointment_date = company.get("appointment_date", "")
+
+                cursor.execute(f"SELECT id, type FROM {DB_SCHEMA}.companies WHERE name = %s", (company_name,))
+                existing_company = cursor.fetchone()
+
+                if existing_company:
+                    company_id = existing_company["id"]
+                    existing_type = existing_company["type"]
+                    if existing_type == "Unknown" and company_type != "Unknown":
+                        cursor.execute(
+                            f"UPDATE {DB_SCHEMA}.companies SET type = %s WHERE id = %s",
+                            (company_type, company_id),
+                        )
+                else:
+                    cursor.execute(
+                        f"INSERT INTO {DB_SCHEMA}.companies (name, type) VALUES (%s, %s) RETURNING id",
+                        (company_name, company_type),
+                    )
+                    company_id = cursor.fetchone()["id"]
+
+                if director_info.get("din"):
+                    cursor.execute(f"""
+                        SELECT 1 FROM {DB_SCHEMA}.directorships
+                        WHERE din = %s AND company_id = %s AND position = %s
+                    """, (director_info["din"], company_id, position))
+
+                    if not cursor.fetchone():
+                        cursor.execute(f"""
+                            INSERT INTO {DB_SCHEMA}.directorships (din, company_id, position, appointment_date)
+                            VALUES (%s, %s, %s, %s)
+                        """, (director_info["din"], company_id, position, appointment_date))
+
+            pg_conn.commit()
+            logger.info(f"Stored data for director (PG): {director_info.get('name')}")
+            return
+        except Exception as e:
+            logger.warning(f"PG store failed for {director_info.get('name')}, falling back to SQLite: {e}")
+            try:
+                pg_conn.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    # SQLite fallback
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        
-        # Insert or update director information
-        if director_info["din"]:
-            cursor.execute(f"""
-                INSERT INTO {DB_SCHEMA}.directors (din, name, source_file)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (din) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    source_file = EXCLUDED.source_file
-            """, (director_info["din"], director_info["name"], director_info["source_file"]))
-        
-        # Insert companies and directorships
-        for company in director_info["companies"]:
-            if "name" not in company:
-                continue
-                
-            # Normalize company name
+        if director_info.get("din"):
+            scur.execute("""
+                INSERT INTO directors (din, name, source_file)
+                VALUES (?, ?, ?)
+                ON CONFLICT(din) DO UPDATE SET
+                    name = excluded.name,
+                    source_file = excluded.source_file
+            """, (director_info["din"], director_info.get("name"), director_info.get("source_file")))
+
+        for company in director_info.get("companies", []):
             company_name = normalize_company_name(company.get("name", ""))
             if not company_name:
                 continue
-                
+
             company_type = company.get("type", "Unknown")
             position = normalize_position(company.get("position", "Director"))
             appointment_date = company.get("appointment_date", "")
-            
-            # Check if company already exists
-            cursor.execute(f"SELECT id, type FROM {DB_SCHEMA}.companies WHERE name = %s", (company_name,))
-            existing_company = cursor.fetchone()
-            
+
+            scur.execute("SELECT id, type FROM companies WHERE name = ?", (company_name,))
+            existing_company = scur.fetchone()
+
             if existing_company:
-                # If company exists, update the type if it's more specific than "Unknown"
-                company_id = existing_company['id']
-                existing_type = existing_company['type']
+                company_id = existing_company["id"]
+                existing_type = existing_company["type"]
                 if existing_type == "Unknown" and company_type != "Unknown":
-                    cursor.execute(f"""
-                        UPDATE {DB_SCHEMA}.companies SET type = %s WHERE id = %s
-                    """, (company_type, company_id))
+                    scur.execute("UPDATE companies SET type = ? WHERE id = ?", (company_type, company_id))
             else:
-                # Insert new company
-                cursor.execute(f"""
-                    INSERT INTO {DB_SCHEMA}.companies (name, type)
-                    VALUES (%s, %s)
-                    RETURNING id
-                """, (company_name, company_type))
-                company_id = cursor.fetchone()['id']
-            
-            # Insert directorship if DIN is available
-            if director_info["din"]:
-                # Check for existing directorship to avoid duplicates if necessary, or just insert
-                # For simplicity, we can use a check or just assume it's a new entry
-                cursor.execute(f"""
-                    SELECT 1 FROM {DB_SCHEMA}.directorships 
-                    WHERE din = %s AND company_id = %s AND position = %s
+                scur.execute("INSERT INTO companies (name, type) VALUES (?, ?)", (company_name, company_type))
+                company_id = scur.lastrowid
+
+            if director_info.get("din"):
+                scur.execute("""
+                    SELECT 1 FROM directorships
+                    WHERE din = ? AND company_id = ? AND position = ?
                 """, (director_info["din"], company_id, position))
-                
-                if not cursor.fetchone():
-                    cursor.execute(f"""
-                        INSERT INTO {DB_SCHEMA}.directorships (din, company_id, position, appointment_date)
-                        VALUES (%s, %s, %s, %s)
+                if not scur.fetchone():
+                    scur.execute("""
+                        INSERT INTO directorships (din, company_id, position, appointment_date)
+                        VALUES (?, ?, ?, ?)
                     """, (director_info["din"], company_id, position, appointment_date))
-        
-        pg_conn.commit()
-        logger.info(f"Stored data for director: {director_info['name']}")
-        
+
+        sconn.commit()
+        logger.info(f"Stored data for director (SQLite): {director_info.get('name')}")
     except Exception as e:
-        logger.error(f"Error storing data for {director_info['name']}: {str(e)}")
-        if pg_conn:
-            pg_conn.rollback()
+        logger.error(f"SQLite store failed for {director_info.get('name')}: {e}")
+        try:
+            sconn.rollback()
+        except Exception:
+            pass
     finally:
-        if pg_conn:
-            pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def process_all_director_files(directory_path: str):
     """
@@ -561,24 +694,39 @@ def get_all_directors():
         List[Dict]: List of director dictionaries
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        return []
-        
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute(f"SELECT din, name, source_file FROM {DB_SCHEMA}.directors")
+            rows = cursor.fetchall()
+
+            return [
+                {"din": row["din"], "name": row["name"], "source_file": row["source_file"]}
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"PG get_all_directors failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        cursor.execute(f"SELECT din, name, source_file FROM {DB_SCHEMA}.directors")
-        rows = cursor.fetchall()
-        
-        result = []
-        for row in rows:
-            result.append({
-                "din": row['din'],
-                "name": row['name'],
-                "source_file": row['source_file']
-            })
-        return result
+        scur.execute("SELECT din, name, source_file FROM directors")
+        rows = scur.fetchall()
+        return [
+            {"din": row["din"], "name": row["name"], "source_file": row["source_file"]}
+            for row in rows
+        ]
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def get_company_count():
     """
@@ -588,31 +736,55 @@ def get_company_count():
         Dict: Company count statistics
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        return {"total": 0, "public": 0, "private": 0}
-        
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+
+            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies")
+            total_companies = cursor.fetchone()["count"]
+
+            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies WHERE type = 'Public'")
+            public_companies = cursor.fetchone()["count"]
+
+            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies WHERE type LIKE 'Private%%'")
+            private_companies = cursor.fetchone()["count"]
+
+            return {
+                "total": int(total_companies or 0),
+                "public": int(public_companies or 0),
+                "private": int(private_companies or 0),
+            }
+        except Exception as e:
+            logger.warning(f"PG get_company_count failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        
-        # Total companies
-        cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies")
-        total_companies = cursor.fetchone()['count']
-        
-        # Public companies
-        cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies WHERE type = 'Public'")
-        public_companies = cursor.fetchone()['count']
-        
-        # Private companies (both types)
-        cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies WHERE type LIKE 'Private%%'")
-        private_companies = cursor.fetchone()['count']
-        
+        scur.execute("SELECT COUNT(*) FROM companies")
+        total_companies = scur.fetchone()[0] or 0
+
+        scur.execute("SELECT COUNT(*) FROM companies WHERE type = 'Public'")
+        public_companies = scur.fetchone()[0] or 0
+
+        scur.execute("SELECT COUNT(*) FROM companies WHERE type LIKE 'Private%'")
+        private_companies = scur.fetchone()[0] or 0
+
         return {
-            "total": total_companies,
-            "public": public_companies,
-            "private": private_companies
+            "total": int(total_companies),
+            "public": int(public_companies),
+            "private": int(private_companies),
         }
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def get_cross_directorship():
     """
@@ -622,23 +794,45 @@ def get_cross_directorship():
         List[Dict]: List of directors with their company counts
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        return []
-        
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute(f"""
+                SELECT d.name, COUNT(DISTINCT ds.company_id) as company_count
+                FROM {DB_SCHEMA}.directors d
+                JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
+                GROUP BY d.din, d.name
+                ORDER BY company_count DESC
+            """)
+
+            rows = cursor.fetchall()
+            return [{"name": row["name"], "companies": row["company_count"]} for row in rows]
+        except Exception as e:
+            logger.warning(f"PG get_cross_directorship failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        cursor.execute(f"""
+        scur.execute("""
             SELECT d.name, COUNT(DISTINCT ds.company_id) as company_count
-            FROM {DB_SCHEMA}.directors d
-            JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
+            FROM directors d
+            JOIN directorships ds ON d.din = ds.din
             GROUP BY d.din, d.name
             ORDER BY company_count DESC
         """)
-        
-        rows = cursor.fetchall()
-        return [{"name": row['name'], "companies": row['company_count']} for row in rows]
+        rows = scur.fetchall()
+        return [{"name": row["name"], "companies": row["company_count"]} for row in rows]
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def get_clustering():
     """
@@ -648,37 +842,65 @@ def get_clustering():
         List[Dict]: List of director pairs with shared company counts
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        return []
-        
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute(f"""
+                SELECT 
+                    d1.name as director1,
+                    d2.name as director2,
+                    COUNT(DISTINCT ds1.company_id) as shared_companies
+                FROM {DB_SCHEMA}.directorships ds1
+                JOIN {DB_SCHEMA}.directorships ds2 ON ds1.company_id = ds2.company_id AND ds1.din < ds2.din
+                JOIN {DB_SCHEMA}.directors d1 ON ds1.din = d1.din
+                JOIN {DB_SCHEMA}.directors d2 ON ds2.din = d2.din
+                GROUP BY d1.din, d2.din, d1.name, d2.name
+                HAVING COUNT(DISTINCT ds1.company_id) > 0
+                ORDER BY shared_companies DESC
+                LIMIT 50
+            """)
+
+            rows = cursor.fetchall()
+            return [
+                {"director1": row["director1"], "director2": row["director2"], "sharedCompanies": row["shared_companies"]}
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"PG get_clustering failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        cursor.execute(f"""
+        scur.execute("""
             SELECT 
                 d1.name as director1,
                 d2.name as director2,
                 COUNT(DISTINCT ds1.company_id) as shared_companies
-            FROM {DB_SCHEMA}.directorships ds1
-            JOIN {DB_SCHEMA}.directorships ds2 ON ds1.company_id = ds2.company_id AND ds1.din < ds2.din
-            JOIN {DB_SCHEMA}.directors d1 ON ds1.din = d1.din
-            JOIN {DB_SCHEMA}.directors d2 ON ds2.din = d2.din
+            FROM directorships ds1
+            JOIN directorships ds2 ON ds1.company_id = ds2.company_id AND ds1.din < ds2.din
+            JOIN directors d1 ON ds1.din = d1.din
+            JOIN directors d2 ON ds2.din = d2.din
             GROUP BY d1.din, d2.din, d1.name, d2.name
             HAVING COUNT(DISTINCT ds1.company_id) > 0
             ORDER BY shared_companies DESC
             LIMIT 50
         """)
-        
-        rows = cursor.fetchall()
+        rows = scur.fetchall()
         return [
-            {
-                "director1": row['director1'],
-                "director2": row['director2'],
-                "sharedCompanies": row['shared_companies']
-            }
+            {"director1": row["director1"], "director2": row["director2"], "sharedCompanies": row["shared_companies"]}
             for row in rows
         ]
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def get_network():
     """
@@ -687,63 +909,87 @@ def get_network():
     Returns:
         Dict: Network nodes and links
     """
-    pg_conn = get_pg_connection()
-    if not pg_conn:
-        return {"nodes": [], "links": []}
-        
-    try:
-        cursor = get_pg_cursor(pg_conn)
-        
-        # Get directors
-        cursor.execute(f"SELECT din, name FROM {DB_SCHEMA}.directors")
-        directors = cursor.fetchall()
-        
-        # Get companies
-        cursor.execute(f"SELECT id, name FROM {DB_SCHEMA}.companies")
-        companies = cursor.fetchall()
-        
-        # Get directorships (links)
-        cursor.execute(f"""
-            SELECT d.name as director_name, c.name as company_name
-            FROM {DB_SCHEMA}.directorships ds
-            JOIN {DB_SCHEMA}.directors d ON ds.din = d.din
-            JOIN {DB_SCHEMA}.companies c ON ds.company_id = c.id
-        """)
-        directorships = cursor.fetchall()
-        
-        # Format for network visualization
+    def _format_network(directors_rows, companies_rows, directorship_rows):
         nodes = []
         links = []
-        
-        # Add directors as nodes
+
         director_names = set()
-        for row in directors:
-            name = row['name']
+        for row in directors_rows:
+            name = row["name"]
             if name not in director_names:
                 nodes.append({"id": name, "type": "director"})
                 director_names.add(name)
-        
-        # Add companies as nodes
+
         company_names = set()
-        for row in companies:
-            name = row['name']
+        for row in companies_rows:
+            name = row["name"]
             if name not in company_names:
                 nodes.append({"id": name, "type": "company"})
                 company_names.add(name)
-        
-        # Add links
+
         link_set = set()
-        for row in directorships:
-            d_name = row['director_name']
-            c_name = row['company_name']
+        for row in directorship_rows:
+            d_name = row["director_name"]
+            c_name = row["company_name"]
             link_key = (d_name, c_name)
             if link_key not in link_set:
                 links.append({"source": d_name, "target": c_name})
                 link_set.add(link_key)
-        
+
         return {"nodes": nodes, "links": links}
+
+    pg_conn = get_pg_connection()
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+
+            cursor.execute(f"SELECT din, name FROM {DB_SCHEMA}.directors")
+            directors = cursor.fetchall()
+
+            cursor.execute(f"SELECT id, name FROM {DB_SCHEMA}.companies")
+            companies = cursor.fetchall()
+
+            cursor.execute(f"""
+                SELECT d.name as director_name, c.name as company_name
+                FROM {DB_SCHEMA}.directorships ds
+                JOIN {DB_SCHEMA}.directors d ON ds.din = d.din
+                JOIN {DB_SCHEMA}.companies c ON ds.company_id = c.id
+            """)
+            directorships = cursor.fetchall()
+
+            return _format_network(directors, companies, directorships)
+        except Exception as e:
+            logger.warning(f"PG get_network failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
+    try:
+        scur.execute("SELECT din, name FROM directors")
+        directors = scur.fetchall()
+
+        scur.execute("SELECT id, name FROM companies")
+        companies = scur.fetchall()
+
+        scur.execute("""
+            SELECT d.name as director_name, c.name as company_name
+            FROM directorships ds
+            JOIN directors d ON ds.din = d.din
+            JOIN companies c ON ds.company_id = c.id
+        """)
+        directorships = scur.fetchall()
+
+        return _format_network(directors, companies, directorships)
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def get_wtd_count():
     """
@@ -753,24 +999,47 @@ def get_wtd_count():
         List[Dict]: List of directors with whole-time director positions
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        return []
-        
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute(f"""
+                SELECT d.name, COUNT(*) as wtd_positions
+                FROM {DB_SCHEMA}.directors d
+                JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
+                WHERE ds.position = 'Whole-time Director'
+                GROUP BY d.din, d.name
+                ORDER BY wtd_positions DESC
+            """)
+
+            rows = cursor.fetchall()
+            return [{"name": row["name"], "positions": row["wtd_positions"]} for row in rows]
+        except Exception as e:
+            logger.warning(f"PG get_wtd_count failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        cursor.execute(f"""
+        scur.execute("""
             SELECT d.name, COUNT(*) as wtd_positions
-            FROM {DB_SCHEMA}.directors d
-            JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
+            FROM directors d
+            JOIN directorships ds ON d.din = ds.din
             WHERE ds.position = 'Whole-time Director'
             GROUP BY d.din, d.name
             ORDER BY wtd_positions DESC
         """)
-        
-        rows = cursor.fetchall()
-        return [{"name": row['name'], "positions": row['wtd_positions']} for row in rows]
+        rows = scur.fetchall()
+        return [{"name": row["name"], "positions": row["wtd_positions"]} for row in rows]
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 def get_all_companies_with_director_count():
     """
@@ -780,23 +1049,45 @@ def get_all_companies_with_director_count():
         List[Dict]: List of companies with their director counts and types
     """
     pg_conn = get_pg_connection()
-    if not pg_conn:
-        return []
-        
+    if pg_conn:
+        try:
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute(f"""
+                SELECT c.name, c.type, COUNT(ds.id) as director_count
+                FROM {DB_SCHEMA}.companies c
+                LEFT JOIN {DB_SCHEMA}.directorships ds ON c.id = ds.company_id
+                GROUP BY c.id, c.name, c.type
+                ORDER BY c.name
+            """)
+
+            rows = cursor.fetchall()
+            return [{"name": row["name"], "type": row["type"], "director_count": row["director_count"]} for row in rows]
+        except Exception as e:
+            logger.warning(f"PG get_all_companies_with_director_count failed, falling back to SQLite: {e}")
+        finally:
+            try:
+                pg_conn.close()
+            except Exception:
+                pass
+
+    _ensure_sqlite_schema()
+    sconn = _sqlite_connect()
+    scur = sconn.cursor()
     try:
-        cursor = get_pg_cursor(pg_conn)
-        cursor.execute(f"""
+        scur.execute("""
             SELECT c.name, c.type, COUNT(ds.id) as director_count
-            FROM {DB_SCHEMA}.companies c
-            LEFT JOIN {DB_SCHEMA}.directorships ds ON c.id = ds.company_id
+            FROM companies c
+            LEFT JOIN directorships ds ON c.id = ds.company_id
             GROUP BY c.id, c.name, c.type
             ORDER BY c.name
         """)
-        
-        rows = cursor.fetchall()
-        return [{"name": row['name'], "type": row['type'], "director_count": row['director_count']} for row in rows]
+        rows = scur.fetchall()
+        return [{"name": row["name"], "type": row["type"], "director_count": row["director_count"]} for row in rows]
     finally:
-        pg_conn.close()
+        try:
+            scur.close()
+        finally:
+            sconn.close()
 
 # Test function
 def test_extraction():

@@ -1,9 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Search, Filter, Download, Eye, Trash, Calendar, Clock } from 'lucide-react';
+import { Home, FileText, Plus, FileSpreadsheet, History, BookOpen, Clock, Calendar, Download, Trash, Eye, Search, Users, Filter } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet, History, BookOpen } from 'lucide-react';
 
 const MeetingMinutes = () => {
   // Define navigation items for this product
@@ -16,6 +15,7 @@ const MeetingMinutes = () => {
     { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes', isActive: true },
     { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 

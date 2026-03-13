@@ -10,7 +10,8 @@ from psycopg2.extras import RealDictCursor
 import sys
 import sqlite3
 
-load_dotenv()
+# Ensure we load the backend-local .env even when the server is started from `Backend/`.
+load_dotenv(dotenv_path=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logger = logging.getLogger(__name__)
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)

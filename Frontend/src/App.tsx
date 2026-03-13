@@ -28,6 +28,14 @@ import DirectorsDisclosure from "./pages/DirectorsDisclosure";
 import MinutesPreparation from "./pages/MinutesPreparation";
 import FormBasedGenerator from "./pages/minutes-preparation/FormBasedGenerator";
 import AIAssistant from "./pages/minutes-preparation/AIAssistant";
+import MinutesGenerator from "./pages/minutes-preparation/MinutesGenerator";
+import CreateAgenda from "./pages/minutes-preparation/CreateAgenda";
+import SecretarialCompliances from "./pages/minutes-preparation/SecretarialCompliances";
+import TemplateResolution from "./pages/minutes-preparation/TemplateResolution";
+import MeetingMinutes from "./pages/minutes-preparation/MeetingMinutes";
+import Templates from "./pages/minutes-preparation/Templates";
+import TemplateRenderer from "./pages/minutes-preparation/TemplateRenderer";
+
 
 // Import SEBI specific pages
 import SEBIDashboard from "./pages/SEBIDashboard";
@@ -189,6 +197,16 @@ const App = () => (
             } />
             <Route path="/minutes-preparation" element={
               <ProtectedRoute requiredRoute="/minutes-preparation">
+                <MinutesGenerator />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/hub" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <MinutesPreparation />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/directors" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
                 <MinutesPreparation />
               </ProtectedRoute>
             } />
@@ -197,11 +215,47 @@ const App = () => (
                 <FormBasedGenerator />
               </ProtectedRoute>
             } />
+            <Route path="/minutes-preparation/generate" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <FormBasedGenerator />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/create-agenda" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <CreateAgenda />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/compliances" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <SecretarialCompliances />
+              </ProtectedRoute>
+            } />
             <Route path="/minutes-preparation/ai-assistant" element={
               <ProtectedRoute requiredRoute="/minutes-preparation">
                 <AIAssistant />
               </ProtectedRoute>
             } />
+            <Route path="/minutes-preparation/template-resolution" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <TemplateResolution />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/minutes" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <MeetingMinutes />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/templates" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <Templates />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/renderer" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <TemplateRenderer />
+              </ProtectedRoute>
+            } />
+
             <Route path="/hierarchy-structure" element={<HierarchyStructure />} />
 
             {/* Legacy product routes - redirect to main product */}

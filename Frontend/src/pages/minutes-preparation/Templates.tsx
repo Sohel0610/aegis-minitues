@@ -1,9 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload, Download, Plus, Edit, Trash, Eye } from 'lucide-react';
+import { FileText, Upload, Download, Plus, Edit, Trash, Eye, Home, FileSpreadsheet, History, BookOpen, Users } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet, History, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const Templates = () => {
@@ -11,12 +10,13 @@ const Templates = () => {
   const navigationItems = [
     { id: 'home', label: 'Home', icon: Home, href: '/' },
     { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
     { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
     { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates', isActive: true },
+    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 

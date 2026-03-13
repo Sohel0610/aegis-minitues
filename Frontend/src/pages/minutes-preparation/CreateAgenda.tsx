@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, Download, Sparkles, Home, History, FileSpreadsheet, Plus, HelpCircle, BookOpen } from 'lucide-react';
+import { Upload, FileText, Download, Sparkles, Home, History, FileSpreadsheet, Plus, HelpCircle, BookOpen, Users } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
@@ -59,8 +59,11 @@ const CreateAgenda = () => {
         { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
         { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda', isActive: true },
         { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
-        { id: 'ai-mom', label: 'AI MOM', icon: Sparkles, href: '/minutes-preparation/ai-assistant' },
+        { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
         { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
+        { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
+        { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+        { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
         { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
     ];
 

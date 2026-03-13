@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar, Clock, Download, FileText, Home, History, FileSpreadsheet, Plus, Upload, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { isAdmin } from '@/utils/adminAuth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FileText as FileTextIcon } from 'lucide-react';
 
@@ -87,18 +86,20 @@ const MinutesGenerator = () => {
         chairmanName: selectedCompany.directors[0]?.name || ''
       } : {})
     };
-    navigate('/minutes-preparation/generate', { state: stateToPass });
+    navigate('/minutes-preparation/form-generator', { state: stateToPass });
   };
 
+  // Define navigation items for this product
   const navigationItems = [
-    { id: 'home', label: 'Home', icon: Home, href: '/' },
-    { id: 'dashboard', label: 'Generate Minutes', icon: FileTextIcon, href: '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
-    { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
+    { id: 'home', label: 'Home', icon: FileText, href: '/' },
+    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
+    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
+    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-    { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
+    { id: 'template-resolution', label: 'Template Resolution', icon: FileText, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+    { id: 'templates', label: 'Templates', icon: FileText, href: '/minutes-preparation/templates' },
+    { id: 'directors', label: 'Directors', icon: FileText, href: '/minutes-preparation/directors' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
@@ -180,7 +181,7 @@ const MinutesGenerator = () => {
                     variant="outline"
                     className="flex items-center gap-2"
                     onClick={() => {
-                      navigate('/minutes-preparation/generate', {
+                      navigate('/minutes-preparation/form-generator', {
                         state: {
                           ...calendarData,
                           template: 'custom',

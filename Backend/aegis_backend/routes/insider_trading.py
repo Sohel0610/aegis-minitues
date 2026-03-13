@@ -30,12 +30,21 @@ try:
         fetch_records as pg_fetch_records,
         fetch_record_counts as pg_fetch_record_counts,
         fetch_filter_options as pg_fetch_filter_options,
+        pg_is_available as _pg_is_available,
     )
     PG_AVAILABLE = True
     logger.info("Insider Trading: PostgreSQL handler loaded")
 except Exception as e:
     PG_AVAILABLE = False
     logger.warning(f"Insider Trading: PG handler not available ({e}), using SQLite fallback")
+
+def _pg_ready() -> bool:
+    if not PG_AVAILABLE:
+        return False
+    try:
+        return bool(_pg_is_available())
+    except Exception:
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -350,7 +359,7 @@ def get_filter_options_data():
 async def get_company_list():
     """Get list of all companies"""
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             rows = pg_fetch_companies()
             if rows:
                 return {"companies": [r['company_name'] for r in rows]}
@@ -366,7 +375,7 @@ async def get_company_list():
 async def get_batches():
     """Get all result batches (newest first)"""
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return {"batches": pg_fetch_batches()}
         return {"batches": []}
 
@@ -377,7 +386,7 @@ async def get_batches():
 @router.get("/api/insider-trading/filter-options")
 async def get_filter_options():
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             data = pg_fetch_filter_options()
             if data.get('companies') or data.get('batches') or data.get('depositories'):
                 return data
@@ -397,7 +406,7 @@ async def get_insider_trading_summary(
 ):
     """Get summary data — uses PG if available, SQLite fallback"""
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             rows = pg_fetch_summary(company, batch, depository)
             if rows is not None:
                 # Aggregate across all matching rows
@@ -434,7 +443,7 @@ async def get_insider_trading_summary_detail(
 ):
     """Get per-company summary rows (for Data Source tab)"""
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             rows = pg_fetch_summary(company, batch, depository)
             if rows is not None:
                 return {"summary": rows}
@@ -454,7 +463,7 @@ async def get_record_counts(
 ):
     """Get record counts grouped by status"""
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return pg_fetch_record_counts(company, batch, depository)
         # Fallback: derive from SQLite summary
         s = get_enhanced_insider_trading_summary_data(company, depository)
@@ -483,7 +492,7 @@ async def get_records(
     cursor: int = Query(None),
 ):
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return pg_fetch_records(status, company, batch, depository, limit, offset, cursor)
         return {"records": [], "total": 0, "limit": limit, "offset": offset, "next_cursor": None}
 
@@ -497,7 +506,7 @@ async def get_records_added(
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
 ):
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return pg_fetch_records("ADDED", company, batch, depository, limit, offset)
         return {"records": [], "total": 0, "limit": limit, "offset": offset}
     loop = asyncio.get_event_loop()
@@ -510,7 +519,7 @@ async def get_records_removed(
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
 ):
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return pg_fetch_records("REMOVED", company, batch, depository, limit, offset)
         return {"records": [], "total": 0, "limit": limit, "offset": offset}
     loop = asyncio.get_event_loop()
@@ -523,7 +532,7 @@ async def get_records_changed(
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
 ):
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return pg_fetch_records("CHANGED", company, batch, depository, limit, offset)
         return {"records": [], "total": 0, "limit": limit, "offset": offset}
     loop = asyncio.get_event_loop()
@@ -536,7 +545,7 @@ async def get_records_unchanged(
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
 ):
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             return pg_fetch_records("UNCHANGED", company, batch, depository, limit, offset)
         return {"records": [], "total": 0, "limit": limit, "offset": offset}
     loop = asyncio.get_event_loop()
@@ -552,7 +561,7 @@ async def get_enhanced_insider_trading_details(
     depository: str = Query(None),
 ):
     def _fetch():
-        if PG_AVAILABLE:
+        if _pg_ready():
             try:
                 counts = pg_fetch_record_counts(company, batch, depository)
                 summary = {

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Home, FileText, FileSpreadsheet, History, BookOpen } from 'lucide-react';
+import { Plus, Trash2, Home, FileText, FileSpreadsheet, History, BookOpen, Users } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { useToast } from "@/components/ui/use-toast";
 
@@ -32,6 +32,7 @@ const TemplateResolution = () => {
         { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution', isActive: true },
         { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
         { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+        { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
         { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
     ];
 

@@ -8,8 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileText, Download, Users, Calendar, Clock, MapPin, AlertCircle, Eye, Plus, X, BookOpen } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Home, FileSpreadsheet, History } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { isAdmin } from '@/utils/adminAuth';
 // Import template structures
 import templateStructures from '@/template_structures.json';
 
@@ -25,41 +23,10 @@ const TemplateRenderer = () => {
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
     { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
     { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer', isActive: true },
+    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 
-  const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Check authentication status on component mount
-  useEffect(() => {
-    setIsAuthenticated(isAdmin());
-  }, []);
-
-  // Add a listener for storage changes to detect login/logout
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'isAdmin' || e.key === 'adminToken') {
-        setIsAuthenticated(isAdmin());
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    // Also check authentication status when component mounts in case it changed
-    setIsAuthenticated(isAdmin());
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
-
-  // Redirect to dashboard if not authenticated
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/minutes-preparation');
-    }
-  }, [isAuthenticated, navigate]);
 
   // State for form data
   const [formData, setFormData] = useState({
@@ -465,32 +432,6 @@ const TemplateRenderer = () => {
       </div>
     );
   };
-
-  if (!isAuthenticated) {
-    return (
-      <div className="container mx-auto py-6">
-        <div className="max-w-md mx-auto mt-20">
-          <Card className="bg-white border border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Access Denied</CardTitle>
-              <CardDescription className="text-gray-600">
-                You need to be logged in as an administrator to access this feature.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                onClick={() => navigate('/minutes-preparation')}
-              >
-
-                Return to Login
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <ProductDashboardLayout

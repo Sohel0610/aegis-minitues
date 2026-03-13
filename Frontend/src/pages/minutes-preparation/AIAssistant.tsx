@@ -28,7 +28,7 @@ interface MoMContent {
 }
 
 const AIAssistant = () => {
-  // Define navigation items for this product - simplified for AI MOM
+  // Define navigation items for this product - expanded for consistency
   const navigationItems = [
     { id: 'home', label: 'Home', icon: HomeIcon, href: '/' },
     { id: 'dashboard', label: 'Generate Minutes', icon: FileTextIcon, href: '/minutes-preparation' },
@@ -36,6 +36,9 @@ const AIAssistant = () => {
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheetIcon, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileTextIcon, href: '/minutes-preparation/ai-assistant', isActive: true },
     { id: 'template-resolution', label: 'Template Resolution', icon: HistoryIcon, href: '/minutes-preparation/template-resolution' },
+    { id: 'minutes', label: 'Meeting Minutes', icon: FileTextIcon, href: '/minutes-preparation/minutes' },
+    { id: 'templates', label: 'Templates', icon: FileSpreadsheetIcon, href: '/minutes-preparation/templates' },
+    { id: 'directors', label: 'Directors', icon: FileTextIcon, href: '/minutes-preparation/directors' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 

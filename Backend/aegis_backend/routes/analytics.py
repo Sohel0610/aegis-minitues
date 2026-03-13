@@ -14,6 +14,10 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # Create a router instance for analytics endpoints
 router = APIRouter()
 
+# SQLite fallback path for BSE notifications
+def _get_notifications_sqlite_path() -> str:
+    return os.path.join(os.path.dirname(__file__), "..", "public", "notifications.db")
+
 # Helper to get the database name
 def get_bse_db_name():
     return os.getenv('POSTGRES_DATABASE_BSE', 'aegis_bse_notification')
@@ -21,30 +25,53 @@ def get_bse_db_name():
 # Endpoint to get the count of BSE notifications for the current month
 @router.get("/bse-monthly-count")
 async def get_bse_monthly_count():
-    """Get the count of BSE notifications for the current month from PostgreSQL"""
+    """Get the count of BSE notifications for the current month (PostgreSQL, fallback to SQLite)."""
     try:
         def fetch_bse_monthly_count():
-            db_name = get_bse_db_name()
-            conn = get_pg_connection(database=db_name)
-            if not conn:
-                raise Exception(f"Failed to connect to database: {db_name}")
-            
-            cursor = get_pg_cursor(conn)
             try:
-                # PostgreSQL equivalent for current month records
-                cursor.execute("""
-                    SELECT COUNT(*) 
-                    FROM daily_logs 
-                    WHERE record_date >= DATE_TRUNC('month', CURRENT_DATE) 
-                    AND record_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
-                    AND link IS NOT NULL AND link != 'NIL'
+                db_name = get_bse_db_name()
+                conn = get_pg_connection(database=db_name)
+                if conn:
+                    cursor = get_pg_cursor(conn)
+                    try:
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM daily_logs
+                            WHERE record_date >= DATE_TRUNC('month', CURRENT_DATE)
+                            AND record_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+                            AND link IS NOT NULL AND link != 'NIL'
+                        """)
+                        count = cursor.fetchone()["count"]
+                        return {"count": count}
+                    finally:
+                        try:
+                            cursor.close()
+                        finally:
+                            conn.close()
+            except Exception as e:
+                logger.warning(f"BSE monthly count PG fetch failed, falling back to SQLite: {e}")
+
+            db_path = _get_notifications_sqlite_path()
+            if not os.path.exists(db_path):
+                return {"count": 0}
+
+            sconn = sqlite3.connect(db_path)
+            scur = sconn.cursor()
+            try:
+                scur.execute("""
+                    SELECT COUNT(*)
+                    FROM DailyLogs
+                    WHERE Date >= date('now', 'start of month')
+                      AND Date <  date('now', 'start of month', '+1 month')
+                      AND Link IS NOT NULL AND Link != 'NIL'
                 """)
-                
-                count = cursor.fetchone()['count']
-                return {"count": count}
+                count = scur.fetchone()[0] or 0
+                return {"count": int(count)}
             finally:
-                cursor.close()
-                conn.close()
+                try:
+                    scur.close()
+                finally:
+                    sconn.close()
         
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(thread_pool, fetch_bse_monthly_count)
@@ -56,49 +83,87 @@ async def get_bse_monthly_count():
 # Endpoint to get monthly count of BSE alerts from PostgreSQL
 @router.get("/api/bse-alerts-monthly-count")
 async def get_bse_alerts_monthly_count():
-    """Get monthly count of BSE alerts from the PostgreSQL database"""
+    """Get monthly count of BSE alerts (PostgreSQL, fallback to SQLite)."""
     try:
         def fetch_counts():
-            db_name = get_bse_db_name()
-            conn = get_pg_connection(database=db_name)
-            if not conn:
-                raise Exception(f"Failed to connect to database: {db_name}")
-            
-            cursor = get_pg_cursor(conn)
             try:
-                # Group by month using PostgreSQL TO_CHAR
-                cursor.execute("""
+                db_name = get_bse_db_name()
+                conn = get_pg_connection(database=db_name)
+                if conn:
+                    cursor = get_pg_cursor(conn)
+                    try:
+                        cursor.execute("""
+                            SELECT
+                                TO_CHAR(record_date, 'YYYY-MM') as month,
+                                COUNT(*) as count
+                            FROM daily_logs
+                            WHERE link IS NOT NULL AND link != 'NIL'
+                            GROUP BY TO_CHAR(record_date, 'YYYY-MM')
+                            ORDER BY month DESC
+                        """)
+
+                        rows = cursor.fetchall()
+                        monthly_data = [{"month": row["month"], "count": row["count"]} for row in rows]
+
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM daily_logs
+                            WHERE link IS NOT NULL AND link != 'NIL'
+                        """)
+                        total_count = cursor.fetchone()["count"]
+
+                        average_count = 0
+                        if monthly_data:
+                            total_notifications = sum(item["count"] for item in monthly_data)
+                            average_count = round(total_notifications / len(monthly_data))
+
+                        return monthly_data, int(total_count), int(average_count)
+                    finally:
+                        try:
+                            cursor.close()
+                        finally:
+                            conn.close()
+            except Exception as e:
+                logger.warning(f"BSE monthly counts PG fetch failed, falling back to SQLite: {e}")
+
+            db_path = _get_notifications_sqlite_path()
+            if not os.path.exists(db_path):
+                return [], 0, 0
+
+            sconn = sqlite3.connect(db_path)
+            sconn.row_factory = sqlite3.Row
+            scur = sconn.cursor()
+            try:
+                scur.execute("""
                     SELECT
-                        TO_CHAR(record_date, 'YYYY-MM') as month,
-                        COUNT(*) as count
-                    FROM daily_logs
-                    WHERE link IS NOT NULL AND link != 'NIL'
-                    GROUP BY TO_CHAR(record_date, 'YYYY-MM')
+                        substr(Date, 1, 7) AS month,
+                        COUNT(*) AS count
+                    FROM DailyLogs
+                    WHERE Link IS NOT NULL AND Link != 'NIL'
+                    GROUP BY substr(Date, 1, 7)
                     ORDER BY month DESC
                 """)
-                
-                rows = cursor.fetchall()
-                
-                monthly_data = [{'month': row['month'], 'count': row['count']} for row in rows]
-                
-                # Total count
-                cursor.execute("""
+                rows = scur.fetchall()
+                monthly_data = [{"month": row["month"], "count": row["count"]} for row in rows]
+
+                scur.execute("""
                     SELECT COUNT(*)
-                    FROM daily_logs
-                    WHERE link IS NOT NULL AND link != 'NIL'
+                    FROM DailyLogs
+                    WHERE Link IS NOT NULL AND Link != 'NIL'
                 """)
-                total_count = cursor.fetchone()['count']
-                
-                # Average per month
+                total_count = scur.fetchone()[0] or 0
+
                 average_count = 0
                 if monthly_data:
-                    total_notifications = sum(item['count'] for item in monthly_data)
+                    total_notifications = sum(int(item["count"]) for item in monthly_data)
                     average_count = round(total_notifications / len(monthly_data))
-                
-                return monthly_data, total_count, average_count
+
+                return monthly_data, int(total_count), int(average_count)
             finally:
-                cursor.close()
-                conn.close()
+                try:
+                    scur.close()
+                finally:
+                    sconn.close()
         
         loop = asyncio.get_event_loop()
         monthly_data, total_count, average_count = await loop.run_in_executor(thread_pool, fetch_counts)
@@ -110,27 +175,51 @@ async def get_bse_alerts_monthly_count():
 # Endpoint to get total count of BSE alerts for the current month
 @router.get("/api/bse-alerts-monthly-total")
 async def get_bse_alerts_monthly_total():
-    """Get total count of BSE alerts for the current month from PostgreSQL"""
+    """Get total count of BSE alerts for the current month (PostgreSQL, fallback to SQLite)."""
     try:
         def fetch_total_count():
-            db_name = get_bse_db_name()
-            conn = get_pg_connection(database=db_name)
-            if not conn:
-                raise Exception(f"Failed to connect to database: {db_name}")
-            
-            cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("""
+                db_name = get_bse_db_name()
+                conn = get_pg_connection(database=db_name)
+                if conn:
+                    cursor = get_pg_cursor(conn)
+                    try:
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM daily_logs
+                            WHERE record_date >= DATE_TRUNC('month', CURRENT_DATE)
+                            AND record_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+                            AND link IS NOT NULL AND link != 'NIL'
+                        """)
+                        return int(cursor.fetchone()["count"])
+                    finally:
+                        try:
+                            cursor.close()
+                        finally:
+                            conn.close()
+            except Exception as e:
+                logger.warning(f"BSE monthly total PG fetch failed, falling back to SQLite: {e}")
+
+            db_path = _get_notifications_sqlite_path()
+            if not os.path.exists(db_path):
+                return 0
+
+            sconn = sqlite3.connect(db_path)
+            scur = sconn.cursor()
+            try:
+                scur.execute("""
                     SELECT COUNT(*)
-                    FROM daily_logs
-                    WHERE record_date >= DATE_TRUNC('month', CURRENT_DATE)
-                    AND record_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
-                    AND link IS NOT NULL AND link != 'NIL'
+                    FROM DailyLogs
+                    WHERE Date >= date('now', 'start of month')
+                      AND Date <  date('now', 'start of month', '+1 month')
+                      AND Link IS NOT NULL AND Link != 'NIL'
                 """)
-                return cursor.fetchone()['count']
+                return int(scur.fetchone()[0] or 0)
             finally:
-                cursor.close()
-                conn.close()
+                try:
+                    scur.close()
+                finally:
+                    sconn.close()
 
         loop = asyncio.get_event_loop()
         total_count = await loop.run_in_executor(thread_pool, fetch_total_count)

@@ -7,7 +7,8 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 
-load_dotenv()
+# Ensure we load the backend-local .env even when the server is started from `Backend/`.
+load_dotenv(dotenv_path=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")))
 logger = logging.getLogger(__name__)
 
 # ── Connection Pool (reuse connections instead of opening new ones) ───
@@ -76,6 +77,21 @@ def _put_connection(conn):
 
 def _dict_cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+def pg_is_available() -> bool:
+    """Best-effort connectivity check used by the route layer to decide on SQLite fallback."""
+    conn = _get_connection()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        return True
+    except Exception:
+        return False
+    finally:
+        _put_connection(conn)
 
 
 # ── ID Resolution Cache (avoid repeated lookups for names→ids) ───────

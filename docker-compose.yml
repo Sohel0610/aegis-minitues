@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: aegis-postgres
+    restart: unless-stopped
+    ports:
+      # Backend default is configurable via `POSTGRES_PORT` in `Backend/aegis_backend/.env`.
+      # If 5437 conflicts on your machine, change the host-side port here and in the .env file.
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - aegis_pg_data:/var/lib/postgresql/data
+      # Runs once when the volume is first created.
+      - ./Backend/aegis_backend/scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  aegis_pg_data:

@@ -6,7 +6,8 @@ import os
 import threading
 from dotenv import load_dotenv
 
-load_dotenv()
+# Ensure we load the backend-local .env even when the server is started from `Backend/`.
+load_dotenv(dotenv_path=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")))
 logger = logging.getLogger(__name__)
 
 _pools = {}

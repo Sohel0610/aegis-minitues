@@ -22,7 +22,8 @@ import platform
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from docx import Document as DocxDocument
 
-load_dotenv()
+# Ensure we load the backend-local .env even when the server is started from `Backend/`.
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
