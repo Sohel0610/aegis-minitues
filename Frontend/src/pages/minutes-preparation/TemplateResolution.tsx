@@ -38,7 +38,7 @@ const TemplateResolution = () => {
 
     const fetchTemplates = async () => {
         try {
-            const res = await fetch('/resolutions');
+            const res = await fetch('/api/resolutions');
             if (res.ok) {
                 const data = await res.json();
                 setTemplates(data.data || []);
@@ -58,7 +58,7 @@ const TemplateResolution = () => {
 
         setIsLoading(true);
         try {
-            const res = await fetch('/resolutions', {
+            const res = await fetch('/api/resolutions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -91,7 +91,7 @@ const TemplateResolution = () => {
         if (!confirm('Are you sure you want to delete this template?')) return;
 
         try {
-            const res = await fetch(`/resolutions/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/resolutions/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 toast({
                     title: "Template Deleted",

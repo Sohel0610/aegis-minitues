@@ -13,6 +13,50 @@ logger = logging.getLogger(__name__)
 _pools = {}
 _pools_lock = threading.Lock()
 
+
+class PooledConnection:
+    """Proxy a pooled psycopg2 connection so `.close()` returns it to the pool."""
+
+    def __init__(self, conn, pool_key):
+        self._conn = conn
+        self._pool_key = pool_key
+        self._returned = False
+
+    def close(self):
+        if self._returned or self._conn is None:
+            return
+
+        with _pools_lock:
+            pool = _pools.get(self._pool_key)
+
+        if pool:
+            try:
+                pool.putconn(self._conn)
+            except Exception:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+        else:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+
+        self._returned = True
+        self._conn = None
+
+    def __getattr__(self, name):
+        if self._conn is None:
+            raise AttributeError(name)
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
 def get_pg_connection(database=None):
     host     = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST')
     user     = os.getenv('POSTGRES_USER') or os.getenv('DB_USER')
@@ -46,13 +90,17 @@ def get_pg_connection(database=None):
                 return None
 
     try:
-        return _pools[pool_key].getconn()
+        conn = _pools[pool_key].getconn()
+        return PooledConnection(conn, pool_key)
     except Exception as e:
         logger.error(f"Pool getconn failed (DB: {database}): {e}")
         return None
 
 def put_pg_connection(conn, database=None):
     if not conn:
+        return
+    if isinstance(conn, PooledConnection):
+        conn.close()
         return
     host = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST')
     port = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT')

@@ -183,7 +183,7 @@ const Templates = () => {
                   formData.append('file', file);
 
                   try {
-                    const res = await fetch('/upload-template', {
+                    const res = await fetch('/api/upload-template', {
                       method: 'POST',
                       body: formData
                     });

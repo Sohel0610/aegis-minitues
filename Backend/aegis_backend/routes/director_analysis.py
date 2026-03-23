@@ -64,7 +64,7 @@ class CompanyWithDirectorCountResponse(BaseModel):
     director_count: int
 
 # Endpoint to get all directors
-@router.get("/api/directors", response_model=List[DirectorResponse])
+@router.get("/directors", response_model=List[DirectorResponse])
 async def get_directors():
     """Get all directors from the database"""
     try:
@@ -80,7 +80,7 @@ async def get_directors():
         raise HTTPException(status_code=500, detail=f"Failed to fetch directors: {str(e)}")
 
 # Endpoint to get company count statistics
-@router.get("/api/company-count", response_model=CompanyCountResponse)
+@router.get("/company-count", response_model=CompanyCountResponse)
 async def get_company_count_endpoint():
     """Get company count statistics"""
     try:
@@ -96,7 +96,7 @@ async def get_company_count_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to fetch company count: {str(e)}")
 
 # Endpoint to get cross-directorship information
-@router.get("/api/cross-directorship", response_model=List[CrossDirectorshipResponse])
+@router.get("/cross-directorship", response_model=List[CrossDirectorshipResponse])
 async def get_cross_directorship_endpoint():
     """Get cross-directorship information"""
     try:
@@ -112,7 +112,7 @@ async def get_cross_directorship_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to fetch cross directorship: {str(e)}")
 
 # Endpoint to get clustering information
-@router.get("/api/clustering", response_model=List[ClusteringResponse])
+@router.get("/clustering", response_model=List[ClusteringResponse])
 async def get_clustering_endpoint():
     """Get director clustering information"""
     try:
@@ -128,7 +128,7 @@ async def get_clustering_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to fetch clustering: {str(e)}")
 
 # Endpoint to get network data for visualization
-@router.get("/api/network", response_model=NetworkResponse)
+@router.get("/network", response_model=NetworkResponse)
 async def get_network_endpoint():
     """Get network data for visualization"""
     try:
@@ -148,7 +148,7 @@ async def get_network_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to fetch network: {str(e)}")
 
 # Endpoint to get whole-time director count
-@router.get("/api/wtd-count", response_model=List[WTDCountResponse])
+@router.get("/wtd-count", response_model=List[WTDCountResponse])
 async def get_wtd_count_endpoint():
     """Get whole-time director count"""
     try:
@@ -164,7 +164,7 @@ async def get_wtd_count_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to fetch WTD count: {str(e)}")
 
 # Endpoint to get all companies with director count (already exists in directors.py but adding here for completeness)
-@router.get("/api/companies-with-director-count", response_model=List[CompanyWithDirectorCountResponse])
+@router.get("/companies-with-director-count", response_model=List[CompanyWithDirectorCountResponse])
 async def get_companies_with_director_count():
     """Get all companies with their director counts and types"""
     try:

@@ -42,7 +42,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const fetchVisitCount = async (): Promise<number> => {
   try {
     // Use relative path since frontend and backend are served from the same origin
-    const response = await fetch(`/visits/count`);
+    const response = await fetch(`/api/visits/count`);
     if (!response.ok) {
       throw new Error('Failed to fetch visit count');
     }
@@ -58,7 +58,7 @@ const fetchVisitCount = async (): Promise<number> => {
 const incrementVisitCount = async (): Promise<number> => {
   try {
     // Use relative path since frontend and backend are served from the same origin
-    const response = await fetch(`/visits/increment`, {
+    const response = await fetch(`/api/visits/increment`, {
       method: 'POST',
     });
     if (!response.ok) {

@@ -8,7 +8,7 @@ import logging
 import json
 
 # Existing router definition
-router = APIRouter(prefix="/api/chat")
+router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = logging.getLogger(__name__)
 
 # --- Pydantic Models for Existing Endpoints ---
@@ -172,10 +172,8 @@ except ImportError:
     def process_user_query(*args, **kwargs):
         return "Error: Orchestrator not imported (dependency issue).", []
 
-# Define a new router object for the /chat GET endpoint as requested
-chat_router_get = APIRouter(prefix="/chat", tags=["Chat"])
-
-@chat_router_get.get("")
+# Let's attach this new GET endpoint to the main `router` instead of creating a second non-imported one.
+@router.get("")
 def chat_get(
     q: str = Query(..., description="User query"),
     database: str = Query("all", description="bse | sebi | rbi | all"),

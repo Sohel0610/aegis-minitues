@@ -21,7 +21,7 @@ interface CombinedWorkbookData {
 
 // Fetch combined workbook data from API
 const fetchCombinedWorkbookData = async (fileName: string): Promise<CombinedWorkbookData> => {
-  const response = await fetch(`/combined-workbook-data/${fileName}`);
+  const response = await fetch(`/api/combined-workbook-data/${fileName}`);
   if (!response.ok) {
     throw new Error("Failed to fetch combined workbook data");
   }
@@ -31,7 +31,7 @@ const fetchCombinedWorkbookData = async (fileName: string): Promise<CombinedWork
 const TotalWorkbookNotifications = () => {
   const [fileName, setFileName] = useState<string>("2025-08.xlsx");
   const [showExcelView, setShowExcelView] = useState<boolean>(false);
-  
+
   const { data, isLoading, error, refetch } = useQuery<CombinedWorkbookData, Error>({
     queryKey: ["combinedWorkbookData", fileName],
     queryFn: () => fetchCombinedWorkbookData(fileName),
@@ -52,7 +52,7 @@ const TotalWorkbookNotifications = () => {
   return (
     <BSEAlertsDashboardLayout>
       <NotificationBar />
-      
+
       <div className="min-h-screen p-8" style={{ background: "#FFFFFF" }}>
         <Card className="border-0 shadow-none bg-transparent">
           <CardHeader className="px-0 pb-4">
@@ -67,7 +67,7 @@ const TotalWorkbookNotifications = () => {
             </CardDescription>
           </CardHeader>
         </Card>
-        
+
         {!showExcelView ? (
           <Card style={{ background: "#FFFFFF", border: "2px solid #1E40AF" }}>
             <CardHeader>
@@ -95,10 +95,10 @@ const TotalWorkbookNotifications = () => {
                     Default file is 2025-08.xlsx. The file should be located in the backend/public/excel directory
                   </p>
                 </div>
-                
+
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={handleLoadWorkbook} 
+                  <Button
+                    onClick={handleLoadWorkbook}
                     disabled={isLoading}
                     className="flex items-center gap-2"
                     style={{
@@ -109,7 +109,7 @@ const TotalWorkbookNotifications = () => {
                     <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                     {isLoading ? 'Loading...' : 'Load Combined Data'}
                   </Button>
-                  
+
                   {error && (
                     <div className="flex items-center gap-2 p-2 bg-red-50 text-red-700 rounded">
                       <AlertCircle className="h-4 w-4" />
@@ -117,7 +117,7 @@ const TotalWorkbookNotifications = () => {
                     </div>
                   )}
                 </div>
-                
+
                 {data && (
                   <div className="mt-6 p-4 border rounded" style={{ borderColor: '#1E40AF' }}>
                     <h3 className="text-lg font-semibold mb-2" style={{ color: '#000000' }}>Workbook Information</h3>
@@ -136,7 +136,7 @@ const TotalWorkbookNotifications = () => {
                       </div>
                     </div>
                     <div className="mt-4">
-                      <Button 
+                      <Button
                         onClick={() => setShowExcelView(true)}
                         style={{
                           backgroundColor: '#1E40AF',
@@ -153,7 +153,7 @@ const TotalWorkbookNotifications = () => {
           </Card>
         ) : (
           data && (
-            <ExcelView 
+            <ExcelView
               initialData={data.combined_data}
               title="Total Notifications"
               onClose={() => setShowExcelView(false)}

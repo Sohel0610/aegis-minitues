@@ -471,7 +471,7 @@ async def generate_minutes(request: MinutesGenerationRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate minutes: {str(e)}")
 
 # Endpoint to get generated minutes history
-@router.get("/api/generated-minutes", response_model=MinutesHistoryResponse)
+@router.get("/generated-minutes", response_model=MinutesHistoryResponse)
 async def get_generated_minutes_history():
     """Get history of generated minutes"""
     try:
@@ -506,7 +506,7 @@ async def get_generated_minutes_history():
         logger.error(f"Error fetching minutes history: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch history: {str(e)}")
 
-@router.delete("/api/generated-minutes/{id}")
+@router.delete("/generated-minutes/{id}")
 async def delete_generated_minute(id: int):
     """Delete a generated minute record and file"""
     try:
@@ -536,7 +536,7 @@ async def delete_generated_minute(id: int):
 
 
 # Endpoint to list all templates
-@router.get("/api/templates")
+@router.get("/templates")
 async def list_templates():
     """List all available DOCX templates"""
     try:
@@ -562,8 +562,8 @@ async def list_templates():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint to download generated minutes or templates
-@router.get("/api/generated-minutes/download/{filename}")
-@router.get("/api/templates/download/{filename}")
+@router.get("/generated-minutes/download/{filename}")
+@router.get("/templates/download/{filename}")
 async def download_file(filename: str):
     """Download a file from templates directory"""
     try:
@@ -586,7 +586,7 @@ async def download_file(filename: str):
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
 # Endpoint to delete a template
-@router.delete("/api/templates/{filename}")
+@router.delete("/templates/{filename}")
 async def delete_template(filename: str):
     """Delete a template file"""
     try:
@@ -666,7 +666,7 @@ async def delete_resolution(id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 # COMPLIANCE ENDPOINTS
-@router.get("/api/compliances", response_model=CompliancesList)
+@router.get("/compliances", response_model=CompliancesList)
 async def get_compliances():
     """Get all secretarial compliances"""
     try:
@@ -688,7 +688,7 @@ async def get_compliances():
         logger.error(f"Error fetching compliances: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/api/compliances", response_model=ComplianceResponse)
+@router.post("/compliances", response_model=ComplianceResponse)
 async def create_compliance(request: ComplianceCreate):
     """Create a new compliance record"""
     try:

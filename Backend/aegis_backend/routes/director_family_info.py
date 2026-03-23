@@ -381,7 +381,7 @@ def get_all_directors_with_family_info():
     return results
 
 # Endpoint to get family information for a specific director
-@router.get("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
+@router.get("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
 async def get_director_family_info(director_name: str):
     """Get family information for a specific director"""
     try:
@@ -402,7 +402,7 @@ async def get_director_family_info(director_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to fetch family info: {str(e)}")
 
 # Endpoint to get family information for all directors
-@router.get("/api/directors/family-info", response_model=FamilyInfoListResponse)
+@router.get("/directors/family-info", response_model=FamilyInfoListResponse)
 async def get_all_directors_family_info():
     """Get family information for all directors"""
     try:
@@ -421,7 +421,7 @@ async def get_all_directors_family_info():
         raise HTTPException(status_code=500, detail=f"Failed to fetch family info: {str(e)}")
 
 # Endpoint to update family information for a director
-@router.put("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
+@router.put("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
 async def update_director_family_info(director_name: str, family_info: Dict[str, Any]):
     """Update family information for a director (PostgreSQL primary, SQLite fallback)."""
     try:

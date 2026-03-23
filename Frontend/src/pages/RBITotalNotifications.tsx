@@ -74,7 +74,7 @@ const fetchRBIData = async (limit: number = 100, offset: number = 0): Promise<an
   const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
   // Use relative path since frontend and backend are served from the same origin
-  const API_BASE_URL = '';
+  const API_BASE_URL = '/api';
   try {
     const response = await fetch(`${API_BASE_URL}/rbi-analysis-data?limit=${limit}&offset=${offset}`, {
       signal: controller.signal

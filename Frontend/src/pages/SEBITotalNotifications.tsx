@@ -74,18 +74,18 @@ const fetchSEBIData = async (limit: number = 100, offset: number = 0): Promise<a
   const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
   // Use relative path since frontend and backend are served from the same origin
-  const API_BASE_URL = '';
+  const API_BASE_URL = '/api';
 
   try {
     const response = await fetch(`${API_BASE_URL}/sebi-analysis-data?limit=${limit}&offset=${offset}`, {
       signal: controller.signal
     });
     clearTimeout(timeoutId);
-   
+
     if (!response.ok) {
       throw new Error(`Failed to fetch SEBI data: ${response.status} ${response.statusText}`);
     }
-    
+
     // Check if response is JSON
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
@@ -93,7 +93,7 @@ const fetchSEBIData = async (limit: number = 100, offset: number = 0): Promise<a
       console.error('Non-JSON response:', text);
       throw new Error('Received non-JSON response from server');
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -119,7 +119,7 @@ const transformSEBIDataForExcelView = (data: SEBIExcelSummary[]) => {
 // Filter data to show only the latest month
 const filterDataByLatestMonth = (data: any[]) => {
   if (!data || data.length === 0) return data;
-  
+
   // Find the latest date in the data
   let latestDate: Date | null = null;
   data.forEach(item => {
@@ -134,14 +134,14 @@ const filterDataByLatestMonth = (data: any[]) => {
       }
     }
   });
-  
+
   // If no valid dates found, return original data
   if (!latestDate) return data;
-  
+
   // Filter data to only include records from the latest month
   const latestMonth = latestDate.getMonth();
   const latestYear = latestDate.getFullYear();
-  
+
   return data.filter(item => {
     if (!item.date_key) return false;
     try {
@@ -185,23 +185,23 @@ const SEBITotalNotifications = () => {
     try {
       setLoading(true);
       setError(null);
-     
+
       // Force refresh by disabling cache temporarily
       setUseCache(false);
-     
+
       // Fetch SEBI data from the new endpoint
       const sebiDataResponse = await fetchSEBIData(1000, 0); // Fetch all valid records
       const sebiData = sebiDataResponse.data;
       const totalNotificationsCount = sebiDataResponse.count; // Get total count from API response
-     
+
       // Transform data for ExcelView
       const transformedData = transformSEBIDataForExcelView(sebiData);
-      
+
       // Filter data to show only latest month
       const filteredData = filterDataByLatestMonth(transformedData);
-      
+
       setSEBIData(filteredData);
-     
+
       // Save to cache with total count
       saveToCache({
         sebiData: filteredData,
@@ -223,7 +223,7 @@ const SEBITotalNotifications = () => {
       try {
         setLoading(true);
         setError(null);
-       
+
         // Check cache first if enabled
         if (useCache) {
           const cachedData = loadFromCache();
@@ -233,25 +233,25 @@ const SEBITotalNotifications = () => {
             return;
           }
         }
-       
+
         // Fetch SEBI data from the new endpoint
         const sebiDataResponse = await fetchSEBIData(1000, 0); // Fetch all valid records
         const sebiData = sebiDataResponse.data;
         const totalNotificationsCount = sebiDataResponse.count; // Get total count from API response
-       
+
         // Filter out NIL records
-        const filteredData = sebiData.filter((item: SEBIExcelSummary) => 
+        const filteredData = sebiData.filter((item: SEBIExcelSummary) =>
           item.pdf_link !== 'NIL' && item.summary !== 'NIL'
         );
-       
+
         // Transform data for ExcelView
         const transformedData = transformSEBIDataForExcelView(filteredData);
-        
+
         // Filter data to show only latest month
         const latestMonthData = filterDataByLatestMonth(transformedData);
-        
+
         setSEBIData(latestMonthData);
-       
+
         // Save to cache with total count
         if (useCache) {
           saveToCache({
@@ -311,7 +311,7 @@ const SEBITotalNotifications = () => {
     <SEBIAnalysisDashboardLayout>
       {/* Notification Bar at top of page */}
       <NotificationBar />
-      
+
       <div className="min-h-screen" style={{
         background: "#ffffff",
       }}>
@@ -340,8 +340,8 @@ const SEBITotalNotifications = () => {
             ) : error ? (
               <div className="bg-red-50 border border-red-200 rounded p-4 text-red-700">
                 <p>Error: {error}</p>
-                <Button 
-                  onClick={handleRefresh} 
+                <Button
+                  onClick={handleRefresh}
                   className="mt-2"
                   style={{
                     backgroundColor: '#BD3861',
@@ -400,7 +400,7 @@ const SEBITotalNotifications = () => {
               Detailed information for the selected notification record
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedRecord && (
             <div className="space-y-6 mt-4 w-full">
               {/* Entity Information */}
@@ -438,9 +438,9 @@ const SEBITotalNotifications = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="prose prose-sm max-w-none w-full">
-                    <div 
-                      className="text-sm leading-relaxed whitespace-pre-line p-4 rounded-lg w-full" 
-                      style={{ 
+                    <div
+                      className="text-sm leading-relaxed whitespace-pre-line p-4 rounded-lg w-full"
+                      style={{
                         background: '#ffffff',
                         border: '1px solid #1E40AF',
                         color: '#000000'

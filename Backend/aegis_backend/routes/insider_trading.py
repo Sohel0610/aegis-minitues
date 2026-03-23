@@ -355,7 +355,7 @@ def get_filter_options_data():
 
 # ── Reference Data ────────────────────────────────────────────────────
 
-@router.get("/api/insider-trading/companies")
+@router.get("/insider-trading/companies")
 async def get_company_list():
     """Get list of all companies"""
     def _fetch():
@@ -371,7 +371,7 @@ async def get_company_list():
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/batches")
+@router.get("/insider-trading/batches")
 async def get_batches():
     """Get all result batches (newest first)"""
     def _fetch():
@@ -383,7 +383,7 @@ async def get_batches():
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/filter-options")
+@router.get("/insider-trading/filter-options")
 async def get_filter_options():
     def _fetch():
         if _pg_ready():
@@ -398,7 +398,7 @@ async def get_filter_options():
 
 # ── Summary ───────────────────────────────────────────────────────────
 
-@router.get("/api/insider-trading/summary")
+@router.get("/insider-trading/summary")
 async def get_insider_trading_summary(
     company: str = Query(None),
     batch: str = Query(None),
@@ -435,7 +435,7 @@ async def get_insider_trading_summary(
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/summary/detail")
+@router.get("/insider-trading/summary/detail")
 async def get_insider_trading_summary_detail(
     company: str = Query(None),
     batch: str = Query(None),
@@ -455,7 +455,7 @@ async def get_insider_trading_summary_detail(
 
 # ── Record Counts ─────────────────────────────────────────────────────
 
-@router.get("/api/insider-trading/counts")
+@router.get("/insider-trading/counts")
 async def get_record_counts(
     company: str = Query(None),
     batch: str = Query(None),
@@ -481,7 +481,7 @@ async def get_record_counts(
 
 # ── Records ───────────────────────────────────────────────────────────
 
-@router.get("/api/insider-trading/records")
+@router.get("/insider-trading/records")
 async def get_records(
     status: str = Query(None),
     company: str = Query(None),
@@ -500,7 +500,7 @@ async def get_records(
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/records/added")
+@router.get("/insider-trading/records/added")
 async def get_records_added(
     company: str = Query(None), batch: str = Query(None),
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
@@ -513,7 +513,7 @@ async def get_records_added(
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/records/removed")
+@router.get("/insider-trading/records/removed")
 async def get_records_removed(
     company: str = Query(None), batch: str = Query(None),
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
@@ -526,7 +526,7 @@ async def get_records_removed(
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/records/changed")
+@router.get("/insider-trading/records/changed")
 async def get_records_changed(
     company: str = Query(None), batch: str = Query(None),
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
@@ -539,7 +539,7 @@ async def get_records_changed(
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/records/unchanged")
+@router.get("/insider-trading/records/unchanged")
 async def get_records_unchanged(
     company: str = Query(None), batch: str = Query(None),
     depository: str = Query(None), limit: int = Query(15), offset: int = Query(0),
@@ -554,7 +554,7 @@ async def get_records_unchanged(
 
 # ── Enhanced Details (backward-compatible) ────────────────────────────
 
-@router.get("/api/insider-trading/enhanced-details")
+@router.get("/insider-trading/enhanced-details")
 async def get_enhanced_insider_trading_details(
     company: str = Query(None),
     batch: str = Query(None),
@@ -610,7 +610,7 @@ async def get_enhanced_insider_trading_details(
     return await loop.run_in_executor(thread_pool, _fetch)
 
 
-@router.get("/api/insider-trading/details")
+@router.get("/insider-trading/details")
 async def get_insider_trading_details():
     """Alias for enhanced-details with no filters"""
     def _fetch():

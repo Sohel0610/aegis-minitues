@@ -234,7 +234,7 @@ const FormBasedGenerator: React.FC = () => {
     formDataUpload.append('file', file);
 
     try {
-      const res = await fetch('/upload-template', {
+      const res = await fetch('/api/upload-template', {
         method: 'POST',
         body: formDataUpload
       });
@@ -262,7 +262,7 @@ const FormBasedGenerator: React.FC = () => {
   useEffect(() => {
     const fetchResTemplates = async () => {
       try {
-        const res = await fetch('/resolutions');
+        const res = await fetch('/api/resolutions');
         if (res.ok) {
           const data = await res.json();
           setResolutionTemplates(data.data || []);
@@ -477,7 +477,7 @@ const FormBasedGenerator: React.FC = () => {
         };
 
         // Send the data to the backend to generate the document
-        const response = await fetch('/generate-minutes', {
+        const response = await fetch('/api/generate-minutes', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1434,7 +1434,7 @@ const FormBasedGenerator: React.FC = () => {
                         disabled={!resTemplateName || !formData.resolutions}
                         onClick={async () => {
                           try {
-                            const res = await fetch('/resolutions', {
+                            const res = await fetch('/api/resolutions', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({

@@ -49,26 +49,26 @@ from routes import (
 
 from chatbot_minutes.router import router as chatbot_minutes_router
 
-app.include_router(health.router)
-app.include_router(excel.router)
-app.include_router(bse.router)
-app.include_router(sebi.router)
-app.include_router(rbi.router)
-app.include_router(analytics.router)
-app.include_router(admin.router)
-app.include_router(directors.router)
-app.include_router(directors_disclosure.router)
-app.include_router(director_analysis.router)
-app.include_router(minutes.router)
-app.include_router(ai_assistant.router)
-app.include_router(visit_tracking.router)
-app.include_router(insider_trading.router)
-app.include_router(chat.router)
-app.include_router(auth.router)
-app.include_router(user_management.router)
-app.include_router(rbac.router)
-app.include_router(director_family_info.router)
-app.include_router(director_changes.router)
+app.include_router(health.router, prefix="/api")
+app.include_router(excel.router, prefix="/api")
+app.include_router(bse.router, prefix="/api")
+app.include_router(sebi.router, prefix="/api")
+app.include_router(rbi.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(director_analysis.router, prefix="/api")
+app.include_router(directors_disclosure.router, prefix="/api")
+app.include_router(directors.router, prefix="/api")
+app.include_router(minutes.router, prefix="/api")
+app.include_router(ai_assistant.router, prefix="/api")
+app.include_router(visit_tracking.router, prefix="/api")
+app.include_router(insider_trading.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(user_management.router, prefix="/api")
+app.include_router(rbac.router, prefix="/api")
+app.include_router(director_family_info.router, prefix="/api")
+app.include_router(director_changes.router, prefix="/api")
 app.include_router(chatbot_minutes_router)
 
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -95,27 +95,58 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Startup error: {e}")
 
+# ---------------------------------------------------------
+# Static File Serving (strictly via FastAPI)
+# ---------------------------------------------------------
+
+# Define important directories
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+FRONTEND_DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "Frontend", "dist")
+
+# Custom static files class to handle SPA routing (frontend)
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
+        # Normalize path
         normalized_path = path.lstrip("/")
+        
+        # Don't serve index.html for API paths that aren't found
         if normalized_path.startswith("api/"):
             raise StarletteHTTPException(status_code=404)
+            
         try:
             return await super().get_response(path, scope)
         except (StarletteHTTPException, HTTPException) as ex:
             if ex.status_code == 404:
-                if not normalized_path.startswith("api"):
-                    return await super().get_response("index.html", scope)
-                else:
-                    raise ex
-            else:
-                raise ex
+                # Return index.html for any non-existent file path (SPA routing)
+                # This only applies to the root mount
+                return await super().get_response("index.html", scope)
+            raise ex
 
-DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "Frontend", "dist")
-if os.path.exists(DIST_DIR):
-    app.mount("/", SPAStaticFiles(directory=DIST_DIR, html=True), name="static")
+# Custom class for backend public files (forbid sensitive files)
+class SafeStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        # Prevent downloading database files or hidden files
+        if path.endswith(".db") or path.startswith("."):
+            logger.warning(f"Forbidden access attempt to: {path}")
+            raise StarletteHTTPException(status_code=403)
+        return await super().get_response(path, scope)
 
-@app.get("/test-static")
+# 1. Serve backend public files at /public
+if os.path.exists(BACKEND_PUBLIC_DIR):
+    logger.info(f"Mounting backend public directory: {BACKEND_PUBLIC_DIR}")
+    app.mount("/public", SafeStaticFiles(directory=BACKEND_PUBLIC_DIR), name="public-assets")
+else:
+    logger.warning(f"Backend public directory not found: {BACKEND_PUBLIC_DIR}")
+
+# 2. Serve frontend dist files at / (SPA routing)
+if os.path.exists(FRONTEND_DIST_DIR):
+    logger.info(f"Mounting frontend dist directory: {FRONTEND_DIST_DIR}")
+    app.mount("/", SPAStaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend-spa")
+else:
+    logger.warning(f"Frontend dist directory not found: {FRONTEND_DIST_DIR}")
+
+@app.get("/api/test-static")
 async def test_static_serving():
     return {"message": "Success"}
 

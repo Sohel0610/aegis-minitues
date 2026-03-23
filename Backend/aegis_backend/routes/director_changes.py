@@ -78,7 +78,7 @@ def log_director_change(director_id: Optional[int], director_name: str, change_t
         logger.error(f"Failed to log director change: {e}")
 
 # API Endpoints
-@router.get("/api/director-disclosure-changes", response_model=ChangesResponse)
+@router.get("/director-disclosure-changes", response_model=ChangesResponse)
 async def get_director_changes():
     """Get all director disclosure changes ordered by date (newest first)"""
     try:

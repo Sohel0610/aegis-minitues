@@ -26,7 +26,7 @@ interface WorkbookData {
 
 // Fetch workbook data from API
 const fetchWorkbookData = async (fileName: string): Promise<WorkbookData> => {
-  const response = await fetch(`/workbook-data/${fileName}`);
+  const response = await fetch(`/api/workbook-data/${fileName}`);
   if (!response.ok) {
     throw new Error("Failed to fetch workbook data");
   }
@@ -36,7 +36,7 @@ const fetchWorkbookData = async (fileName: string): Promise<WorkbookData> => {
 const WorkbookData = () => {
   const [fileName, setFileName] = useState<string>("2025-08.xlsx");
   const [showWorkbookView, setShowWorkbookView] = useState<boolean>(false);
-  
+
   const { data, isLoading, error, refetch } = useQuery<WorkbookData, Error>({
     queryKey: ["workbookData", fileName],
     queryFn: () => fetchWorkbookData(fileName),
@@ -56,7 +56,7 @@ const WorkbookData = () => {
   return (
     <BSEAlertsDashboardLayout>
       <NotificationBar />
-      
+
       <div className="min-h-screen p-8" style={{ background: "#FFFFFF" }}>
         <Card className="border-0 shadow-none bg-transparent">
           <CardHeader className="px-0 pb-4">
@@ -71,7 +71,7 @@ const WorkbookData = () => {
             </CardDescription>
           </CardHeader>
         </Card>
-        
+
         {!showWorkbookView ? (
           <Card style={{ background: "#FFFFFF", border: "2px solid #1E40AF" }}>
             <CardHeader>
@@ -99,10 +99,10 @@ const WorkbookData = () => {
                     Default file is 2025-08.xlsx. The file should be located in the backend/public/excel directory
                   </p>
                 </div>
-                
+
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={handleLoadWorkbook} 
+                  <Button
+                    onClick={handleLoadWorkbook}
                     disabled={isLoading}
                     className="flex items-center gap-2"
                     style={{
@@ -113,7 +113,7 @@ const WorkbookData = () => {
                     <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                     {isLoading ? 'Loading...' : 'Load Workbook'}
                   </Button>
-                  
+
                   {error && (
                     <div className="flex items-center gap-2 p-2 bg-red-50 text-red-700 rounded">
                       <AlertCircle className="h-4 w-4" />
@@ -121,7 +121,7 @@ const WorkbookData = () => {
                     </div>
                   )}
                 </div>
-                
+
                 {data && (
                   <div className="mt-6 p-4 border rounded" style={{ borderColor: '#1E40AF' }}>
                     <h3 className="text-lg font-semibold mb-2" style={{ color: '#000000' }}>Workbook Information</h3>
@@ -140,7 +140,7 @@ const WorkbookData = () => {
                       </div>
                     </div>
                     <div className="mt-4">
-                      <Button 
+                      <Button
                         onClick={() => setShowWorkbookView(true)}
                         style={{
                           backgroundColor: '#1E40AF',
@@ -157,8 +157,8 @@ const WorkbookData = () => {
           </Card>
         ) : (
           data && (
-            <WorkbookView 
-              workbookData={data} 
+            <WorkbookView
+              workbookData={data}
               title={`Workbook: ${data.file_name}`}
               onClose={() => setShowWorkbookView(false)}
             />

@@ -163,7 +163,7 @@ def check_route_permission(email: str, route_path: str) -> Optional[str]:
 # Permission Check Endpoints
 # ============================================================================
 
-@router.get("/api/users/me/permissions", response_model=UserPermissionsResponse)
+@router.get("/users/me/permissions", response_model=UserPermissionsResponse)
 async def get_current_user_permissions(request: Request):
     """Get all permissions for the current authenticated user"""
     # Extract email from request (should be set by auth middleware)
@@ -191,7 +191,7 @@ async def get_current_user_permissions(request: Request):
         logger.error(f"Error fetching permissions: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch permissions: {str(e)}")
 
-@router.get("/api/permissions/check", response_model=PermissionCheckResponse)
+@router.get("/permissions/check", response_model=PermissionCheckResponse)
 async def check_permission(route: str, request: Request):
     """Check if current user has access to a specific route"""
     email = request.query_params.get("email") or request.headers.get("X-User-Email")
@@ -228,7 +228,7 @@ async def check_permission(route: str, request: Request):
 # Email Action Endpoint (GET for email buttons)
 # ============================================================================
 
-@router.get("/api/access-requests/email-action")
+@router.get("/access-requests/email-action")
 async def email_access_action(id: int, action: str, email: str, request: Request):
     # Simple security check: admin must match our configured admins
     admin_emails_lower = [e.lower() for e in ADMIN_EMAILS]
@@ -258,7 +258,7 @@ async def email_access_action(id: int, action: str, email: str, request: Request
 # Permission Management Endpoints (Admin Only)
 # ============================================================================
 
-@router.post("/api/permissions/assign")
+@router.post("/permissions/assign")
 async def assign_permission(req: AssignPermissionRequest, request: Request):
     """Assign a route permission to a user (Admin only)"""
     admin_email = request.query_params.get("email") or request.headers.get("X-User-Email")
@@ -334,7 +334,7 @@ async def assign_permission(req: AssignPermissionRequest, request: Request):
         logger.error(f"Error assigning permission: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to assign permission: {str(e)}")
 
-@router.delete("/api/permissions/revoke")
+@router.delete("/permissions/revoke")
 async def revoke_permission(req: RevokePermissionRequest, request: Request):
     """Revoke a route permission from a user (Admin only)"""
     admin_email = request.query_params.get("email") or request.headers.get("X-User-Email")
@@ -389,7 +389,7 @@ async def revoke_permission(req: RevokePermissionRequest, request: Request):
         logger.error(f"Error revoking permission: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to revoke permission: {str(e)}")
 
-@router.get("/api/permissions/all")
+@router.get("/permissions/all")
 async def list_all_permissions(route: Optional[str] = None, request: Request = None):
     """List all permissions, optionally filtered by route (Admin only)"""
     try:
@@ -465,7 +465,7 @@ async def list_all_permissions(route: Optional[str] = None, request: Request = N
         logger.error(f"Error listing permissions: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list permissions: {str(e)}")
 
-@router.get("/api/route-definitions")
+@router.get("/route-definitions")
 async def list_route_definitions():
     """List all available routes and their friendly names"""
     try:
@@ -492,7 +492,7 @@ async def list_route_definitions():
         logger.error(f"Error listing route definitions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/api/audit-logs")
+@router.get("/audit-logs")
 async def list_audit_logs(limit: int = 50, offset: int = 0, event_type: Optional[str] = None):
     """List audit logs (Admin only)"""
     try:
@@ -538,7 +538,7 @@ async def list_audit_logs(limit: int = 50, offset: int = 0, event_type: Optional
 # Access Request Endpoints
 # ============================================================================
 
-@router.post("/api/access-requests", response_model=Dict[str, Any])
+@router.post("/access-requests", response_model=Dict[str, Any])
 async def submit_access_request(req: AccessRequestSubmit, request: Request):
     """Submit an access request for a route"""
     try:
@@ -619,7 +619,7 @@ async def submit_access_request(req: AccessRequestSubmit, request: Request):
         logger.error(f"Error submitting access request: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to submit access request: {str(e)}")
 
-@router.get("/api/access-requests", response_model=Dict[str, Any])
+@router.get("/access-requests", response_model=Dict[str, Any])
 async def list_access_requests(
     status: Optional[str] = None,
     route: Optional[str] = None,
@@ -667,7 +667,7 @@ async def list_access_requests(
         logger.error(f"Error listing access requests: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list access requests: {str(e)}")
 
-@router.put("/api/access-requests/{request_id}/approve")
+@router.put("/access-requests/{request_id}/approve")
 async def approve_access_request(request_id: int, review: ReviewAccessRequestRequest, request: Request):
     """Approve an access request (Admin only)"""
     admin_email = request.query_params.get("email") or request.headers.get("X-User-Email")
@@ -790,7 +790,7 @@ async def approve_access_request(request_id: int, review: ReviewAccessRequestReq
         logger.error(f"Error approving access request: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to approve access request: {str(e)}")
 
-@router.put("/api/access-requests/{request_id}/reject")
+@router.put("/access-requests/{request_id}/reject")
 async def reject_access_request(request_id: int, review: ReviewAccessRequestRequest, request: Request):
     """Reject an access request (Admin only)"""
     admin_email = request.query_params.get("email") or request.headers.get("X-User-Email")

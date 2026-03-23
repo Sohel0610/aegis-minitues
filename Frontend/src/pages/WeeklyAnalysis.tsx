@@ -26,8 +26,8 @@ interface AllNotificationsData {
 // Fetch all notifications data from API
 const fetchAllNotificationsData = async (): Promise<AllNotificationsData> => {
   // Use relative path since frontend and backend are served from the same origin
-  const API_BASE_URL = '';
-  
+  const API_BASE_URL = '/api';
+
   const response = await fetch(`${API_BASE_URL}/all-notifications`);
   if (!response.ok) {
     throw new Error("Failed to fetch all notifications data");
@@ -39,7 +39,7 @@ const fetchAllNotificationsData = async (): Promise<AllNotificationsData> => {
 const processWeeklyData = (data: AllNotificationsData): WeeklyData[] => {
   // Group data by week (using Sheet_Date as week identifier)
   const weeklyMap: { [key: string]: { [entity: string]: number } } = {};
-  
+
   data.combined_data.forEach(item => {
     // Skip items from special sheets that should be excluded
     const sheetName = (item.Sheet_Date || "").toLowerCase();
@@ -47,21 +47,21 @@ const processWeeklyData = (data: AllNotificationsData): WeeklyData[] => {
     if (specialSheets.includes(sheetName)) {
       return; // Skip this item
     }
-    
+
     const week = item.Sheet_Date || "Unknown";
     const entity = item["Name of Entity"] || "Unknown Entity";
-    
+
     if (!weeklyMap[week]) {
       weeklyMap[week] = {};
     }
-    
+
     if (!weeklyMap[week][entity]) {
       weeklyMap[week][entity] = 0;
     }
-    
+
     weeklyMap[week][entity] += 1;
   });
-  
+
   // Convert to array format
   const result: WeeklyData[] = [];
   Object.keys(weeklyMap).forEach(week => {
@@ -73,7 +73,7 @@ const processWeeklyData = (data: AllNotificationsData): WeeklyData[] => {
       });
     });
   });
-  
+
   return result;
 };
 
@@ -82,9 +82,9 @@ const WeeklyAnalysis = () => {
     queryKey: ["allNotifications"],
     queryFn: fetchAllNotificationsData,
   });
-  
+
   const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([]);
-  
+
   useEffect(() => {
     if (data) {
       const processedData = processWeeklyData(data);
@@ -95,7 +95,7 @@ const WeeklyAnalysis = () => {
   return (
     <BSEAlertsDashboardLayout>
       <NotificationBar />
-      
+
       <div className="min-h-screen p-8" style={{ background: "#FFFFFF" }}>
         <Card className="border-0 shadow-none bg-transparent">
           <CardHeader className="px-0 pb-4">
@@ -110,10 +110,10 @@ const WeeklyAnalysis = () => {
             </CardDescription>
           </CardHeader>
         </Card>
-        
+
         <div className="flex justify-end mb-6">
-          <Button 
-            onClick={() => refetch()} 
+          <Button
+            onClick={() => refetch()}
             disabled={isLoading}
             className="flex items-center gap-2"
             style={{
@@ -125,7 +125,7 @@ const WeeklyAnalysis = () => {
             {isLoading ? 'Refreshing...' : 'Refresh Data'}
           </Button>
         </div>
-        
+
         {error && (
           <Card className="mb-6" style={{ background: "#FFFFFF", border: "2px solid #7E659E" }}>
             <CardContent className="p-6">
@@ -135,7 +135,7 @@ const WeeklyAnalysis = () => {
             </CardContent>
           </Card>
         )}
-        
+
         {isLoading ? (
           <Card style={{ background: "#FFFFFF", border: "2px solid #7E659E" }}>
             <CardContent className="p-6">
@@ -163,7 +163,7 @@ const WeeklyAnalysis = () => {
             </CardContent>
           </Card>
         )}
-        
+
         {data && (
           <Card className="mt-8" style={{ background: "#FFFFFF", border: "2px solid #7E659E" }}>
             <CardHeader>
@@ -184,7 +184,7 @@ const WeeklyAnalysis = () => {
                   <p className="font-medium" style={{ color: '#000000' }}>{data.count}</p>
                 </div>
               </div>
-              
+
               {data.special_sheets_excluded.length > 0 && (
                 <div className="mt-4">
                   <p className="text-sm text-gray-600">Special Sheets Excluded</p>

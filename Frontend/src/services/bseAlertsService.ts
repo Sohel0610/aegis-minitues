@@ -21,7 +21,7 @@ export interface SpecialSheetsData {
     monthly_summary_columns: string[];
 }
 
-const API_BASE_URL = '';
+const API_BASE_URL = '/api';
 
 // Helper to handle fetch with timeout
 const fetchWithTimeout = async (url: string, timeoutMs: number = 15000): Promise<Response> => {

@@ -81,7 +81,7 @@ async def get_bse_monthly_count():
         raise HTTPException(status_code=500, detail=f"Failed to fetch BSE monthly count: {str(e)}")
 
 # Endpoint to get monthly count of BSE alerts from PostgreSQL
-@router.get("/api/bse-alerts-monthly-count")
+@router.get("/bse-alerts-monthly-count")
 async def get_bse_alerts_monthly_count():
     """Get monthly count of BSE alerts (PostgreSQL, fallback to SQLite)."""
     try:
@@ -173,7 +173,7 @@ async def get_bse_alerts_monthly_count():
         raise HTTPException(status_code=500, detail=f"Failed to fetch BSE alerts monthly count: {str(e)}")
 
 # Endpoint to get total count of BSE alerts for the current month
-@router.get("/api/bse-alerts-monthly-total")
+@router.get("/bse-alerts-monthly-total")
 async def get_bse_alerts_monthly_total():
     """Get total count of BSE alerts for the current month (PostgreSQL, fallback to SQLite)."""
     try:
@@ -229,7 +229,7 @@ async def get_bse_alerts_monthly_total():
         raise HTTPException(status_code=500, detail=f"Failed to fetch BSE alerts monthly total count: {str(e)}")
 
 # Endpoint to get total count of RBI notifications
-@router.get("/api/rbi-total-count")
+@router.get("/rbi-total-count")
 async def get_rbi_total_count():
     """Get total count of RBI notifications"""
     try:
@@ -262,7 +262,7 @@ async def get_rbi_total_count():
         raise HTTPException(status_code=500, detail=f"Failed to fetch RBI total count: {error_message}")
 
 # Endpoint to get total count of SEBI notifications
-@router.get("/api/sebi-total-count")
+@router.get("/sebi-total-count")
 async def get_sebi_total_count():
     """Get total count of SEBI notifications"""
     try:
@@ -295,7 +295,7 @@ async def get_sebi_total_count():
         raise HTTPException(status_code=500, detail=f"Failed to fetch SEBI total count: {error_message}")
 
 # Endpoint to get total count of RBI notifications
-@router.get("/api/rbi-total-count")
+@router.get("/rbi-total-count")
 async def get_rbi_total_count():
     """Get total count of RBI notifications"""
     try:
@@ -328,7 +328,7 @@ async def get_rbi_total_count():
         raise HTTPException(status_code=500, detail=f"Failed to fetch RBI total count: {error_message}")
 
 # Endpoint to get total count of SEBI notifications
-@router.get("/api/sebi-total-count")
+@router.get("/sebi-total-count")
 async def get_sebi_total_count():
     """Get total count of SEBI notifications"""
     try:

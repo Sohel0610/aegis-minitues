@@ -72,3 +72,16 @@ htmlcov/
 
 # Test files
 test_sharepoint_connection.py
+
+# Local runtime data and generated uploads
+/public/
+Backend/aegis_backend/public/chatbot_docs/
+Backend/aegis_backend/public/ai_assistant_mom/
+Backend/aegis_backend/server.log
+
+# Local SQLite/runtime database files not needed for production deploys
+/chatbot_minutes.db
+Backend/aegis_backend/chatbot_minutes.db
+*.db-wal
+*.db-shm
+*.db-journal

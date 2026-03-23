@@ -84,13 +84,13 @@ class AuthResponse(BaseModel):
     user: Optional[Dict[str, Any]] = None
 
 # Endpoint to return auth configuration to frontend
-@router.get("/api/auth/config")
+@router.get("/auth/config")
 async def get_auth_config():
     """Return authentication configuration so frontend can adapt"""
     return {"sso_enabled": SSO_ENABLED}
 
 # Endpoint to initiate Azure AD login
-@router.get("/api/auth/login")
+@router.get("/auth/login")
 async def azure_ad_login():
     """Redirect user to Azure AD for authentication"""
     if not SSO_ENABLED:
@@ -117,7 +117,7 @@ async def azure_ad_login():
     return {"redirect_url": auth_url, "state": state}
 
 # Endpoint to handle Azure AD callback
-@router.get("/api/auth/callback")
+@router.get("/auth/callback")
 async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
     """Handle Azure AD callback and exchange code for tokens"""
     if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
@@ -269,7 +269,7 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
         return RedirectResponse(url="/?auth_error=true&details=" + urllib.parse.quote(str(e)))
 
 # Endpoint to handle logout
-@router.post("/api/auth/logout")
+@router.post("/auth/logout")
 async def azure_ad_logout():
     """Handle user logout and session cleanup"""
     # In a real implementation, you'd clear the local session
@@ -287,7 +287,7 @@ async def azure_ad_logout():
     }
 
 # Endpoint to get current user info
-@router.get("/api/auth/me")
+@router.get("/auth/me")
 async def get_current_user(request: Request):
     """Get current user information (requires valid session)"""
     # Note: Proper session validation should be implemented here
@@ -295,7 +295,7 @@ async def get_current_user(request: Request):
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 # Endpoint to get user roles from local mapping
-@router.get("/api/auth/user/roles/{user_id}")
+@router.get("/auth/user/roles/{user_id}")
 async def get_user_roles(user_id: str):
     """Get roles for a specific user from local mapping"""
     # This would query the local in-memory storage to get roles for a user
@@ -307,7 +307,7 @@ async def get_user_roles(user_id: str):
     }
 
 # Endpoint to add a user to local role mapping (temporary admin function)
-@router.post("/api/auth/user/add")
+@router.post("/auth/user/add")
 async def add_user_to_local_roles(email: str, roles: List[str]):
     """Add a user to the local role mapping (temporary solution)"""
     LOCAL_USER_ROLES[email] = roles
@@ -318,7 +318,7 @@ async def add_user_to_local_roles(email: str, roles: List[str]):
     }
 
 # Endpoint to get all users from local mapping
-@router.get("/api/auth/users")
+@router.get("/auth/users")
 async def get_all_local_users():
     """Get all users from the local role mapping (temporary solution)"""
     users = []

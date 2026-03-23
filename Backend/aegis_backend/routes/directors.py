@@ -20,7 +20,7 @@ class CompanyWithDirectorCountResponse(BaseModel):
     type: str
     director_count: int
 
-@router.get("/api/companies-with-director-count", response_model=List[CompanyWithDirectorCountResponse])
+@router.get("/companies-with-director-count", response_model=List[CompanyWithDirectorCountResponse])
 async def get_companies_with_director_count():
     """Get all companies with their director counts and types"""
     try:

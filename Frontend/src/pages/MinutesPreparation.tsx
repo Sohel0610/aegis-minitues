@@ -98,7 +98,7 @@ export default function MinutesPreparation() {
 
     setIsLoadingDirectors(true);
     try {
-      const response = await fetch('/directors');
+      const response = await fetch('/api/directors-master');
       if (response.ok) {
         const result = await response.json();
         setDirectors(result.data);

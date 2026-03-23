@@ -66,7 +66,7 @@ const RBIEmailData = () => {
         console.log('Attempting to load emails from FastAPI server');
 
         // Use relative path since frontend and backend are served from the same origin
-        const API_BASE_URL = '';
+        const API_BASE_URL = '/api';
 
         // Fetch emails from FastAPI server with optional search filter
         const searchParam = searchFilter ? `?search=${encodeURIComponent(searchFilter)}` : '';
@@ -144,7 +144,7 @@ const RBIEmailData = () => {
 
     try {
       // Use relative path since frontend and backend are served from the same origin
-      const API_BASE_URL = '';
+      const API_BASE_URL = '/api';
 
       // Add email via API
       const response = await fetch(`${API_BASE_URL}/emails`, {
@@ -191,7 +191,7 @@ const RBIEmailData = () => {
 
     try {
       // Use relative path since frontend and backend are served from the same origin
-      const API_BASE_URL = '';
+      const API_BASE_URL = '/api';
 
       // Get the email address from the row data
       const emailToDeleteAddress = String(emailToDelete['Email ID']);

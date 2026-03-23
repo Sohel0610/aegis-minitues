@@ -47,7 +47,7 @@ class UsersListResponse(BaseModel):
 
 
 # Endpoint to get all users and their roles
-@router.get("/api/admin/users", response_model=UsersListResponse)
+@router.get("/admin/users", response_model=UsersListResponse)
 async def get_all_users_with_roles():
     """Get all users and their assigned roles from local mapping"""
     users = []
@@ -62,7 +62,7 @@ async def get_all_users_with_roles():
     return {"users": users}
 
 # Endpoint to assign a role to a user
-@router.post("/api/admin/users/assign-role", response_model=UserRoleResponse)
+@router.post("/admin/users/assign-role", response_model=UserRoleResponse)
 async def assign_role_to_user(role_assignment: RoleAssignmentRequest):
     """Assign a role to a user in the local in-memory mapping"""
     # Check if user already exists in mapping
@@ -89,7 +89,7 @@ async def assign_role_to_user(role_assignment: RoleAssignmentRequest):
     }
 
 # Endpoint to remove a role from a user
-@router.delete("/api/admin/users/remove-role", response_model=UserRoleResponse)
+@router.delete("/admin/users/remove-role", response_model=UserRoleResponse)
 async def remove_role_from_user(role_removal: RoleRemovalRequest):
     """Remove a role from a user in the local in-memory mapping"""
     if role_removal.user_email in LOCAL_USER_ROLES:
@@ -109,7 +109,7 @@ async def remove_role_from_user(role_removal: RoleRemovalRequest):
         raise HTTPException(status_code=404, detail="User not found in role mapping")
 
 # Endpoint to initialize the user role mapping (for local storage)
-@router.post("/api/admin/init-role-mapping")
+@router.post("/admin/init-role-mapping")
 async def init_role_mapping_table():
     """Initialize the local user role mapping (placeholder for local storage)"""
     # Since we're using in-memory storage, this is just a placeholder

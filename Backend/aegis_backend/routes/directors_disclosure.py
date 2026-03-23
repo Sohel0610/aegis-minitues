@@ -538,7 +538,7 @@ class ImageDeleteResponse(BaseModel):
     message: str
 
 # Endpoint to get all directors from PostgreSQL database
-@router.get("/api/directors-master", response_model=DirectorsMasterResponse)
+@router.get("/directors-master", response_model=DirectorsMasterResponse)
 async def get_directors_master():
     """Get all directors from PostgreSQL master table (fallback to SQLite)."""
     try:
@@ -598,7 +598,7 @@ async def get_directors_master():
         raise HTTPException(status_code=500, detail=f"Failed to fetch directors: {str(e)}")
 
 # Endpoint to create a new director in PostgreSQL
-@router.post("/api/directors-master", response_model=DirectorMasterResponse)
+@router.post("/directors-master", response_model=DirectorMasterResponse)
 async def create_director(request: DirectorCreateRequest):
     """Create a new director in PostgreSQL master table (fallback to SQLite)."""
     try:
@@ -658,7 +658,7 @@ async def create_director(request: DirectorCreateRequest):
         raise HTTPException(status_code=500, detail=f"Failed to create director: {str(e)}")
 
 # Endpoint to update an existing director in PostgreSQL
-@router.put("/api/directors-master/{director_id}", response_model=DirectorMasterResponse)
+@router.put("/directors-master/{director_id}", response_model=DirectorMasterResponse)
 async def update_director(director_id: int, request: DirectorUpdateRequest):
     """Update an existing director in PostgreSQL master table (fallback to SQLite)."""
     try:
@@ -716,7 +716,7 @@ async def update_director(director_id: int, request: DirectorUpdateRequest):
         raise HTTPException(status_code=500, detail=f"Failed to update director: {str(e)}")
 
 # Endpoint to update PAN for a director
-@router.put("/api/directors-master/{director_id}/pan")
+@router.put("/directors-master/{director_id}/pan")
 async def update_director_pan(director_id: int, request: DirectorPanUpdateRequest):
     """Update PAN for a director in PostgreSQL (fallback to SQLite)."""
     try:
@@ -771,7 +771,7 @@ async def update_director_pan(director_id: int, request: DirectorPanUpdateReques
         raise HTTPException(status_code=500, detail=f"Failed to update director PAN: {str(e)}")
 
 # Endpoint to delete a director from PostgreSQL
-@router.delete("/api/directors-master/{director_id}")
+@router.delete("/directors-master/{director_id}")
 async def delete_director(director_id: int):
     """Delete a director from PostgreSQL master table (fallback to SQLite)."""
     try:
@@ -811,7 +811,7 @@ async def delete_director(director_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to delete director: {str(e)}")
 
 # Endpoint to get all directors' disclosures from Word files
-@router.get("/api/directors-disclosures", response_model=DisclosuresResponse)
+@router.get("/directors-disclosures", response_model=DisclosuresResponse)
 async def get_directors_disclosures():
     """Get all directors' disclosures from Word files"""
     try:
@@ -876,7 +876,7 @@ async def get_directors_disclosures():
         raise HTTPException(status_code=500, detail=f"Failed to fetch disclosures: {str(e)}")
 
 # Endpoint to get content of a specific disclosure document
-@router.get("/api/directors-disclosures/{disclosure_id}/content", response_model=DisclosureContentResponse)
+@router.get("/directors-disclosures/{disclosure_id}/content", response_model=DisclosureContentResponse)
 async def get_disclosure_content(disclosure_id: int):
     """Get content of a specific disclosure document"""
     try:
@@ -949,7 +949,7 @@ async def get_disclosure_content(disclosure_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to fetch content: {str(e)}")
 
 # Endpoint to download a specific disclosure document
-@router.get("/api/directors-disclosures/{disclosure_id}/download")
+@router.get("/directors-disclosures/{disclosure_id}/download")
 async def download_disclosure(disclosure_id: int):
     """Download a specific disclosure document"""
     try:
@@ -989,7 +989,7 @@ async def download_disclosure(disclosure_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
 # Endpoint to get analytics data for directors' disclosures
-@router.get("/api/directors-disclosures/analytics", response_model=DisclosureAnalyticsResponse)
+@router.get("/directors-disclosures/analytics", response_model=DisclosureAnalyticsResponse)
 async def get_disclosures_analytics():
     """Get analytics data for directors' disclosures"""
     try:
@@ -1077,7 +1077,7 @@ async def get_disclosures_analytics():
         raise HTTPException(status_code=500, detail=f"Failed to fetch analytics: {str(e)}")
 
 # Endpoint to generate summary for a specific disclosure document
-@router.post("/api/directors-disclosures/{disclosure_id}/generate-summary", response_model=SummaryGenerationResponse)
+@router.post("/directors-disclosures/{disclosure_id}/generate-summary", response_model=SummaryGenerationResponse)
 async def generate_disclosure_summary(disclosure_id: int):
     """Generate summary for a specific disclosure document"""
     try:
@@ -1122,7 +1122,7 @@ async def generate_disclosure_summary(disclosure_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
 
 # Endpoint to get summary of a specific disclosure document
-@router.get("/api/directors-disclosures/{disclosure_id}/summary", response_model=DocumentSummaryResponse)
+@router.get("/directors-disclosures/{disclosure_id}/summary", response_model=DocumentSummaryResponse)
 async def get_disclosure_summary(disclosure_id: int):
     """Get summary of a specific disclosure document"""
     try:
@@ -1264,7 +1264,7 @@ async def get_disclosure_summary(disclosure_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to fetch summary: {str(e)}")
 
 # Endpoint to get family information for a specific director
-@router.get("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
+@router.get("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
 async def get_director_family_info(director_name: str):
     """Get family information for a specific director (PostgreSQL, fallback to SQLite)."""
     try:
@@ -1357,7 +1357,7 @@ async def get_director_family_info(director_name: str):
         logger.error(f"Error fetching family info for director {director_name} in PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch family info: {str(e)}")
 
-@router.put("/api/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
+@router.put("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
 async def update_director_family_info(director_name: str, request: UpdateFamilyInfoRequest):
     """Update family information for a specific director (PostgreSQL, fallback to SQLite)."""
     try:
@@ -1494,7 +1494,7 @@ async def update_director_family_info(director_name: str, request: UpdateFamilyI
         raise HTTPException(status_code=500, detail=f"Failed to update family info: {str(e)}")
 
 
-@router.get("/api/directors-profile/{din}", response_model=DirectorProfileResponse)
+@router.get("/directors-profile/{din}", response_model=DirectorProfileResponse)
 async def get_director_profile(din: str):
     """Get director profile information (PostgreSQL, fallback to SQLite)."""
     try:
@@ -1586,7 +1586,7 @@ async def get_director_profile(din: str):
         logger.error(f"Error fetching director profile for DIN {din} from PG: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch director profile: {str(e)}")
 
-@router.put("/api/directors-profile/{din}", response_model=DirectorProfileResponse)
+@router.put("/directors-profile/{din}", response_model=DirectorProfileResponse)
 async def update_director_profile(din: str, request: DirectorProfileUpdateRequest):
     """Update director profile information (PostgreSQL, fallback to SQLite)."""
     try:
@@ -1746,7 +1746,7 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
         raise HTTPException(status_code=500, detail=f"Failed to update director profile: {str(e)}")
 
 # Endpoint to upload director profile image
-@router.post("/api/directors-profile/{din}/image", response_model=ImageUploadResponse)
+@router.post("/directors-profile/{din}/image", response_model=ImageUploadResponse)
 async def upload_director_image(din: str, file: UploadFile = File(...)):
     """Upload director profile image and save to server"""
     try:
@@ -1793,7 +1793,7 @@ async def upload_director_image(din: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
 
 # Endpoint to get director profile image
-@router.get("/api/directors-profile/{din}/image")
+@router.get("/directors-profile/{din}/image")
 async def get_director_image(din: str):
     """Serve director profile image"""
     try:
@@ -1821,7 +1821,7 @@ async def get_director_image(din: str):
         raise HTTPException(status_code=500, detail=f"Failed to serve image: {str(e)}")
 
 # Endpoint to delete director profile image
-@router.delete("/api/directors-profile/{din}/image", response_model=ImageDeleteResponse)
+@router.delete("/directors-profile/{din}/image", response_model=ImageDeleteResponse)
 async def delete_director_image(din: str):
     """Delete director profile image"""
     try:
@@ -1855,7 +1855,7 @@ async def delete_director_image(din: str):
         raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
 
 # Endpoint to get all directors from PostgreSQL database for Minutes Preparation
-@router.get("/directors", response_model=DirectorsMasterResponse)
+@router.get("/directors-for-minutes", response_model=DirectorsMasterResponse)
 async def get_directors_for_minutes():
     """Get all directors for Minutes Preparation (PostgreSQL, fallback to SQLite)."""
     try:
@@ -1881,7 +1881,8 @@ async def get_directors_for_minutes():
                             pg_conn.close()
             except Exception as e:
                 logger.warning(f"Directors list for minutes PG fetch failed, falling back to SQLite: {e}")
-                return _fetch_directors_master_sqlite()
+            
+            return _fetch_directors_master_sqlite()
         
         loop = asyncio.get_event_loop()
         directors = await loop.run_in_executor(thread_pool, fetch_directors)
@@ -1895,7 +1896,7 @@ async def get_directors_for_minutes():
         raise HTTPException(status_code=500, detail=f"Failed to fetch directors: {str(e)}")
 
 # Endpoint to download template files
-@router.get("/api/directors-disclosures/templates/{template_name}")
+@router.get("/directors-disclosures/templates/{template_name}")
 async def download_disclosure_template(template_name: str):
     """Download a disclosure template file"""
     try:

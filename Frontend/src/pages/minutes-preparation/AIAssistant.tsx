@@ -82,7 +82,7 @@ const AIAssistant = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/ai-assistant/upload', {
+      const response = await fetch('/api/ai-assistant/upload', {
         method: 'POST',
         body: formData,
       });
@@ -122,7 +122,7 @@ const AIAssistant = () => {
 
     try {
       // Start the MoM generation
-      const response = await fetch(`/ai-assistant/generate-mom?task_id=${taskId}`, {
+      const response = await fetch(`/api/ai-assistant/generate-mom?task_id=${taskId}`, {
         method: 'POST',
       });
 
@@ -133,7 +133,7 @@ const AIAssistant = () => {
       // Poll for status
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await fetch(`/ai-assistant/status/${taskId}`);
+          const statusResponse = await fetch(`/api/ai-assistant/status/${taskId}`);
           const statusResult = await statusResponse.json();
 
           if (statusResult.status === 'completed') {
@@ -142,7 +142,7 @@ const AIAssistant = () => {
             setProgress(100);
 
             // Fetch the generated MoM content
-            const momResponse = await fetch(`/ai-assistant/mom/${taskId}`);
+            const momResponse = await fetch(`/api/ai-assistant/mom/${taskId}`);
             const momResult = await momResponse.json();
             setMomContent(momResult);
           } else if (statusResult.status === 'error') {
@@ -171,7 +171,7 @@ const AIAssistant = () => {
     if (!taskId) return;
 
     try {
-      const response = await fetch(`/ai-assistant/download/${taskId}`);
+      const response = await fetch(`/api/ai-assistant/download/${taskId}`);
       if (!response.ok) {
         throw new Error('Download failed');
       }

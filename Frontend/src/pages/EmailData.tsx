@@ -66,7 +66,7 @@ const EmailData = () => {
         console.log('Attempting to load emails from FastAPI server');
 
         // Use relative path since frontend and backend are served from the same origin
-        const API_BASE_URL = '';
+        const API_BASE_URL = '/api';
 
         // Fetch emails from FastAPI server with optional search filter
         const searchParam = searchFilter ? `?search=${encodeURIComponent(searchFilter)}` : '';
@@ -194,7 +194,7 @@ const EmailData = () => {
       const emailToDeleteAddress = String(emailToDelete['Email ID']);
 
       // Use relative path since frontend and backend are served from the same origin
-      const API_BASE_URL = '';
+      const API_BASE_URL = '/api';
 
       // Delete email via API (URL encode the email address)
       const encodedEmail = encodeURIComponent(emailToDeleteAddress);

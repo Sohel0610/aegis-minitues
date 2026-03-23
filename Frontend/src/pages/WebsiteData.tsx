@@ -64,7 +64,7 @@ const WebsiteData = () => {
         console.log('Attempting to load Entity.xlsx data from FastAPI server');
 
         // Use relative path since frontend and backend are served from the same origin
-        const apiUrl = '';
+        const apiUrl = '/api';
         const response = await fetch(`${apiUrl}/excel-data/Entity.xlsx?sheet_name=Sheet1`);
         console.log('Fetch response status:', response.status);
         console.log('Fetch response ok:', response.ok);

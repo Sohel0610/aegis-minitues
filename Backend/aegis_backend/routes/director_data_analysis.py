@@ -722,11 +722,16 @@ def get_all_directors():
             {"din": row["din"], "name": row["name"], "source_file": row["source_file"]}
             for row in rows
         ]
+    except Exception as e:
+        logger.error(f"SQLite get_all_directors failed: {e}")
     finally:
         try:
             scur.close()
         finally:
             sconn.close()
+    
+    logger.warning("get_all_directors falling through all paths, returning empty list")
+    return []
 
 def get_company_count():
     """

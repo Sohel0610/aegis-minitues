@@ -238,7 +238,7 @@ const TemplateRenderer = () => {
 
     try {
       // Use the full backend URL for the API call
-      const response = await fetch('/generate-minutes', {
+      const response = await fetch('/api/generate-minutes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -249,7 +249,7 @@ const TemplateRenderer = () => {
       if (response.ok) {
         const result = await response.json();
         // Trigger download of the generated file
-        const downloadUrl = `/templates/${result.filename}`;
+        const downloadUrl = `/api/templates/download/${result.filename}`;
         const link = document.createElement('a');
         link.href = downloadUrl;
         link.download = result.filename;

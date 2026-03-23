@@ -14,16 +14,16 @@ interface Place {
   created_at: string;
 }
 
-const PlaceSelector = ({ 
-  id, 
-  label, 
-  value, 
+const PlaceSelector = ({
+  id,
+  label,
+  value,
   onChange,
   placeholder = "Select or add a place"
-}: { 
-  id: string; 
-  label: string; 
-  value: string; 
+}: {
+  id: string;
+  label: string;
+  value: string;
   onChange: (value: string) => void;
   placeholder?: string;
 }) => {
@@ -38,7 +38,7 @@ const PlaceSelector = ({
   const fetchPlaces = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/places');
+      const response = await fetch('/api/places');
       if (response.ok) {
         const result = await response.json();
         setPlaces(result.data);
@@ -60,9 +60,9 @@ const PlaceSelector = ({
   // Create a new place
   const createPlace = async () => {
     if (!newPlaceName.trim() || !newPlaceAddress.trim()) return;
-    
+
     try {
-      const response = await fetch('/places', {
+      const response = await fetch('/api/places', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ const PlaceSelector = ({
           is_default: false
         }),
       });
-      
+
       if (response.ok) {
         const newPlace = await response.json();
         setPlaces(prev => [...prev, newPlace]);
@@ -112,8 +112,8 @@ const PlaceSelector = ({
       <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-2">
         <div className="flex-1">
-          <Select 
-            value={showCustomInput ? '__CUSTOM__' : value} 
+          <Select
+            value={showCustomInput ? '__CUSTOM__' : value}
             onValueChange={handleSelectChange}
           >
             <SelectTrigger className="bg-white">
@@ -125,8 +125,8 @@ const PlaceSelector = ({
               ) : (
                 <>
                   {defaultPlace && (
-                    <SelectItem 
-                      value={defaultPlace.address} 
+                    <SelectItem
+                      value={defaultPlace.address}
                       className="bg-white focus:text-foreground cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
@@ -138,9 +138,9 @@ const PlaceSelector = ({
                   {places
                     .filter(place => !place.is_default)
                     .map((place) => (
-                      <SelectItem 
-                        key={place.id} 
-                        value={place.address} 
+                      <SelectItem
+                        key={place.id}
+                        value={place.address}
                         className="bg-white focus:text-foreground cursor-pointer"
                       >
                         <div className="flex items-center gap-2">
@@ -150,8 +150,8 @@ const PlaceSelector = ({
                       </SelectItem>
                     ))
                   }
-                  <SelectItem 
-                    value="__CUSTOM__" 
+                  <SelectItem
+                    value="__CUSTOM__"
                     className="bg-white focus:text-foreground cursor-pointer"
                   >
                     Other / Custom Address
@@ -198,7 +198,7 @@ const PlaceSelector = ({
               <Button variant="outline" onClick={() => setIsOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={createPlace}
                 disabled={!newPlaceName.trim() || !newPlaceAddress.trim()}
               >
@@ -208,7 +208,7 @@ const PlaceSelector = ({
           </DialogContent>
         </Dialog>
       </div>
-      
+
       {/* Custom address input when "Other" is selected */}
       {showCustomInput && (
         <div className="mt-2">

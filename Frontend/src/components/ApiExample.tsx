@@ -11,10 +11,10 @@ const ApiExample: React.FC = () => {
   const incrementVisitCount = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Correct endpoint for incrementing visit count
-      const response = await axios.post('/visits/increment');
+      const response = await axios.post('/api/visits/increment');
       setData(response.data);
     } catch (err) {
       setError('Failed to increment visit count');
@@ -28,10 +28,10 @@ const ApiExample: React.FC = () => {
   const fetchVisitCount = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Correct endpoint for fetching visit count
-      const response = await axios.get('/visits/count');
+      const response = await axios.get('/api/visits/count');
       setData(response.data);
     } catch (err) {
       setError('Failed to fetch visit count');
@@ -45,10 +45,10 @@ const ApiExample: React.FC = () => {
   const fetchBseAlerts = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Correct endpoint for BSE alerts
-      const response = await axios.get('/bse-alerts');
+      const response = await axios.get('/api/bse-alerts');
       setData(response.data);
     } catch (err) {
       setError('Failed to fetch BSE alerts');
@@ -62,10 +62,10 @@ const ApiExample: React.FC = () => {
   const fetchSebiAnalysis = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Correct endpoint for SEBI analysis data
-      const response = await axios.get('/sebi-analysis-data');
+      const response = await axios.get('/api/sebi-analysis-data');
       setData(response.data);
     } catch (err) {
       setError('Failed to fetch SEBI analysis data');
@@ -79,10 +79,10 @@ const ApiExample: React.FC = () => {
   const fetchRbiAnalysis = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Correct endpoint for RBI analysis data
-      const response = await axios.get('/rbi-analysis-data');
+      const response = await axios.get('/api/rbi-analysis-data');
       setData(response.data);
     } catch (err) {
       setError('Failed to fetch RBI analysis data');
@@ -95,41 +95,41 @@ const ApiExample: React.FC = () => {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">API Example</h2>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        <button 
+        <button
           onClick={incrementVisitCount}
           className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded transition-colors"
           disabled={loading}
         >
           Increment Visit Count
         </button>
-        
-        <button 
+
+        <button
           onClick={fetchVisitCount}
           className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded transition-colors"
           disabled={loading}
         >
           Fetch Visit Count
         </button>
-        
-        <button 
+
+        <button
           onClick={fetchBseAlerts}
           className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-4 rounded transition-colors"
           disabled={loading}
         >
           Fetch BSE Alerts
         </button>
-        
-        <button 
+
+        <button
           onClick={fetchSebiAnalysis}
           className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded transition-colors"
           disabled={loading}
         >
           Fetch SEBI Analysis
         </button>
-        
-        <button 
+
+        <button
           onClick={fetchRbiAnalysis}
           className="bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded transition-colors"
           disabled={loading}
@@ -139,9 +139,9 @@ const ApiExample: React.FC = () => {
       </div>
 
       {loading && <p className="text-center py-4">Loading...</p>}
-      
+
       {error && <p className="text-red-500 bg-red-50 p-4 rounded mb-4">{error}</p>}
-      
+
       {data && (
         <div className="mt-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
           <h3 className="font-bold text-lg mb-3 text-gray-800">Response Data:</h3>
@@ -155,7 +155,7 @@ const ApiExample: React.FC = () => {
         <h3 className="font-bold text-lg mb-3 text-blue-800">How API Calls Work:</h3>
         <ul className="list-disc pl-5 space-y-3 text-gray-700">
           <li>
-            <strong>Direct endpoints:</strong> Requests to <code className="bg-gray-100 px-1 rounded">/bse-alerts</code>, <code className="bg-gray-100 px-1 rounded">/sebi-analysis-data</code>, <code className="bg-gray-100 px-1 rounded">/rbi-analysis-data</code>, <code className="bg-gray-100 px-1 rounded">/visits/count</code>, <code className="bg-gray-100 px-1 rounded">/visits/increment</code> 
+            <strong>Direct endpoints:</strong> Requests to <code className="bg-gray-100 px-1 rounded">/bse-alerts</code>, <code className="bg-gray-100 px-1 rounded">/sebi-analysis-data</code>, <code className="bg-gray-100 px-1 rounded">/rbi-analysis-data</code>, <code className="bg-gray-100 px-1 rounded">/visits/count</code>, <code className="bg-gray-100 px-1 rounded">/visits/increment</code>
             are handled directly by the FastAPI backend
           </li>
           <li>
