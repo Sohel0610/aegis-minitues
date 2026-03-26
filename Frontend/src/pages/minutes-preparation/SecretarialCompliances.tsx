@@ -3,7 +3,7 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Home, FileText, FileSpreadsheet, History, Sparkles, CheckCircle2, AlertCircle, Clock, BookOpen, Users, Plus } from 'lucide-react';
+import { Home, FileText, FileSpreadsheet, History, Sparkles, CheckCircle2, AlertCircle, Clock, BookOpen, Users, Plus, MessageSquare } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 
 const SecretarialCompliances = () => {
@@ -13,6 +13,7 @@ const SecretarialCompliances = () => {
         { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
         { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances', isActive: true },
         { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+        { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
         { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
         { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
         { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },

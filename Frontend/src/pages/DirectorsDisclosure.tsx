@@ -28,11 +28,18 @@ const DirectorsDisclosure = () => {
         href: '/',
       },
       {
+        id: 'analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        href: '/directors-disclosure/analytics',
+        isActive: currentPath === '/directors-disclosure' || currentPath === '/directors-disclosure/' || currentPath.endsWith('/analytics')
+      },
+      {
         id: 'masterdata',
         label: 'Directors Master Data',
         icon: Database,
-        href: '/directors-disclosure',
-        isActive: currentPath === '/directors-disclosure' || currentPath === '/directors-disclosure/' || currentPath.endsWith('/master-data')
+        href: '/directors-disclosure/master-data',
+        isActive: currentPath.endsWith('/master-data')
       },
       {
         id: 'datasource',
@@ -47,13 +54,6 @@ const DirectorsDisclosure = () => {
         icon: History,
         href: '/directors-disclosure/changes',
         isActive: currentPath.endsWith('/changes')
-      },
-      {
-        id: 'analytics',
-        label: 'Analytics',
-        icon: BarChart3,
-        href: '/directors-disclosure/analytics',
-        isActive: currentPath.endsWith('/analytics')
       },
       {
         id: 'companies',
@@ -78,10 +78,17 @@ const DirectorsDisclosure = () => {
     } else if (location.pathname.endsWith('/changes')) {
       return <DirectorDisclosureChanges />;
     } else {
-      // Default to Directors Master Data
-      return <DirectorsDisclosureMasterData />;
+      // Default to Analytics
+      return <DirectorsDisclosureAnalytics />;
     }
   };
+
+  useEffect(() => {
+    // Redirect root to analytics to maintain consistency with sidebar highlighting
+    if (location.pathname === '/directors-disclosure' || location.pathname === '/directors-disclosure/') {
+      navigate('/directors-disclosure/analytics', { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   return (
     <ProductDashboardLayout

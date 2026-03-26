@@ -13,7 +13,7 @@ def create_dummy_data():
     if not os.path.exists(insider_dir):
         os.makedirs(insider_dir)
         print(f"Created directory: {insider_dir}")
-    
+     
     # Define companies to create dummy data for
     companies = ["AdaniGreen", "AdaniEnt", "AdaniPower", "AmbujaCements"]
     

@@ -35,7 +35,7 @@ class CompanyCountResponse(BaseModel):
 
 class CrossDirectorshipResponse(BaseModel):
     name: str
-    companies: int
+    company_count: int
 
 class ClusteringResponse(BaseModel):
     director1: str
@@ -45,6 +45,7 @@ class ClusteringResponse(BaseModel):
 class NetworkNode(BaseModel):
     id: str
     type: str
+    label: str
 
 class NetworkLink(BaseModel):
     source: str

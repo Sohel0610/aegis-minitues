@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { FileText, Loader2, AlertCircle, Users, Building2, Network, TrendingUp, Lightbulb } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,7 +75,7 @@ const DirectorsDisclosureAnalytics = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch all required data in parallel
       const [
         directorsRes,
@@ -95,8 +96,8 @@ const DirectorsDisclosureAnalytics = () => {
       ]);
 
       // Check if all responses are ok
-      if (!directorsRes.ok || !companyCountRes.ok || !crossDirectorshipRes.ok || 
-          !clusteringRes.ok || !networkRes.ok || !wtdCountRes.ok || !analyticsRes.ok) {
+      if (!directorsRes.ok || !companyCountRes.ok || !crossDirectorshipRes.ok ||
+        !clusteringRes.ok || !networkRes.ok || !wtdCountRes.ok || !analyticsRes.ok) {
         throw new Error('Failed to fetch one or more data sets');
       }
 
@@ -128,7 +129,7 @@ const DirectorsDisclosureAnalytics = () => {
   // Calculate insights dynamically
   const getTopInsights = () => {
     const insights = [];
-    
+
     // Most connected director
     if (crossDirectorship.length > 0) {
       const topDirector = crossDirectorship[0];
@@ -138,7 +139,7 @@ const DirectorsDisclosureAnalytics = () => {
         icon: Users
       });
     }
-    
+
     // Percentage of public companies
     if (companyCount && companyCount.total > 0) {
       const publicPercentage = ((companyCount.public / companyCount.total) * 100).toFixed(1);
@@ -148,7 +149,7 @@ const DirectorsDisclosureAnalytics = () => {
         icon: Building2
       });
     }
-    
+
     // Directors who share the most companies
     if (clustering.length > 0) {
       const topCluster = clustering[0];
@@ -158,7 +159,7 @@ const DirectorsDisclosureAnalytics = () => {
         icon: Network
       });
     }
-    
+
     // Company with highest board size
     if (network && network.links.length > 0) {
       // Count directors per company
@@ -167,7 +168,7 @@ const DirectorsDisclosureAnalytics = () => {
         const count = companyDirectorCount.get(link.target) || 0;
         companyDirectorCount.set(link.target, count + 1);
       });
-      
+
       // Find company with highest count
       let maxCompany = "";
       let maxCount = 0;
@@ -177,7 +178,7 @@ const DirectorsDisclosureAnalytics = () => {
           maxCompany = company;
         }
       });
-      
+
       if (maxCompany) {
         insights.push({
           title: "Largest Board Size",
@@ -186,7 +187,7 @@ const DirectorsDisclosureAnalytics = () => {
         });
       }
     }
-    
+
     return insights;
   };
 
@@ -223,7 +224,7 @@ const DirectorsDisclosureAnalytics = () => {
           <AlertCircle className="h-10 w-10 mx-auto mb-3" style={{ color: "#EF4444" }} />
           <h2 className="text-lg font-semibold mb-2" style={{ color: "#000000" }}>Error Loading Analytics</h2>
           <p className="mb-3 text-sm" style={{ color: "#000000" }}>{error}</p>
-          <button 
+          <button
             onClick={fetchAllData}
             className="px-3 py-1.5 bg-[#75479C] text-white rounded text-sm hover:bg-[#5a357a] transition-colors"
           >
@@ -255,44 +256,54 @@ const DirectorsDisclosureAnalytics = () => {
       </div>
 
       {/* Top Insights Summary */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Lightbulb className="h-5 w-5 text-[#75479C]" />
-          <h3 className="text-lg font-semibold text-gray-900">Top Insights</h3>
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <Lightbulb className="h-6 w-6 text-[#75479C]" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Key Intelligence</h3>
+            <p className="text-sm text-gray-500">Automated insights from across the disclosure network</p>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {topInsights.map((insight, index) => (
-            <div key={index} className="bg-white border rounded-md p-4 shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <insight.icon className="h-5 w-5 text-[#75479C] flex-shrink-0" />
-                <h4 className="font-medium text-sm text-gray-900">{insight.title}</h4>
+            <motion.div
+              key={index}
+              whileHover={{ y: -5 }}
+              className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm hover:shadow-md transition-all"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-2 bg-gray-50 rounded-lg">
+                  <insight.icon className="h-5 w-5 text-[#75479C]" />
+                </div>
+                <h4 className="font-semibold text-sm text-gray-800 leading-tight">{insight.title}</h4>
               </div>
-              <div className="border-t border-gray-200 pt-2">
-                <p className="text-sm text-gray-600 text-center">{insight.value}</p>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm font-bold text-[#75479C] text-center">{insight.value}</p>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>
 
-      {/* Navigation - Centered with proper spacing */}
-      <div className="flex justify-center mb-6">
-        <div className="flex flex-wrap gap-2 justify-center">
+      {/* Navigation - Premium modern tabs */}
+      <div className="flex justify-center mb-8">
+        <div className="inline-flex p-1 bg-gray-100/80 backdrop-blur-sm rounded-xl border border-gray-200 shadow-inner">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'cross-directorship', label: 'Cross-Directorship', icon: Network },
-            { id: 'clustering', label: 'Director Clustering', icon: Users },
-            { id: 'companies', label: 'Company Analysis', icon: Building2 },
-            { id: 'positions', label: 'Position Analysis', icon: FileText }
+            { id: 'clustering', label: 'Clustering', icon: Users },
+            { id: 'companies', label: 'Companies', icon: Building2 },
+            { id: 'positions', label: 'Positions', icon: FileText }
           ].map(view => (
             <button
               key={view.id}
               onClick={() => setActiveView(view.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all whitespace-nowrap ${
-                activeView === view.id
-                  ? 'bg-[#75479C] text-white shadow'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 ${activeView === view.id
+                ? 'bg-white text-[#75479C] shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                }`}
             >
               <view.icon className="h-4 w-4" />
               {view.label}
@@ -304,29 +315,52 @@ const DirectorsDisclosureAnalytics = () => {
       {/* Overview */}
       {activeView === 'overview' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white border rounded-md p-5 shadow-sm">
-              <Users className="text-[#75479C] mb-2" size={26} />
-              <div className="text-2xl font-semibold text-gray-900">{directors.length}</div>
-              <div className="text-gray-600 text-xs">Total Directors</div>
-            </div>
-            <div className="bg-white border rounded-md p-5 shadow-sm">
-              <Building2 className="text-[#0B74B0] mb-2" size={26} />
-              <div className="text-2xl font-semibold text-gray-900">{companyCount?.total || 0}</div>
-              <div className="text-gray-600 text-xs">Total Companies</div>
-            </div>
-            <div className="bg-white border rounded-md p-5 shadow-sm">
-              <Network className="text-[#4CAF50] mb-2" size={26} />
-              <div className="text-2xl font-semibold text-gray-900">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-white border border-purple-100 rounded-xl p-6 shadow-sm flex flex-col items-center text-center"
+            >
+              <div className="p-3 bg-purple-50 rounded-full mb-3">
+                <Users className="text-[#75479C]" size={28} />
+              </div>
+              <div className="text-3xl font-extrabold text-gray-900">{directors.length}</div>
+              <div className="text-gray-500 text-xs font-bold uppercase tracking-wider">Total Directors</div>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-white border border-blue-100 rounded-xl p-6 shadow-sm flex flex-col items-center text-center"
+            >
+              <div className="p-3 bg-blue-50 rounded-full mb-3">
+                <Building2 className="text-[#0B74B0]" size={28} />
+              </div>
+              <div className="text-3xl font-extrabold text-gray-900">{companyCount?.total || 0}</div>
+              <div className="text-gray-500 text-xs font-bold uppercase tracking-wider">Total Companies</div>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-white border border-green-100 rounded-xl p-6 shadow-sm flex flex-col items-center text-center"
+            >
+              <div className="p-3 bg-green-50 rounded-full mb-3">
+                <Network className="text-[#4CAF50]" size={28} />
+              </div>
+              <div className="text-3xl font-extrabold text-gray-900">
                 {directors.length > 0 ? ((companyCount?.total || 0) / directors.length).toFixed(1) : 0}
               </div>
-              <div className="text-gray-600 text-xs">Avg Companies/Director</div>
-            </div>
-            <div className="bg-white border rounded-md p-5 shadow-sm">
-              <FileText className="text-[#FF9800] mb-2" size={26} />
-              <div className="text-2xl font-semibold text-gray-900">{companyCount?.public || 0}</div>
-              <div className="text-gray-600 text-xs">Public Companies</div>
-            </div>
+              <div className="text-gray-500 text-xs font-bold uppercase tracking-wider">Avg Per Director</div>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-white border border-orange-100 rounded-xl p-6 shadow-sm flex flex-col items-center text-center"
+            >
+              <div className="p-3 bg-orange-50 rounded-full mb-3">
+                <FileText className="text-[#FF9800]" size={28} />
+              </div>
+              <div className="text-3xl font-extrabold text-gray-900">{companyCount?.public || 0}</div>
+              <div className="text-gray-500 text-xs font-bold uppercase tracking-wider">Public Companies</div>
+            </motion.div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -388,15 +422,15 @@ const DirectorsDisclosureAnalytics = () => {
             <BarChart data={crossDirectorship.slice(0, 10)} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
               <XAxis type="number" stroke="#666" fontSize={12} />
-              <YAxis 
-                dataKey="name" 
-                type="category" 
-                stroke="#666" 
+              <YAxis
+                dataKey="name"
+                type="category"
+                stroke="#666"
                 width={150}
                 tick={{ fontSize: 11 }}
                 tickFormatter={(value) => value.length > 20 ? `${value.substring(0, 20)}...` : value}
               />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '6px', fontSize: '12px' }}
                 labelStyle={{ color: '#000', fontSize: '12px' }}
               />
@@ -420,22 +454,22 @@ const DirectorsDisclosureAnalytics = () => {
         <div className="bg-white border rounded-md p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Director Clustering - Shared Companies</h3>
           <p className="text-gray-600 text-sm mb-5">Identifies directors who share common companies (potential collaboration networks)</p>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-gray-100 shadow-sm">
             <table className="w-full text-gray-900 text-sm">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium">Director 1</th>
-                  <th className="text-left py-3 px-4 font-medium">Director 2</th>
-                  <th className="text-left py-3 px-4 font-medium">Shared Companies</th>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left py-4 px-6 font-bold uppercase tracking-wider text-[11px] text-gray-500">Director 1</th>
+                  <th className="text-left py-4 px-6 font-bold uppercase tracking-wider text-[11px] text-gray-500">Director 2</th>
+                  <th className="text-left py-4 px-6 font-bold uppercase tracking-wider text-[11px] text-gray-500">Shared Companies</th>
                 </tr>
               </thead>
               <tbody>
                 {clustering.slice(0, 10).map((cluster, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4">{cluster.director1}</td>
-                    <td className="py-3 px-4">{cluster.director2}</td>
-                    <td className="py-3 px-4">
-                      <span className="bg-[#75479C] text-white px-3 py-1 rounded-full text-xs">
+                  <tr key={idx} className="border-b border-gray-50 hover:bg-purple-50/30 transition-colors">
+                    <td className="py-4 px-6 font-medium">{cluster.director1}</td>
+                    <td className="py-4 px-6 font-medium">{cluster.director2}</td>
+                    <td className="py-4 px-6">
+                      <span className="bg-purple-600 text-white font-bold px-4 py-1.5 rounded-full text-xs shadow-sm">
                         {cluster.sharedCompanies}
                       </span>
                     </td>
@@ -454,7 +488,7 @@ const DirectorsDisclosureAnalytics = () => {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Companies by Director Count</h3>
             <p className="text-gray-600 text-sm mb-5">Shows which companies have the most/least directors</p>
             <ResponsiveContainer width="100%" height={400}>
-              <BarChart 
+              <BarChart
                 data={Array.from(
                   new Map(
                     (network?.links || []).map(link => [link.target, (network?.links.filter(l => l.target === link.target).length || 0)])
@@ -465,15 +499,15 @@ const DirectorsDisclosureAnalytics = () => {
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis type="number" stroke="#666" fontSize={12} />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  stroke="#666" 
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  stroke="#666"
                   width={150}
                   tick={{ fontSize: 11 }}
                   tickFormatter={(value) => value.length > 20 ? `${value.substring(0, 20)}...` : value}
                 />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '6px', fontSize: '12px' }}
                   labelStyle={{ color: '#000', fontSize: '12px' }}
                 />
@@ -513,15 +547,15 @@ const DirectorsDisclosureAnalytics = () => {
               <BarChart data={wtdCount.slice(0, 10)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis type="number" stroke="#666" fontSize={12} />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  stroke="#666" 
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  stroke="#666"
                   width={150}
                   tick={{ fontSize: 11 }}
                   tickFormatter={(value) => value.length > 20 ? `${value.substring(0, 20)}...` : value}
                 />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '6px', fontSize: '12px' }}
                   labelStyle={{ color: '#000', fontSize: '12px' }}
                 />

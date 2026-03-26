@@ -4,7 +4,7 @@ from typing import List
 
 class ChatbotSettings(BaseSettings):
     # Database - Default to SQLite in the Backend directory
-    DATABASE_URL: str = os.getenv("CHATBOT_DATABASE_URL", "sqlite:///./chatbot_minutes.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5436/chatbot_minutes")
     
     # Azure OpenAI
     AZURE_OPENAI_ENDPOINT: str | None = os.getenv("AZURE_OPENAI_ENDPOINT")

@@ -1,13 +1,13 @@
 # SEBI Data Route Module
-# This module handles SEBI (Securities and Exchange Board of India) data processing and retrieval operations
+# This module handles SEBI (Securities and Exchange Board of India) data processing using PostgreSQL
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
-import sqlite3
 import logging
 import asyncio
 import concurrent.futures
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -36,49 +36,53 @@ class SEBIAnalysisDataResponse(BaseModel):
 # Endpoint to get SEBI analysis data from the database
 @router.get("/sebi-analysis-data", response_model=SEBIAnalysisDataResponse)
 async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
-    """Get SEBI analysis data from the SEBI database"""
+    """Get SEBI analysis data from PostgreSQL exclusively."""
     try:
-        # Define the path to the SEBI database file
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "sebi_excel_master.db")
-        
-        # Check if database file exists
-        if not os.path.exists(db_path):
-            raise HTTPException(status_code=404, detail="SEBI database file not found")
-        
-        # Connect to the database and fetch data
         def fetch_sebi_data():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+            conn = get_pg_connection()
+            if not conn:
+                logger.error("Failed to connect to PG database for SEBI alerts")
+                raise HTTPException(status_code=500, detail="Database connection failed")
             
-            # First, get the total count of records
-            cursor.execute("SELECT COUNT(*) FROM excel_summaries")
-            total_count = cursor.fetchone()[0]
-            
-            # Fetch data from excel_summaries table with limit and offset for pagination
-            cursor.execute("""
-                SELECT id, date_key, row_index, pdf_link, summary, inserted_at 
-                FROM excel_summaries 
-                ORDER BY date_key DESC, row_index ASC 
-                LIMIT ? OFFSET ?
-            """, (limit, offset))
-            
-            rows = cursor.fetchall()
-            
-            # Convert to list of dictionaries
-            data = []
-            for row in rows:
-                record = {
-                    'id': row[0],
-                    'date_key': row[1],
-                    'row_index': row[2],
-                    'pdf_link': row[3],
-                    'summary': row[4],
-                    'inserted_at': row[5]
-                }
-                data.append(record)
-            
-            conn.close()
-            return data, total_count
+            cursor = get_pg_cursor(conn)
+            try:
+                # First, get the total count of records
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM sebi.excel_summaries
+                """)
+                row = cursor.fetchone()
+                total_count = row["count"] if row else 0
+                
+                # Fetch data from excel_summaries table with limit and offset
+                cursor.execute("""
+                    SELECT id, date_key, row_index, pdf_link, summary, inserted_at
+                    FROM sebi.excel_summaries
+                    ORDER BY date_key DESC, row_index ASC
+                    LIMIT %s OFFSET %s
+                """, (limit, offset))
+                
+                rows = cursor.fetchall()
+                
+                # Convert to list of dictionaries with frontend-expected keys
+                data = []
+                for row in rows:
+                    record = {
+                        'id': row['id'],
+                        'date_key': str(row['date_key']),
+                        'row_index': row['row_index'],
+                        'pdf_link': row['pdf_link'],
+                        'summary': row['summary'],
+                        'inserted_at': str(row['inserted_at'])
+                    }
+                    data.append(record)
+                
+                return data, total_count
+            finally:
+                try:
+                    cursor.close()
+                finally:
+                    conn.close()
         
         # Run the database operation in a thread pool
         loop = asyncio.get_event_loop()
@@ -89,6 +93,6 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
             count=total_count
         )
     except Exception as e:
-        error_message = str(e)
-        logger.error(f"Error fetching SEBI analysis data: {error_message}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch SEBI analysis data: {error_message}")
+        logger.error(f"Error fetching SEBI analysis data: {e}")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=f"Failed to fetch SEBI analysis data: {str(e)}")

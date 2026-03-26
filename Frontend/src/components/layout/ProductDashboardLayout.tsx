@@ -59,7 +59,7 @@ const ProductDashboardLayout = ({
 
 
   const sidebarVariants = {
-    expanded: { width: "256px" },
+    expanded: { width: "280px" },
     collapsed: { width: "64px" }
   };
 
@@ -73,7 +73,7 @@ const ProductDashboardLayout = ({
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       return "0"; // No margin on mobile/tablet
     }
-    return isCollapsed ? "64px" : "256px";
+    return isCollapsed ? "64px" : "280px";
   };
 
   return (
@@ -170,7 +170,7 @@ const ProductDashboardLayout = ({
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: -10 }}
-                          className="font-medium truncate"
+                          className="font-medium whitespace-nowrap overflow-visible"
                         >
                           {item.label}
                         </motion.span>

@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 import asyncio
 import concurrent.futures
 from functools import partial
-import sqlite3
 import urllib.parse
 from datetime import datetime
 from typing import Union
@@ -76,22 +75,22 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 @app.on_event("startup")
 async def startup_event():
     try:
-        directors_db_path = os.path.join(os.path.dirname(__file__), "directors_data.db")
-        conn = sqlite3.connect(directors_db_path)
-        cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS document_summaries (id INTEGER PRIMARY KEY AUTOINCREMENT, director_name TEXT NOT NULL, din TEXT, file_path TEXT NOT NULL UNIQUE, full_text TEXT, summary TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_document_summaries_file_path ON document_summaries (file_path)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_document_summaries_director_name ON document_summaries (director_name)")
-        conn.commit()
-        conn.close()
-
         from routes.director_data_analysis import init_database
+        from routes.rbac import init_rbac_pg_tables
+        from routes.user_management import init_rbac_db
+        from utils.db_init import init_postgres_tracking
+        from routes.minutes import init_minutes_pg
+        
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(thread_pool, init_database)
+        await loop.run_in_executor(thread_pool, init_rbac_pg_tables)
+        await loop.run_in_executor(thread_pool, init_rbac_db)
+        await loop.run_in_executor(thread_pool, init_postgres_tracking)
+        await loop.run_in_executor(thread_pool, init_minutes_pg)
 
         from chatbot_minutes.database import init_db as init_chatbot_db
         init_chatbot_db()
-        logger.info("Databases initialized")
+        logger.info("PostgreSQL databases initialized")
     except Exception as e:
         logger.error(f"Startup error: {e}")
 

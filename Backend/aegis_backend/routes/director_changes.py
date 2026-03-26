@@ -1,12 +1,12 @@
-
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-import sqlite3
 import os
 import logging
 from datetime import datetime
-import threading
+
+# Import our PostgreSQL service
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 # Create logger
 logger = logging.getLogger(__name__)
@@ -14,36 +14,34 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
-# Database setup
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "public", "director_changes.db")
-db_lock = threading.Lock()
-
 def init_db():
-    """Initialize the director changes database"""
+    """Verify/Initialize the director changes PG table"""
+    pg_conn = None
     try:
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Create changes table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS director_changes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                director_id INTEGER,
-                director_name TEXT,
-                change_type TEXT,
-                description TEXT,
-                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        logger.info("Director changes database initialized")
+        pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+        if pg_conn:
+            cursor = get_pg_cursor(pg_conn)
+            
+            # Create changes table in directors_master schema
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS directors_master.director_changes (
+                    id SERIAL PRIMARY KEY,
+                    director_id INTEGER,
+                    director_name TEXT,
+                    change_type TEXT,
+                    description TEXT,
+                    changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            pg_conn.commit()
+            logger.info("Director changes PostgreSQL table verified")
     except Exception as e:
-        logger.error(f"Failed to initialize director changes database: {e}")
+        logger.error(f"Failed to initialize director changes PG table: {e}")
+    finally:
+        if pg_conn:
+            pg_conn.close()
 
-# Initialize DB on import
+# Initialize on import
 init_db()
 
 # Models
@@ -60,51 +58,57 @@ class ChangesResponse(BaseModel):
 
 # Utility function to log a change
 def log_director_change(director_id: Optional[int], director_name: str, change_type: str, description: str):
-    """Log a change to the database"""
+    """Log a change to the PostgreSQL database"""
+    pg_conn = None
     try:
-        with db_lock:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
+        pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+        if pg_conn:
+            cursor = get_pg_cursor(pg_conn)
             
             cursor.execute('''
-                INSERT INTO director_changes (director_id, director_name, change_type, description, changed_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (director_id, director_name, change_type, description, datetime.now().isoformat()))
+                INSERT INTO directors_master.director_changes (director_id, director_name, change_type, description, changed_at)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (director_id, director_name, change_type, description, datetime.now()))
             
-            conn.commit()
-            conn.close()
-            logger.info(f"Logged change for {director_name}: {change_type}")
+            pg_conn.commit()
     except Exception as e:
-        logger.error(f"Failed to log director change: {e}")
+        logger.error(f"Failed to log director change to PG: {e}")
+    finally:
+        if pg_conn:
+            pg_conn.close()
 
 # API Endpoints
 @router.get("/director-disclosure-changes", response_model=ChangesResponse)
 async def get_director_changes():
-    """Get all director disclosure changes ordered by date (newest first)"""
+    """Get all director disclosure changes ordered by date from PG"""
+    pg_conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT * FROM director_changes ORDER BY changed_at DESC")
-        rows = cursor.fetchall()
-        
-        changes = []
-        for row in rows:
-            changes.append({
-                "id": row["id"],
-                "director_name": row["director_name"],
-                "change_type": row["change_type"],
-                "description": row["description"],
-                "changed_at": row["changed_at"]
-            })
+        pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+        if pg_conn:
+            cursor = get_pg_cursor(pg_conn)
             
-        conn.close()
-        
-        return {
-            "data": changes,
-            "count": len(changes)
-        }
+            cursor.execute("SELECT * FROM directors_master.director_changes ORDER BY changed_at DESC")
+            rows = cursor.fetchall()
+            
+            changes = []
+            for row in rows:
+                changes.append({
+                    "id": row["id"],
+                    "director_name": row["director_name"],
+                    "change_type": row["change_type"],
+                    "description": row["description"],
+                    "changed_at": row["changed_at"].isoformat() if hasattr(row["changed_at"], 'isoformat') else str(row["changed_at"])
+                })
+            
+            return {
+                "data": changes,
+                "count": len(changes)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Database connection failed")
     except Exception as e:
-        logger.error(f"Error fetching director changes: {e}")
+        logger.error(f"Error fetching director changes from PG: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch changes: {e}")
+    finally:
+        if pg_conn:
+            pg_conn.close()

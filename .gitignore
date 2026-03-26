@@ -78,10 +78,52 @@ test_sharepoint_connection.py
 Backend/aegis_backend/public/chatbot_docs/
 Backend/aegis_backend/public/ai_assistant_mom/
 Backend/aegis_backend/server.log
+Backend/aegis_backend/uploads/
+Backend/aegis_backend/director_images/
 
 # Local SQLite/runtime database files not needed for production deploys
 /chatbot_minutes.db
 Backend/aegis_backend/chatbot_minutes.db
+*.db
 *.db-wal
 *.db-shm
 *.db-journal
+*.sqlite
+
+# Remote / Development copies and specific junk
+*_remote.*
+Task Tracker.md
+files_updated.md
+src.zip
+*.pdf
+*.zip
+
+# Test files and dev scripts
+test_*.py
+**/test_*.py
+mock_*.py
+**/mock_*.py
+e2e_*.py
+**/e2e_*.py
+comprehensive_test.py
+test_prompt.json
+scripts/test_*.py
+*sample*
+*.ipynb
+
+# Local runtime data and project tracking
+*.zip
+*.pdf
+Task Tracker.md
+files_updated.md
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode
+.idea
+.DS_Store
+Thumbs.db

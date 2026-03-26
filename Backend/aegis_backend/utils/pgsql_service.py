@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 _pools = {}
 _pools_lock = threading.Lock()
 
-
 class PooledConnection:
     """Proxy a pooled psycopg2 connection so `.close()` returns it to the pool."""
 
@@ -58,63 +57,80 @@ class PooledConnection:
         self.close()
 
 def get_pg_connection(database=None):
-    host     = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST')
+    """
+    Get a PostgreSQL connection from the pool.
+    Explicitly supports multi-database strategy (Director, BSE, Insider Trading).
+    """
+    host     = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or 'localhost'
     user     = os.getenv('POSTGRES_USER') or os.getenv('DB_USER')
     password = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD')
-    port     = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT')
+    port     = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5432'
 
+    # Fallback logic for database name
     if not database:
-        database = os.getenv('POSTGRES_DATABASE_DIRECTOR') or os.getenv('POSTGRES_DATABASE') or os.getenv('DB_NAME')
+        database = os.getenv('POSTGRES_DATABASE') or os.getenv('DB_NAME')
 
     if not all([host, user, password, database]):
-        logger.error(f"Missing PostgreSQL vars (Host: {bool(host)}, User: {bool(user)}, DB: {bool(database)})")
+        logger.error(f"Missing PostgreSQL credentials: {{'Host': bool(host), 'User': bool(user), 'DB': bool(database)}}")
         return None
 
     pool_key = f"{host}:{port}:{database}"
+    
     with _pools_lock:
         if pool_key not in _pools:
             conn_params = {
                 'host': host,
                 'user': user,
                 'password': password,
-                'port': int(port) if port else 5432,
+                'port': int(port),
                 'database': database,
-                'connect_timeout': 5
+                'connect_timeout': 10
             }
-            if host and 'azure.com' in host.lower():
+            
+            # Security Rule: Enforce SSL (Required for Production Azure Instance)
+            sslmode = os.getenv('POSTGRES_SSLMODE') or os.getenv('DB_SSLMODE')
+            if sslmode:
+                conn_params['sslmode'] = sslmode
+            elif 'azure.com' in host.lower():
                 conn_params['sslmode'] = 'require'
+                
             try:
-                _pools[pool_key] = psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=4, **conn_params)
+                logger.info(f"Initializing Multi-DB Connection Pool: {database} @ {host}")
+                # Use ThreadedConnectionPool for FastAPI concurrency
+                _pools[pool_key] = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=25, **conn_params)
             except Exception as e:
-                logger.error(f"Failed to create pool for {database}: {e}")
+                logger.error(f"Critical: Failed to initialize pool for {database}: {e}")
                 return None
 
     try:
         conn = _pools[pool_key].getconn()
         return PooledConnection(conn, pool_key)
     except Exception as e:
-        logger.error(f"Pool getconn failed (DB: {database}): {e}")
+        logger.error(f"Pool exhausted or connection unavailable (DB: {database}): {e}")
         return None
 
-def put_pg_connection(conn, database=None):
-    if not conn:
-        return
-    if isinstance(conn, PooledConnection):
+def put_pg_connection(conn):
+    """Explicitly return a connection to the pool (or use context manager)."""
+    if conn and isinstance(conn, PooledConnection):
         conn.close()
-        return
-    host = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST')
-    port = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT')
-    if not database:
-        database = os.getenv('POSTGRES_DATABASE_DIRECTOR') or os.getenv('POSTGRES_DATABASE') or os.getenv('DB_NAME')
-    pool_key = f"{host}:{port}:{database}"
-    with _pools_lock:
-        if pool_key in _pools:
-            try:
-                _pools[pool_key].putconn(conn)
-            except Exception:
-                pass
 
 def get_pg_cursor(conn):
+    """Get a RealDictCursor for the given connection."""
     if conn:
         return conn.cursor(cursor_factory=RealDictCursor)
     return None
+
+def check_pg_health() -> bool:
+    """Check if PostgreSQL is reachable."""
+    conn = get_pg_connection()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            return True
+    except Exception as e:
+        logger.error(f"PG Health Check failed: {e}")
+        return False
+    finally:
+        conn.close()

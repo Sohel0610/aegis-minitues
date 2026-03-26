@@ -66,12 +66,18 @@ async def process_query(
     db: Session = Depends(get_db_session)
 ):
     try:
+        # 1. RBAC check (Check if user is admin globally for this tool)
+        from routes.rbac import check_route_permission
+        permission = check_route_permission(user.email, "/api/minutes-chatbot")
+        is_admin = (permission == "admin")
+
         chatbot_service = ChatbotService()
         result = chatbot_service.process_query(
             db=db,
             user_id=user.id,
             query=request.query,
-            session_id=request.session_id
+            session_id=request.session_id,
+            is_admin=is_admin
         )
         return QueryResponse(
             answer=result["answer"],
@@ -110,6 +116,16 @@ async def upload_document(
             extracted_text = "\n".join([para.text for para in doc.paragraphs])
         elif file_ext == "txt":
             extracted_text = content.decode("utf-8")
+        elif file_ext == "pdf":
+            try:
+                import PyPDF2
+                with open(file_path, "rb") as fh:
+                    reader = PyPDF2.PdfReader(fh)
+                    extracted_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+            except ImportError:
+                import pdfplumber
+                with pdfplumber.open(file_path) as pdf:
+                    extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         else:
             extracted_text = f"Content of {file.filename}" # Placeholder for other types
     except Exception as e:
@@ -154,6 +170,17 @@ async def get_history(
         {"role": h.role, "message": h.message, "timestamp": h.timestamp}
         for h in history
     ]
+
+@router.get("/sessions")
+async def list_sessions(
+    user: User = Depends(get_current_chatbot_user),
+    db: Session = Depends(get_db_session)
+):
+    """List all previous sessions for the user (ChatGPT history style)"""
+    from .services.chat_history_service import ChatHistoryService
+    service = ChatHistoryService()
+    sessions = service.get_user_sessions(db, user.id)
+    return {"sessions": sessions}
 
 @router.get("/documents")
 async def list_documents(

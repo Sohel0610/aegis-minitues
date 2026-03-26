@@ -5,10 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, Download, Sparkles, Home, History, FileSpreadsheet, Plus, HelpCircle, BookOpen, Users } from 'lucide-react';
+import { Upload, FileText, Download, Sparkles, Home, History, FileSpreadsheet, Plus, HelpCircle, BookOpen, Users, BotIcon, SendIcon, Maximize2, Minimize2, X, MessageSquare } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+import { useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const CreateAgenda = () => {
     const [files, setFiles] = useState<File[]>([]);
@@ -23,6 +26,14 @@ const CreateAgenda = () => {
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', text: string }[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isAsking, setIsAsking] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [chatMessages]);
 
     const handleAsk = async () => {
         if (!chatInput.trim()) return;
@@ -60,6 +71,7 @@ const CreateAgenda = () => {
         { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda', isActive: true },
         { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
         { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+        { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
         { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
         { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
         { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
@@ -103,9 +115,18 @@ const CreateAgenda = () => {
         }, 500);
 
         try {
-            // Logic for AI generation would go here
-            // 1. Upload files
-            // 2. Call AI endpoint with file IDs
+            // Index files for the chatbot
+            for (const file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+                await fetch('/api/minutes-chatbot/upload', {
+                    method: 'POST',
+                    headers: { 'X-User-Email': 'admin@adani.com' }, // Default for now
+                    body: formData
+                });
+            }
+
+            // Logic for AI generation
             await new Promise(resolve => setTimeout(resolve, 3000));
 
             setGeneratedAgenda(`
@@ -275,48 +296,106 @@ With the permission of the Chair.
                         </div>
                     </div>
 
-                    {/* Integrated Chatbot */}
-                    <Card className="border-blue-200 bg-blue-50/50">
-                        <CardHeader className="py-4">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                                <HelpCircle className="h-5 w-5 text-blue-600" />
-                                Meeting Assistant Chatbot
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="bg-white border rounded-lg p-4 h-[200px] mb-4 overflow-y-auto flex flex-col gap-2">
-                                {chatMessages.length === 0 ? (
-                                    <div className="flex-1 flex items-center justify-center text-muted-foreground italic text-sm">
-                                        Ask me anything about the meeting documents...
-                                    </div>
-                                ) : (
-                                    chatMessages.map((msg, i) => (
-                                        <div key={i} className={`p-2 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-100 self-end max-w-[80%]' : 'bg-gray-100 self-start max-w-[80%]'}`}>
-                                            <p className="font-semibold text-xs mb-1">{msg.role === 'user' ? 'You' : 'Assistant'}</p>
-                                            <p>{msg.text}</p>
+                    {/* Integrated Chatbot - Premium ChatGPT Style */}
+                    {/* Premium Floating Assistant */}
+                    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4">
+                        {/* Chat Window */}
+                        <AnimatePresence>
+                            {isExpanded && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                    className="w-[420px] h-[600px] mb-2 shadow-2xl rounded-2xl border border-blue-200 bg-white flex flex-col overflow-hidden"
+                                >
+                                    <div className="p-4 border-b border-blue-100 bg-gradient-to-r from-blue-600 to-indigo-700 text-white flex items-center justify-between">
+                                        <div className="flex items-center gap-2 font-bold">
+                                            <Sparkles className="h-5 w-5 animate-pulse" />
+                                            Aegis Strategy Assistant
                                         </div>
-                                    ))
-                                )}
-                                {isAsking && (
-                                    <div className="bg-gray-100 self-start p-2 rounded-lg text-sm animate-pulse">
-                                        Thinking...
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setIsExpanded(false)}
+                                            className="text-white hover:bg-white/20 h-8 w-8 p-0"
+                                        >
+                                            <Minimize2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
-                                )}
-                            </div>
-                            <div className="flex gap-2">
-                                <Input
-                                    className="bg-white"
-                                    placeholder="What happened in the previous audit meeting?"
-                                    value={chatInput}
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
-                                />
-                                <Button className="bg-blue-600" onClick={handleAsk} disabled={isAsking || !chatInput.trim()}>
-                                    Ask
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
+
+                                    <div
+                                        className="flex-1 p-4 overflow-y-auto bg-slate-50 flex flex-col gap-4 shadow-inner"
+                                    >
+                                        {chatMessages.length === 0 ? (
+                                            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground space-y-3 opacity-60 mt-12 text-center">
+                                                <BotIcon className="h-12 w-12 text-blue-300" />
+                                                <div className="text-center">
+                                                    <p className="font-semibold text-blue-900">I've analyzed your uploads</p>
+                                                    <p className="text-sm">Ask me about conflicts or action points.</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            chatMessages.map((msg, i) => (
+                                                <div key={i} className={cn(
+                                                    "flex gap-3",
+                                                    msg.role === 'user' ? "flex-row-reverse" : "flex-row"
+                                                )}>
+                                                    <div className={cn(
+                                                        "p-3 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[85%]",
+                                                        msg.role === 'user'
+                                                            ? 'bg-blue-600 text-white rounded-tr-none'
+                                                            : 'bg-white border border-blue-100 text-slate-800 rounded-tl-none'
+                                                    )}>
+                                                        {msg.text}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                        {isAsking && (
+                                            <div className="flex gap-2 items-center text-blue-600 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                                                <div className="h-3 w-3 rounded-full border-2 border-t-transparent border-blue-600 animate-spin"></div>
+                                                Analyzing Aegis Knowledge...
+                                            </div>
+                                        )}
+                                        <div ref={scrollRef}></div>
+                                    </div>
+
+                                    <div className="p-4 border-t bg-white">
+                                        <div className="flex gap-2 relative">
+                                            <Input
+                                                className="bg-slate-50 h-11 pr-12 rounded-xl border-slate-200 focus:border-blue-400 focus:ring-blue-100 shadow-sm"
+                                                placeholder="Ask me anything..."
+                                                value={chatInput}
+                                                onChange={(e) => setChatInput(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
+                                            />
+                                            <Button
+                                                className="absolute right-1 top-1 h-9 w-9 p-0 bg-blue-600 hover:bg-blue-700 rounded-lg transition-transform active:scale-90"
+                                                onClick={handleAsk}
+                                                disabled={isAsking || !chatInput.trim()}
+                                            >
+                                                <SendIcon className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* Floating Action Button */}
+                        <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setIsExpanded(!isExpanded)}
+                            className={cn(
+                                "h-16 w-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 border-4 border-white",
+                                isExpanded ? "bg-white text-blue-600" : "bg-gradient-to-br from-blue-600 to-indigo-700 text-white"
+                            )}
+                        >
+                            {isExpanded ? <X className="h-8 w-8" /> : <BotIcon className="h-8 w-8" />}
+                        </motion.button>
+                    </div>
+
 
                 </div>
             </div>

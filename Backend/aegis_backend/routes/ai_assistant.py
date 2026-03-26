@@ -416,8 +416,8 @@ async def upload_transcript(file: UploadFile = File(...)):
         
         # Save the uploaded file
         file_extension = os.path.splitext(file.filename)[1].lower()
-        if file_extension not in ['.docx', '.txt']:
-            raise HTTPException(status_code=400, detail="Only DOCX and TXT files are supported")
+        if file_extension not in ['.docx', '.txt', '.pdf']:
+            raise HTTPException(status_code=400, detail="Only DOCX, TXT, and PDF files are supported")
         
         file_path = os.path.join(task_dir, f"transcript{file_extension}")
         
@@ -459,7 +459,7 @@ async def generate_mom(task_id: str):
         
         # Check if transcript exists
         transcript_path = None
-        for ext in ['.docx', '.txt']:
+        for ext in ['.docx', '.txt', '.pdf']:
             path = os.path.join(task_dir, f"transcript{ext}")
             if os.path.exists(path):
                 transcript_path = path
@@ -485,6 +485,16 @@ async def generate_mom(task_id: str):
             if transcript_path.endswith('.docx'):
                 doc = DocxDocument(transcript_path)
                 text_content = "\n".join([para.text for para in doc.paragraphs])
+            elif transcript_path.endswith('.pdf'):
+                try:
+                    import PyPDF2
+                    with open(transcript_path, "rb") as fh:
+                        reader = PyPDF2.PdfReader(fh)
+                        text_content = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                except ImportError:
+                    import pdfplumber
+                    with pdfplumber.open(transcript_path) as pdf:
+                        text_content = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
             else:  # .txt file
                 with open(transcript_path, "r", encoding="utf-8") as f:
                     text_content = f.read()

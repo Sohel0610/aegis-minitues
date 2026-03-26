@@ -2,99 +2,11 @@ import os
 import logging
 import threading
 from typing import Optional, List, Dict, Any
-from dotenv import load_dotenv
-import psycopg2
-import psycopg2.extras
-import psycopg2.pool
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
-# Ensure we load the backend-local .env even when the server is started from `Backend/`.
-load_dotenv(dotenv_path=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")))
 logger = logging.getLogger(__name__)
 
-# ── Connection Pool (reuse connections instead of opening new ones) ───
-_pool = None
-_pool_lock = threading.Lock()
-
-def _get_pool():
-    global _pool
-    if _pool is not None:
-        return _pool
-    with _pool_lock:
-        if _pool is not None:
-            return _pool
-        host     = os.getenv('DB_HOST') or os.getenv('POSTGRES_HOST')
-        user     = os.getenv('DB_USER') or os.getenv('POSTGRES_USER')
-        password = os.getenv('DB_PASSWORD') or os.getenv('POSTGRES_PASSWORD')
-        database = os.getenv('DB_NAME')
-        port     = os.getenv('DB_PORT') or os.getenv('POSTGRES_PORT') or '5432'
-
-        if not all([host, user, password, database]):
-            logger.error(f"Missing DB credentials: Host={bool(host)}, User={bool(user)}, DB={bool(database)}")
-            return None
-
-        db_config = {
-            'host': host,
-            'port': int(port),
-            'database': database,
-            'user': user,
-            'password': password,
-            'connect_timeout': 10
-        }
-        _sslmode = os.getenv('DB_SSLMODE') or os.getenv('POSTGRES_SSLMODE')
-        if _sslmode:
-            db_config['sslmode'] = _sslmode
-        elif host and 'azure.com' in host.lower():
-            db_config['sslmode'] = 'require'
-
-        logger.info(f"Creating PG pool: Host={repr(host)}, DB={repr(database)}, SSL={db_config.get('sslmode')}")
-        try:
-            _pool = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=8, **db_config)
-            return _pool
-        except Exception as e:
-            logger.error(f"Failed to create PG pool: {e}")
-            return None
-
-
-def _get_connection():
-    pool = _get_pool()
-    if not pool:
-        return None
-    try:
-        return pool.getconn()
-    except Exception as e:
-        logger.error(f"Pool getconn failed: {e}")
-        return None
-
-
-def _put_connection(conn):
-    pool = _get_pool()
-    if pool and conn:
-        try:
-            pool.putconn(conn)
-        except Exception:
-            pass
-
-
-def _dict_cursor(conn):
-    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-def pg_is_available() -> bool:
-    """Best-effort connectivity check used by the route layer to decide on SQLite fallback."""
-    conn = _get_connection()
-    if not conn:
-        return False
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.fetchone()
-        return True
-    except Exception:
-        return False
-    finally:
-        _put_connection(conn)
-
-
-# ── ID Resolution Cache (avoid repeated lookups for names→ids) ───────
+# ── ID Resolution Cache ──────────────────────────────────────────
 _id_cache = {}
 _id_cache_lock = threading.Lock()
 
@@ -105,319 +17,111 @@ def _resolve_id(conn, table, name_col, name_val):
     with _id_cache_lock:
         if cache_key in _id_cache:
             return _id_cache[cache_key]
-    cur = conn.cursor()
-    cur.execute(f"SELECT id FROM {table} WHERE LOWER({name_col}) = LOWER(%s) LIMIT 1", (name_val,))
-    row = cur.fetchone()
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT id FROM {table} WHERE LOWER({name_col}) = LOWER(%s) LIMIT 1", (name_val,))
+        row = cur.fetchone()
     resolved = row[0] if row else None
     with _id_cache_lock:
         _id_cache[cache_key] = resolved
     return resolved
 
-
-# ── Filter Options (single connection, single round-trip) ────────────
+# ── Function wrappers using unified connection from pgsql_service ────
 
 def fetch_filter_options() -> Dict[str, Any]:
-    conn = _get_connection()
-    if not conn:
-        return {"companies": [], "depositories": [], "batches": []}
-    try:
-        cur = _dict_cursor(conn)
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return {"companies": [], "depositories": [], "batches": []}
+        cur = get_pg_cursor(conn)
         cur.execute("SELECT company_name FROM companies ORDER BY company_name")
         companies = [r['company_name'] for r in cur.fetchall()]
-
         cur.execute("SELECT type_name FROM depository_types ORDER BY type_name")
         depositories = [r['type_name'] for r in cur.fetchall()]
-
-        cur.execute("""
-            SELECT id, batch_name, older_date, latest_date, created_at
-            FROM result_batches ORDER BY latest_date DESC, created_at DESC
-        """)
-        batches = []
-        for r in cur.fetchall():
-            d = dict(r)
-            for k in ('older_date', 'latest_date', 'created_at'):
-                if d.get(k):
-                    d[k] = str(d[k])
-            batches.append(d)
-
+        cur.execute("SELECT id, batch_name, older_date, latest_date FROM result_batches ORDER BY latest_date DESC")
+        batches = [dict(r) for r in cur.fetchall()]
+        # Convert date to string
+        for b in batches:
+             for k in ('older_date', 'latest_date'):
+                 if b.get(k): b[k] = str(b[k])
         return {"companies": companies, "depositories": depositories, "batches": batches}
-    except Exception as e:
-        logger.error(f"fetch_filter_options error: {e}")
-        return {"companies": [], "depositories": [], "batches": []}
-    finally:
-        _put_connection(conn)
-
 
 def fetch_companies() -> List[Dict[str, Any]]:
-    conn = _get_connection()
-    if not conn:
-        return []
-    try:
-        cur = _dict_cursor(conn)
-        cur.execute("SELECT id, company_name, created_at FROM companies ORDER BY company_name")
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return []
+        cur = get_pg_cursor(conn)
+        cur.execute("SELECT id, company_name FROM companies ORDER BY company_name")
         return [dict(r) for r in cur.fetchall()]
-    except Exception as e:
-        logger.error(f"fetch_companies error: {e}")
-        return []
-    finally:
-        _put_connection(conn)
-
 
 def fetch_batches() -> List[Dict[str, Any]]:
-    conn = _get_connection()
-    if not conn:
-        return []
-    try:
-        cur = _dict_cursor(conn)
-        cur.execute("""
-            SELECT id, batch_name, older_date, latest_date, created_at
-            FROM result_batches ORDER BY latest_date DESC, created_at DESC
-        """)
-        results = []
-        for r in cur.fetchall():
-            d = dict(r)
-            for k in ('older_date', 'latest_date', 'created_at'):
-                if d.get(k):
-                    d[k] = str(d[k])
-            results.append(d)
-        return results
-    except Exception as e:
-        logger.error(f"fetch_batches error: {e}")
-        return []
-    finally:
-        _put_connection(conn)
-
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return []
+        cur = get_pg_cursor(conn)
+        cur.execute("SELECT id, batch_name, older_date, latest_date FROM result_batches ORDER BY latest_date DESC")
+        res = [dict(r) for r in cur.fetchall()]
+        for r in res:
+            for k in ('older_date', 'latest_date'):
+                 if r.get(k): r[k] = str(r[k])
+        return res
 
 def fetch_depository_types() -> List[Dict[str, Any]]:
-    conn = _get_connection()
-    if not conn:
-        return []
-    try:
-        cur = _dict_cursor(conn)
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return []
+        cur = get_pg_cursor(conn)
         cur.execute("SELECT id, type_name FROM depository_types ORDER BY type_name")
         return [dict(r) for r in cur.fetchall()]
-    except Exception as e:
-        logger.error(f"fetch_depository_types error: {e}")
-        return []
-    finally:
-        _put_connection(conn)
 
-
-# ── Summary (uses pre-aggregated summary table) ──────────────────────
-
-def fetch_summary(
-    company_name: Optional[str] = None,
-    batch_name: Optional[str] = None,
-    depository_type: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    conn = _get_connection()
-    if not conn:
-        return []
-    try:
-        company_id = _resolve_id(conn, 'companies', 'company_name', company_name)
-        batch_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
-        depository_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
-
-        if company_name and not company_id:
-            return []
-        if batch_name and not batch_id:
-            return []
-        if depository_type and not depository_id:
-            return []
-
-        cur = _dict_cursor(conn)
-        query = """
-            SELECT
-                s.id,
-                c.company_name  AS company,
-                rb.batch_name   AS batch,
-                dt.type_name    AS depository,
-                s.added_count   AS added,
-                s.removed_count AS removed,
-                s.changed_count AS changed,
-                s.unchanged_count AS unchanged,
-                s.total_count   AS total,
-                s.empty_pangir_latest,
-                s.empty_pangir_older
-            FROM summary s
-            JOIN companies        c  ON s.company_id    = c.id
-            JOIN result_batches   rb ON s.batch_id      = rb.id
-            JOIN depository_types dt ON s.depository_id  = dt.id
-            WHERE 1=1
-        """
-        params: list = []
-        if company_id:
-            query += " AND s.company_id = %s"
-            params.append(company_id)
-        if batch_id:
-            query += " AND s.batch_id = %s"
-            params.append(batch_id)
-        if depository_id:
-            query += " AND s.depository_id = %s"
-            params.append(depository_id)
-
-        query += " ORDER BY rb.latest_date DESC, c.company_name, dt.type_name"
-        cur.execute(query, params)
+def fetch_summary(company_name=None, batch_name=None, depository_type=None) -> List[Dict[str, Any]]:
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return []
+        c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
+        b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
+        d_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
+        cur = get_pg_cursor(conn)
+        q = "SELECT s.id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, added_count AS added, removed_count AS removed, changed_count AS changed, unchanged_count AS unchanged, total_count AS total FROM summary s JOIN companies c ON s.company_id = c.id JOIN result_batches rb ON s.batch_id = rb.id JOIN depository_types dt ON s.depository_id = dt.id WHERE 1=1"
+        params = []
+        if c_id: q += " AND s.company_id = %s"; params.append(c_id)
+        if b_id: q += " AND s.batch_id = %s"; params.append(b_id)
+        if d_id: q += " AND s.depository_id = %s"; params.append(d_id)
+        cur.execute(q, params)
         return [dict(r) for r in cur.fetchall()]
-    except Exception as e:
-        logger.error(f"fetch_summary error: {e}")
-        return []
-    finally:
-        _put_connection(conn)
 
+def fetch_record_counts(company_name=None, batch_name=None, depository_type=None) -> Dict[str, int]:
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return {"TOTAL": 0}
+        c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
+        b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
+        d_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
+        cur = get_pg_cursor(conn)
+        q = "SELECT SUM(added_count) as added, SUM(removed_count) as removed, SUM(changed_count) as changed, SUM(unchanged_count) as unchanged, SUM(total_count) as total FROM summary WHERE 1=1"
+        params = []
+        if c_id: q += " AND company_id = %s"; params.append(c_id)
+        if b_id: q += " AND batch_id = %s"; params.append(b_id)
+        if d_id: q += " AND depository_id = %s"; params.append(d_id)
+        cur.execute(q, params)
+        r = cur.fetchone()
+        return {"ADDED": r['added'] or 0, "REMOVED": r['removed'] or 0, "CHANGED": r['changed'] or 0, "UNCHANGED": r['unchanged'] or 0, "TOTAL": r['total'] or 0}
 
-# ── Record Counts (from summary table, not scanning shareholder_records) ─
-
-def fetch_record_counts(
-    company_name: Optional[str] = None,
-    batch_name: Optional[str] = None,
-    depository_type: Optional[str] = None,
-) -> Dict[str, int]:
-    conn = _get_connection()
-    if not conn:
-        return {"ADDED": 0, "REMOVED": 0, "CHANGED": 0, "UNCHANGED": 0, "TOTAL": 0}
-    try:
-        company_id = _resolve_id(conn, 'companies', 'company_name', company_name)
-        batch_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
-        depository_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
-
-        cur = _dict_cursor(conn)
-        query = """
-            SELECT
-                COALESCE(SUM(added_count), 0)     AS added,
-                COALESCE(SUM(removed_count), 0)   AS removed,
-                COALESCE(SUM(changed_count), 0)    AS changed,
-                COALESCE(SUM(unchanged_count), 0)  AS unchanged,
-                COALESCE(SUM(total_count), 0)      AS total
-            FROM summary
-            WHERE 1=1
-        """
-        params: list = []
-        if company_id:
-            query += " AND company_id = %s"
-            params.append(company_id)
-        if batch_id:
-            query += " AND batch_id = %s"
-            params.append(batch_id)
-        if depository_id:
-            query += " AND depository_id = %s"
-            params.append(depository_id)
-
-        cur.execute(query, params)
-        row = cur.fetchone()
-        return {
-            "ADDED": row['added'],
-            "REMOVED": row['removed'],
-            "CHANGED": row['changed'],
-            "UNCHANGED": row['unchanged'],
-            "TOTAL": row['total'],
-        }
-    except Exception as e:
-        logger.error(f"fetch_record_counts error: {e}")
-        return {"ADDED": 0, "REMOVED": 0, "CHANGED": 0, "UNCHANGED": 0, "TOTAL": 0}
-    finally:
-        _put_connection(conn)
-
-
-# ── Records (cursor pagination + ID-based filtering) ─────────────────
-
-def fetch_records(
-    status: Optional[str] = None,
-    company_name: Optional[str] = None,
-    batch_name: Optional[str] = None,
-    depository_type: Optional[str] = None,
-    limit: int = 15,
-    offset: int = 0,
-    cursor: Optional[int] = None,
-) -> Dict[str, Any]:
-    conn = _get_connection()
-    if not conn:
-        return {"records": [], "total": 0, "limit": limit, "offset": offset, "next_cursor": None}
-    try:
-        company_id = _resolve_id(conn, 'companies', 'company_name', company_name)
-        batch_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
-        depository_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
-
-        cur = _dict_cursor(conn)
-        where_parts = []
-        params: list = []
-
-        if status:
-            where_parts.append("sr.status = UPPER(%s)")
-            params.append(status)
-        if company_id:
-            where_parts.append("sr.company_id = %s")
-            params.append(company_id)
-        if batch_id:
-            where_parts.append("sr.batch_id = %s")
-            params.append(batch_id)
-        if depository_id:
-            where_parts.append("sr.depository_id = %s")
-            params.append(depository_id)
-
-        where_clause = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
-
-        # Get total from summary table when possible (much faster than COUNT(*))
-        if batch_id and company_id and depository_id and not status:
-            total_query = """
-                SELECT COALESCE(total_count, 0) AS cnt FROM summary
-                WHERE batch_id = %s AND company_id = %s AND depository_id = %s
-            """
-            cur.execute(total_query, [batch_id, company_id, depository_id])
-            total_row = cur.fetchone()
-            total = total_row['cnt'] if total_row else 0
-        else:
-            count_query = f"SELECT COUNT(*) AS cnt FROM shareholder_records sr{where_clause}"
-            cur.execute(count_query, params)
-            total = cur.fetchone()['cnt']
-
-        # Cursor-based pagination (fast) or fallback to OFFSET
-        select_cols = """
-            sr.id,
-            c.company_name  AS company,
-            rb.batch_name   AS batch,
-            dt.type_name    AS depository,
-            sr.pangir,
-            sr.name,
-            sr.email,
-            sr.position_latest,
-            sr.position_older,
-            sr.position_difference,
-            sr.status
-        """
-        from_clause = """
-            FROM shareholder_records sr
-            JOIN companies        c  ON sr.company_id    = c.id
-            JOIN result_batches   rb ON sr.batch_id      = rb.id
-            JOIN depository_types dt ON sr.depository_id  = dt.id
-        """
-
-        if cursor is not None:
-            cursor_where = where_parts + ["sr.id > %s"]
-            cursor_params = params + [cursor]
-            full_where = " WHERE " + " AND ".join(cursor_where) if cursor_where else ""
-            select_query = f"SELECT {select_cols} {from_clause} {full_where} ORDER BY sr.id LIMIT %s"
-            cur.execute(select_query, cursor_params + [limit])
-        else:
-            select_query = f"""
-                SELECT {select_cols} {from_clause} {where_clause}
-                ORDER BY sr.id
-                LIMIT %s OFFSET %s
-            """
-            cur.execute(select_query, params + [limit, offset])
-
+def fetch_records(status=None, company_name=None, batch_name=None, depository_type=None, limit=15, offset=0, cursor=None) -> Dict[str, Any]:
+    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+        if not conn: return {"records": []}
+        c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
+        b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
+        d_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
+        cur = get_pg_cursor(conn)
+        where = []
+        params = []
+        if status: where.append("status = %s"); params.append(status.upper())
+        if c_id: where.append("company_id = %s"); params.append(c_id)
+        if b_id: where.append("batch_id = %s"); params.append(b_id)
+        if d_id: where.append("depository_id = %s"); params.append(d_id)
+        
+        where_clause = (" WHERE " + " AND ".join(where)) if where else ""
+        cur.execute(f"SELECT COUNT(*) as cnt FROM shareholder_records {where_clause}", params)
+        total = cur.fetchone()['cnt']
+        
+        q = f"SELECT sr.id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, sr.pangir, sr.name, sr.email, sr.position_latest, sr.position_older, sr.position_difference, sr.status FROM shareholder_records sr JOIN companies c ON sr.company_id = c.id JOIN result_batches rb ON sr.batch_id = rb.id JOIN depository_types dt ON sr.depository_id = dt.id {where_clause} ORDER BY sr.id LIMIT %s OFFSET %s"
+        cur.execute(q, params + [limit, offset])
         records = [dict(r) for r in cur.fetchall()]
-        next_cursor = records[-1]['id'] if records else None
+        return {"records": records, "total": total}
 
-        return {
-            "records": records,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "next_cursor": next_cursor,
-        }
-    except Exception as e:
-        logger.error(f"fetch_records error: {e}")
-        return {"records": [], "total": 0, "limit": limit, "offset": offset, "next_cursor": None}
-    finally:
-        _put_connection(conn)
+def pg_is_available() -> bool:
+    import utils.pgsql_service as ps
+    return ps.check_pg_health()

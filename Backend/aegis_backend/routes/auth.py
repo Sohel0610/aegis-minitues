@@ -1,12 +1,10 @@
 # Authentication Route Module auth.py
-# This module handles Azure AD SSO authentication and authorization
-
+# This module handles Azure AD SSO authentication and authorization using PostgreSQL
 from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
-import sqlite3
 import logging
 import asyncio
 import concurrent.futures
@@ -17,18 +15,21 @@ from datetime import datetime, timedelta
 import secrets
 import hashlib
 import urllib.parse
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 
 # Custom thread pool for handling blocking operations
-tread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 # Create a router instance for authentication endpoints
 router = APIRouter()
 
-# SSO Toggle - when False, the app is fully open with no login required
+# Schema for RBAC
+PG_SCHEMA = "rbac"
+
+# SSO Toggle
 SSO_ENABLED = os.getenv("SSO_ENABLED", "True").lower() in ("true", "1", "yes")
-logger.info(f"SSO_ENABLED = {SSO_ENABLED}")
 
 # Configuration from environment variables
 CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID")
@@ -36,36 +37,30 @@ CLIENT_SECRET = os.getenv("AZURE_AD_CLIENT_SECRET")
 TENANT_ID = os.getenv("AZURE_AD_TENANT_ID")
 REDIRECT_URI = os.getenv("AZURE_AD_REDIRECT_URI", "https://aegis.adani.com/api/auth/callback")
 
-if SSO_ENABLED and not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
-    logger.warning("Azure AD configuration not fully set. Authentication endpoints may not work properly.")
-
 def get_user_permissions_from_db(email: str) -> dict:
-    """Get route-based permissions from database for a user"""
+    """Get route-based permissions from PostgreSQL for a user"""
     if not email:
         return {"routes": [], "has_any_access": False}
     
-    try:
-        db_path = os.path.join(os.path.dirname(__file__), "..", "public", "email_data.db")
-        conn = sqlite3.connect(db_path, timeout=30)
-        cursor = conn.cursor()
+    conn = get_pg_connection()
+    if not conn:
+        logger.error("Failed to connect to PG for permissions")
+        return {"routes": [], "has_any_access": False}
         
+    try:
+        cursor = get_pg_cursor(conn)
         # Query all active permissions for this user (case-insensitive)
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT route_path, permission_type
-            FROM route_permissions
-            WHERE LOWER(email) = LOWER(?) AND is_active = 1
+            FROM {PG_SCHEMA}.route_permissions
+            WHERE LOWER(email) = LOWER(%s) AND is_active = TRUE
         """, (email,))
         
-        permissions = cursor.fetchall()
-        conn.close()
-        
-        if not permissions:
+        rows = cursor.fetchall()
+        if not rows:
             return {"routes": [], "has_any_access": False}
         
-        # Build permissions structure
-        route_perms = {}
-        for route_path, perm_type in permissions:
-            route_perms[route_path] = perm_type
+        route_perms = {r["route_path"]: r["permission_type"] for r in rows}
         
         return {
             "routes": list(route_perms.keys()),
@@ -73,8 +68,10 @@ def get_user_permissions_from_db(email: str) -> dict:
             "has_any_access": len(route_perms) > 0
         }
     except Exception as e:
-        logger.error(f"Error fetching user permissions from database: {e}")
+        logger.error(f"Error fetching permissions: {e}")
         return {"routes": [], "has_any_access": False}
+    finally:
+        conn.close()
 
 # Response models
 class AuthResponse(BaseModel):
@@ -83,27 +80,18 @@ class AuthResponse(BaseModel):
     token: Optional[str] = None
     user: Optional[Dict[str, Any]] = None
 
-# Endpoint to return auth configuration to frontend
 @router.get("/auth/config")
 async def get_auth_config():
-    """Return authentication configuration so frontend can adapt"""
     return {"sso_enabled": SSO_ENABLED}
 
-# Endpoint to initiate Azure AD login
 @router.get("/auth/login")
 async def azure_ad_login():
-    """Redirect user to Azure AD for authentication"""
     if not SSO_ENABLED:
-        raise HTTPException(status_code=403, detail="SSO is disabled. No login required.")
+        raise HTTPException(status_code=403, detail="SSO is disabled.")
     if not all([CLIENT_ID, TENANT_ID, REDIRECT_URI]):
-        raise HTTPException(status_code=500, detail="Azure AD configuration is incomplete")
+        raise HTTPException(status_code=500, detail="Azure AD config incomplete")
     
-    # Generate state parameter for security
     state = secrets.token_urlsafe(32)
-    # Store state in session (in a real implementation, you'd use proper session management)
-    # For now, we'll just pass it as a parameter
-    
-    # Construct Azure AD authorization URL
     auth_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/authorize?"
     auth_url += f"client_id={CLIENT_ID}&"
     auth_url += f"response_type=code&"
@@ -112,26 +100,15 @@ async def azure_ad_login():
     auth_url += f"state={state}&"
     auth_url += f"response_mode=query"
     
-    # In a real implementation, you'd store the state in session
-    # Here we're just returning the URL to redirect to
     return {"redirect_url": auth_url, "state": state}
 
-# Endpoint to handle Azure AD callback
 @router.get("/auth/callback")
 async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
-    """Handle Azure AD callback and exchange code for tokens"""
     if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
-        raise HTTPException(status_code=500, detail="Azure AD configuration is incomplete")
+        raise HTTPException(status_code=500, detail="Azure AD config incomplete")
     
     try:
-        # Verify state parameter for security
-        # Note: In a real implementation, you'd verify this against a stored session value
-        # For now, we'll just log it
-        logger.info(f"Received callback with state: {state}")
-        
-        # Exchange authorization code for tokens
         token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-        
         token_data = {
             'grant_type': 'authorization_code',
             'client_id': CLIENT_ID,
@@ -141,190 +118,49 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
         }
         
         token_response = requests.post(token_url, data=token_data)
-        
         if token_response.status_code != 200:
-            logger.error(f"Failed to get token from Azure AD: {token_response.text}")
-            raise HTTPException(status_code=400, detail="Failed to authenticate with Azure AD")
+            raise HTTPException(status_code=400, detail="Failed to get token from Azure AD")
         
-        token_json = token_response.json()
-        id_token = token_json.get('id_token')
+        id_token = token_response.json().get('id_token')
+        oidc_config = requests.get(f"https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration").json()
+        jwks_url = oidc_config.get('jwks_uri')
+        jwks = requests.get(jwks_url).json()
         
-        if not id_token:
-            raise HTTPException(status_code=400, detail="No ID token received from Azure AD")
-        
-        # Get OIDC Configuration to find the correct JWKS URI
-        oidc_config_url = f"https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration"
-        try:
-            oidc_config = requests.get(oidc_config_url).json()
-            jwks_url = oidc_config.get('jwks_uri')
-        except Exception as e:
-            logger.error(f"Failed to fetch OIDC config: {e}")
-            # Fallback to standard URL if OIDC config fails
-            jwks_url = f"https://login.microsoftonline.com/{TENANT_ID}/discovery/v2.0/keys"
-            
-        # Add appid parameter to JWKS URL - Azure AD often needs this to return the correct signing key
-        if "?" in jwks_url:
-            jwks_url += f"&appid={CLIENT_ID}"
-        else:
-            jwks_url += f"?appid={CLIENT_ID}"
-
-        logger.info(f"Using JWKS URL: {jwks_url}")
-        
-        jwks_response = requests.get(jwks_url)
-        jwks = jwks_response.json()
-        
-        # Decode the token without verification first to get header/claims info
         unverified_header = jose_jwt.get_unverified_header(id_token)
-        # We can remove the full claims logging now that we identified the key issue
-        # logger.info(f"Token header: {unverified_header}")
         kid = unverified_header.get('kid')
         
-        # Log for debugging
-        found_kids = [k.get('kid') for k in jwks.get('keys', [])]
-        
-        # Find the correct key in the JWKS
-        rsa_key = {}
-        for key in jwks['keys']:
-            if key['kid'] == kid:
-                rsa_key = {
-                    'kty': key['kty'],
-                    'kid': key['kid'],
-                    'use': key['use'],
-                    'n': key['n'],
-                    'e': key['e']
-                }
-                break
-        
+        rsa_key = next((k for k in jwks['keys'] if k['kid'] == kid), None)
         if not rsa_key:
-            logger.error(f"Unable to find appropriate signing key. Token kid: {kid}. Available kids in JWKS: {found_kids}")
-            raise HTTPException(status_code=400, detail="Unable to find appropriate signing key")
+            raise HTTPException(status_code=400, detail="Signing key not found")
         
-        # Verify the token
-        try:
-            payload = jose_jwt.decode(
-                id_token,
-                rsa_key,
-                algorithms=["RS256"],
-                audience=CLIENT_ID,
-                # We allow for some flexibility in issuer validation or we could fetch issuer from oidc_config
-                issuer=oidc_config.get('issuer', f"https://login.microsoftonline.com/{TENANT_ID}/v2.0")
-            )
-        except Exception as e:
-            logger.error(f"Token validation failed: {str(e)}")
-            raise HTTPException(status_code=400, detail=f"Invalid token from Azure AD: {str(e)}")
+        payload = jose_jwt.decode(id_token, rsa_key, algorithms=["RS256"], audience=CLIENT_ID, issuer=oidc_config.get('issuer'))
         
-        # Extract user information
-        user_id = payload.get('oid')
         email = payload.get('email', payload.get('preferred_username'))
         name = payload.get('name')
-        
-        # Get user permissions from database (route-based)
         user_perms = get_user_permissions_from_db(email)
         
-        # Handle case when permissions key might not exist (database not migrated yet)
-        permissions_list = user_perms.get('permissions', {})
-        routes_list = user_perms.get('routes', [])
-        has_access = user_perms.get('has_any_access', False)
-        
-        user_info = {
-            'user_id': user_id,
-            'email': email,
-            'name': name,
-            'permissions': permissions_list,
-            'accessible_routes': routes_list,
-            'has_access': has_access
-        }
-        
-        # Create a session token (in a real implementation, you'd use proper session management)
-        session_token = secrets.token_urlsafe(32)
-        
-        # Log successful login with audit trail
-        logger.info(f"User {email} authenticated successfully. Routes: {routes_list}")
-        
-        # Log to audit table (only if tables exist)
-        try:
-            db_path = os.path.join(os.path.dirname(__file__), "..", "public", "email_data.db")
-            conn = sqlite3.connect(db_path, timeout=30)
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO auth_audit_logs (email, event_type, event_details)
-                VALUES (?, ?, ?)
-            """, (email, 'login', f"SSO login successful. Routes: {','.join(routes_list)}"))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to log audit event: {e}")
-        
-        # Redirect back to the frontend with the token and user info
-        # Note: In production, you'd use a more secure way to pass the token (like a secure cookie)
-        # For now, we'll use query parameters for simplicity
-        target_url = f"/?token={session_token}&email={email}&name={urllib.parse.quote(name or '')}&has_access={has_access}"
+        # Log to audit (Postgres)
+        conn = get_pg_connection()
+        if conn:
+            try:
+                cursor = get_pg_cursor(conn)
+                cursor.execute(f"INSERT INTO {PG_SCHEMA}.auth_audit_logs (email, event_type, event_details) VALUES (%s, %s, %s)",
+                             (email, 'login', json.dumps({"status": "success", "routes": user_perms.get('routes', [])})))
+                conn.commit()
+            finally:
+                conn.close()
+
+        target_url = f"/?token={secrets.token_urlsafe(32)}&email={email}&name={urllib.parse.quote(name or '')}&has_access={user_perms.get('has_any_access', False)}"
         return RedirectResponse(url=target_url)
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error in Azure AD callback: {str(e)}", exc_info=True)
-        # Redirect to an error page or show a friendly message
+        logger.error(f"Callback error: {e}")
         return RedirectResponse(url="/?auth_error=true&details=" + urllib.parse.quote(str(e)))
 
-# Endpoint to handle logout
 @router.post("/auth/logout")
 async def azure_ad_logout():
-    """Handle user logout and session cleanup"""
-    # In a real implementation, you'd clear the local session
-    # For Azure AD logout, you'd redirect to Azure AD's logout endpoint
-    
-    # Azure AD logout URL
-    logout_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://aegis.adani.com"
-    
-    # In a real implementation, you'd clear server-side session
-    # For now, just return success
-    return {
-        "success": True,
-        "message": "Logged out successfully",
-        "redirect_url": logout_url  # URL to redirect to after clearing local session
-    }
+    logout_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri={urllib.parse.quote('https://aegis.adani.com')}"
+    return {"success": True, "redirect_url": logout_url}
 
-# Endpoint to get current user info
 @router.get("/auth/me")
 async def get_current_user(request: Request):
-    """Get current user information (requires valid session)"""
-    # Note: Proper session validation should be implemented here
-    # For now, we return 401 as we've removed mock users
     raise HTTPException(status_code=401, detail="Not authenticated")
-
-# Endpoint to get user roles from local mapping
-@router.get("/auth/user/roles/{user_id}")
-async def get_user_roles(user_id: str):
-    """Get roles for a specific user from local mapping"""
-    # This would query the local in-memory storage to get roles for a user
-    # For now, return mock data
-    return {
-        "user_id": user_id,
-        "roles": ["read_only"],
-        "assigned_at": "2023-01-01T00:00:00Z"
-    }
-
-# Endpoint to add a user to local role mapping (temporary admin function)
-@router.post("/auth/user/add")
-async def add_user_to_local_roles(email: str, roles: List[str]):
-    """Add a user to the local role mapping (temporary solution)"""
-    LOCAL_USER_ROLES[email] = roles
-    return {
-        "email": email,
-        "roles": roles,
-        "message": f"User {email} added with roles {roles}"
-    }
-
-# Endpoint to get all users from local mapping
-@router.get("/auth/users")
-async def get_all_local_users():
-    """Get all users from the local role mapping (temporary solution)"""
-    users = []
-    for email, roles in LOCAL_USER_ROLES.items():
-        users.append({
-            "email": email,
-            "roles": roles
-        })
-    return {"users": users}

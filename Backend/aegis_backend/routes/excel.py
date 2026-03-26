@@ -11,7 +11,6 @@ import logging
 import asyncio
 import concurrent.futures
 from functools import partial
-import sqlite3
 import uuid
 from datetime import datetime
 from docx import Document as DocxDocument

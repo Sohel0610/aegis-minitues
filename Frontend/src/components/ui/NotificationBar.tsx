@@ -21,13 +21,13 @@ const getColorForEntity = (entityName: string): string => {
     "#06B6D4", // cyan-500
     "#84CC16"  // lime-500
   ];
-  
+
   // Generate a consistent hash from the entity name to pick a color
   let hash = 0;
   for (let i = 0; i < entityName.length; i++) {
     hash = entityName.charCodeAt(i) + ((hash << 5) - hash);
   }
-  
+
   // Use the hash to select a color from the array
   const index = Math.abs(hash) % colors.length;
   return colors[index];
@@ -38,12 +38,12 @@ const fetchEntityNotificationData = async (): Promise<CompanyNotification[]> => 
   try {
     // Use relative path since frontend and backend are served from the same origin
     // Fetch BSE alerts data from the notifications database
-    const response = await fetch(`/bse-alerts?limit=1000&offset=0`);
+    const response = await fetch(`/api/bse-alerts?limit=1000&offset=0`);
     if (!response.ok) {
       throw new Error("Failed to fetch BSE alerts data");
     }
     const data = await response.json();
-    
+
     // Process data to get entity counts
     const entityMap: { [key: string]: number } = {};
     data.data.forEach((item: any) => {
@@ -56,7 +56,7 @@ const fetchEntityNotificationData = async (): Promise<CompanyNotification[]> => 
         entityMap[entityName] += 1;
       }
     });
-    
+
     // Convert to array format and sort by count descending
     const entityNames = Object.keys(entityMap);
     const entityData: CompanyNotification[] = entityNames.map((entityName, index) => ({
@@ -66,7 +66,7 @@ const fetchEntityNotificationData = async (): Promise<CompanyNotification[]> => 
       // Assign a color based on the entity name for visual distinction
       color: getColorForEntity(entityName)
     })).sort((a, b) => b.count - a.count);
-    
+
     return entityData;
   } catch (error) {
     console.error("Error fetching entity notification data:", error);
@@ -76,13 +76,13 @@ const fetchEntityNotificationData = async (): Promise<CompanyNotification[]> => 
 
 const NotificationBar = () => {
   const [companyNotifications, setCompanyNotifications] = useState<CompanyNotification[]>([]);
-  
+
   useEffect(() => {
     const loadNotifications = async () => {
       const data = await fetchEntityNotificationData();
       setCompanyNotifications(data);
     };
-    
+
     loadNotifications();
   }, []);
 
@@ -147,11 +147,11 @@ const NotificationBar = () => {
               transition={{ duration: 0.2 }}
             >
               <span className="text-sm font-semibold" style={{ color: 'white' }}>
-                {company.name} 
+                {company.name}
               </span>
-              <motion.span 
+              <motion.span
                 className="text-sm font-bold px-2 py-0.5 rounded-full min-w-[24px] text-center"
-                style={{ 
+                style={{
                   backgroundColor: company.color,
                   color: 'white'
                 }}

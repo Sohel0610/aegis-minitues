@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { DownloadIcon, FileTextIcon, UploadIcon, XIcon, HomeIcon, PlusIcon, FileSpreadsheetIcon, HistoryIcon, BookOpen } from 'lucide-react';
+import { DownloadIcon, FileTextIcon, UploadIcon, XIcon, HomeIcon, PlusIcon, FileSpreadsheetIcon, HistoryIcon, BookOpen, MessageSquareIcon, Users } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 
 interface Attendee {
@@ -35,10 +35,11 @@ const AIAssistant = () => {
     { id: 'create-agenda', label: 'Create Agenda', icon: PlusIcon, href: '/minutes-preparation/create-agenda' },
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheetIcon, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileTextIcon, href: '/minutes-preparation/ai-assistant', isActive: true },
+    { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquareIcon, href: '/minutes-preparation/chatbot' },
     { id: 'template-resolution', label: 'Template Resolution', icon: HistoryIcon, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileTextIcon, href: '/minutes-preparation/minutes' },
     { id: 'templates', label: 'Templates', icon: FileSpreadsheetIcon, href: '/minutes-preparation/templates' },
-    { id: 'directors', label: 'Directors', icon: FileTextIcon, href: '/minutes-preparation/directors' },
+    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
   ];
 

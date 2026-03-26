@@ -65,6 +65,12 @@ export default function MinutesPreparation() {
       href: '/minutes-preparation/ai-assistant',
     },
     {
+      id: 'chatbot',
+      label: 'Meeting Assistant',
+      icon: FileText,
+      href: '/minutes-preparation/chatbot',
+    },
+    {
       id: 'template-resolution',
       label: 'Template Resolution',
       icon: FileText,
@@ -318,26 +324,37 @@ export default function MinutesPreparation() {
 
         ) : (
           <>
-            {/* Generate Minutes Card - Only Feature */}
-            <div className="max-w-2xl mx-auto mt-8">
-              <Card className="hover:shadow-lg transition-shadow">
+            {/* Features Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8 max-w-5xl mx-auto">
+              {/* Generate Minutes Card */}
+              <Card className="hover:shadow-lg transition-all hover:border-blue-300 group cursor-pointer" onClick={handleNavigateToFormGenerator}>
                 <CardHeader>
-                  <div className="flex justify-center mb-4">
-                    <FileText className="h-12 w-12 text-blue-500" />
+                  <div className="flex justify-center mb-4 p-3 bg-blue-50 rounded-full w-fit mx-auto group-hover:bg-blue-100 transition-colors">
+                    <FileText className="h-10 w-10 text-blue-500" />
                   </div>
-                  <CardTitle className="text-center">Generate Meeting Minutes</CardTitle>
-                  <CardDescription className="text-center">
+                  <CardTitle className="text-center">Generate Minutes</CardTitle>
+                  <CardDescription className="text-center group-hover:text-blue-600">
                     Create professional meeting minutes from templates
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
-                  <Button
-                    className="w-full flex items-center justify-center gap-2 py-6 text-lg"
-                    onClick={handleNavigateToFormGenerator}
-                  >
-                    <FileText className="h-5 w-5" />
-                    Generate Minutes
-                  </Button>
+                  <Button className="w-full">Open Generator</Button>
+                </CardContent>
+              </Card>
+
+              {/* Chatbot Card */}
+              <Card className="hover:shadow-lg transition-all hover:border-purple-300 group cursor-pointer" onClick={() => navigate('/minutes-preparation/chatbot')}>
+                <CardHeader>
+                  <div className="flex justify-center mb-4 p-3 bg-purple-50 rounded-full w-fit mx-auto group-hover:bg-purple-100 transition-colors">
+                    <FileText className="h-10 w-10 text-purple-500" />
+                  </div>
+                  <CardTitle className="text-center">Meeting Assistant</CardTitle>
+                  <CardDescription className="text-center group-hover:text-purple-600">
+                    Interact with your meeting data using AI
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700">Open Chatbot</Button>
                 </CardContent>
               </Card>
             </div>

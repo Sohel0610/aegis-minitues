@@ -1,11 +1,10 @@
 """
 Director Data Analysis Module
 This module handles parsing of MBP-1 DOCX documents, extracting director information,
-normalizing the data, and storing it in a SQLite database.
+normalizing the data, and storing it in a PostgreSQL database (now mandatory).
 """
 
 import os
-import sqlite3
 import re
 from datetime import datetime
 from docx import Document
@@ -19,98 +18,32 @@ logger = logging.getLogger(__name__)
 # Import our PostgreSQL service
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
-# Database setup - We use the 'directors_data' schema in PostgreSQL (primary) with SQLite fallback.
-DB_SCHEMA = "directors_data"
-
-def _sqlite_db_path() -> str:
-    # Stored at Backend/aegis_backend/directors_data.db (same DB used by llm_utils.py)
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "directors_data.db"))
-
-def _sqlite_connect():
-    db_path = _sqlite_db_path()
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def _ensure_sqlite_schema():
-    """Ensure the local SQLite schema exists for director analytics."""
-    conn = _sqlite_connect()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS directors (
-                din TEXT PRIMARY KEY,
-                name TEXT,
-                source_file TEXT
-            )
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS companies (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                type TEXT
-            )
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS directorships (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                din TEXT REFERENCES directors(din),
-                company_id INTEGER REFERENCES companies(id),
-                position TEXT,
-                appointment_date TEXT
-            )
-        """)
-
-        # Used by llm_utils.py and disclosures module; keep this in the same DB for portability.
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS document_summaries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                director_name TEXT NOT NULL,
-                din TEXT,
-                file_path TEXT NOT NULL,
-                full_text TEXT,
-                summary TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # Helpful indexes; safe to run even if table already existed.
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_directorships_din ON directorships(din)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_directorships_company_id ON directorships(company_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_document_summaries_file_path ON document_summaries(file_path)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_document_summaries_director_name ON document_summaries(director_name)")
-
-        conn.commit()
-    finally:
-        try:
-            cur.close()
-        finally:
-            conn.close()
+# Database schema in PostgreSQL (Unified Master Schema)
+DB_SCHEMA = "directors_master"
 
 def init_database():
-    """Verify the PostgreSQL database schema and tables (fallback to local SQLite)."""
-    pg_conn = get_pg_connection()
+    """Verify the PostgreSQL database schema and tables (Unified)."""
+    # Use dedicated Directors database pointer
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
 
-            # Ensure schema exists
+            # Ensure schema exists (Central Namespace)
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
 
-            # Create directors table
+            # 1. Master Directors Table (Unified with routes.directors_disclosure)
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors (
-                    din TEXT PRIMARY KEY,
-                    name TEXT,
-                    source_file TEXT
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    din TEXT UNIQUE,
+                    source_file TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
-            # Create companies table
+            # 2. Master Companies Table
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.companies (
                     id SERIAL PRIMARY KEY,
@@ -149,34 +82,23 @@ def init_database():
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_dir_name ON {DB_SCHEMA}.document_summaries (director_name)")
 
             pg_conn.commit()
-            logger.info("PostgreSQL database initialized successfully")
-            return
+            logger.info("PostgreSQL database schemas for Directors initialized successfully")
+            return True
         except Exception as e:
-            logger.warning(f"PostgreSQL init failed, falling back to SQLite: {e}")
+            logger.error(f"PostgreSQL initialization failed: {e}")
             try:
                 pg_conn.rollback()
             except Exception:
                 pass
+            raise RuntimeError(f"Database initialization failed: {e}")
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    # SQLite fallback init (always safe to run)
-    _ensure_sqlite_schema()
-    logger.info(f"SQLite database initialized successfully at {_sqlite_db_path()}")
+            pg_conn.close()
+    else:
+        logger.error("Could not get a database connection for initialization")
+        raise RuntimeError("Database connection failed during initialization")
 
 def extract_director_info(doc_path: str) -> Dict:
-    """
-    Extract director information from a DOCX file.
-    
-    Args:
-        doc_path (str): Path to the DOCX file
-        
-    Returns:
-        Dict: Dictionary containing director information
-    """
+    """Extract director information from a DOCX file."""
     try:
         doc = Document(doc_path)
         filename = os.path.basename(doc_path)
@@ -186,7 +108,6 @@ def extract_director_info(doc_path: str) -> Dict:
         
         # Extract DIN from document content
         din = None
-        companies = []
         
         # Convert document to text
         full_text = []
@@ -200,12 +121,11 @@ def extract_director_info(doc_path: str) -> Dict:
         if din_match:
             din = din_match.group(1)
         else:
-            # Try alternative patterns for DIN
             din_match = re.search(r"(\d{8})", full_text_str)
             if din_match:
                 din = din_match.group(1)
         
-        # Extract companies information from tables and sections
+        # Extract companies information
         companies = extract_companies_info(doc, full_text_str)
         
         return {
@@ -216,319 +136,129 @@ def extract_director_info(doc_path: str) -> Dict:
         }
     except Exception as e:
         logger.error(f"Error extracting info from {doc_path}: {str(e)}")
-        return {
-            "name": "Unknown",
-            "din": None,
-            "source_file": os.path.basename(doc_path),
-            "companies": []
-        }
+        return {"name": "Unknown", "din": None, "source_file": os.path.basename(doc_path), "companies": []}
 
 def extract_companies_info(doc, full_text_str: str) -> List[Dict]:
-    """
-    Extract companies information from document tables and sections.
-    
-    Args:
-        doc: Document object
-        full_text_str (str): Full text of the document
-        
-    Returns:
-        List[Dict]: List of company dictionaries
-    """
+    """Extract companies information from document tables and sections."""
     companies = []
-    
-    # First, try to extract company types from sections
     company_types = extract_company_types_from_sections(full_text_str)
-    
-    # Extract companies from tables
     table_companies = extract_companies_from_tables(doc)
     
-    # Merge company information with types
     for company in table_companies:
         company_name = company.get("name", "")
         if company_name:
-            # Look up company type
             company_type = "Unknown"
             for section_type, section_companies in company_types.items():
-                # Check if this company is in any of the sections
                 for section_company in section_companies:
-                    # Compare company names after cleaning
-                    clean_company_name = re.sub(r'\s+', ' ', company_name.strip()).upper()
-                    clean_section_company = re.sub(r'\s+', ' ', section_company.strip()).upper()
-                    if clean_company_name == clean_section_company:
+                    if re.sub(r'\s+', ' ', company_name.strip()).upper() == re.sub(r'\s+', ' ', section_company.strip()).upper():
                         company_type = section_type
                         break
                 if company_type != "Unknown":
                     break
-            
             company["type"] = company_type
             companies.append(company)
     
     return companies
 
 def extract_company_types_from_sections(full_text_str: str) -> Dict[str, List[str]]:
-    """
-    Extract company types from the section headers in the document.
-    
-    Args:
-        full_text_str (str): Full text of the document
-        
-    Returns:
-        Dict[str, List[str]]: Dictionary mapping company types to company names
-    """
+    """Extract company types from the section headers in the document."""
     company_types = {
         "Public": [],
         "Private - Subsidiary of Public": [],
         "Private - Not Subsidiary of Public": []
     }
+    full_text_str = full_text_str.replace('\r\n', '\n').replace('\r', '\n')
     
-    # Normalize whitespace in the text
-    full_text_str = re.sub(r'\r\n', '\n', full_text_str)
-    full_text_str = re.sub(r'\r', '\n', full_text_str)
+    sections = {
+        "Public": r"\(A\)\s*Public Limited Companies:\s*(.*?)(?=\n\([B-Z]\)|$)",
+        "Private - Subsidiary of Public": r"\(B\)\s*Private Limited Companies which are subsidiary\(ies\) of Public Companies:\s*(.*?)(?=\n\([C-Z]\)|$)",
+        "Private - Not Subsidiary of Public": r"\(C\)\s*Private Limited Companies which are not subsidiary\(ies\) of Public Companies:\s*(.*?)(?=\n\([D-Z]\)|$)"
+    }
     
-    # Look for section patterns with more robust regex
-    # Pattern for Public Limited Companies section
-    public_pattern = r"\(A\)\s*Public Limited Companies:\s*(.*?)(?=\n\([B-Z]\)|$)"
-    public_match = re.search(public_pattern, full_text_str, re.DOTALL | re.IGNORECASE)
-    if public_match:
-        public_section = public_match.group(1).strip()
-        # Extract company names - now extract all companies with comprehensive patterns
-        # Look for lines that contain company names but not "NIL"
-        public_companies = re.findall(r'^.*?LIMITED.*?$', public_section, re.MULTILINE | re.IGNORECASE)
-        # Also look for other company names that don't contain "LIMITED" but are likely company names
-        # Updated pattern based on Excel analysis: include FOUNDATION, LTD, and other company indicators
-        other_companies = re.findall(r'^[A-Z][A-Z\s\(\)&\-\.]*?(?:FOUNDATION|LTD|PRIVATE|PUBLIC|COMPANY|CORPORATION|INC|LLC|LLP)[A-Z\s\(\)&\-\.]*?$', public_section, re.MULTILINE)
-        all_companies = public_companies + other_companies
-        for company in all_companies:
-            company = company.strip()
-            # Skip NIL entries and empty lines
-            if company and not re.search(r'\bNIL\b', company, re.IGNORECASE) and company.upper() not in ["LIMITED", "LTD"]:
-                # Clean up company name
-                company = re.sub(r'\s+', ' ', company).strip()
-                if company:
-                    company_types["Public"].append(company)
-    
-    # Pattern for Private Limited Companies which are subsidiary(ies) of Public Companies
-    private_subsidiary_pattern = r"\(B\)\s*Private Limited Companies which are subsidiary\(ies\) of Public Companies:\s*(.*?)(?=\n\([C-Z]\)|$)"
-    private_subsidiary_match = re.search(private_subsidiary_pattern, full_text_str, re.DOTALL | re.IGNORECASE)
-    if private_subsidiary_match:
-        private_subsidiary_section = private_subsidiary_match.group(1).strip()
-        # Check if it's not NIL (more robust check)
-        if not re.search(r'\bNIL\b', private_subsidiary_section, re.IGNORECASE):
-            # Extract company names - now extract all companies with comprehensive patterns
-            private_subsidiary_companies = re.findall(r'^.*?LIMITED.*?$', private_subsidiary_section, re.MULTILINE | re.IGNORECASE)
-            # Also look for other company names that don't contain "LIMITED" but are likely company names
-            # Updated pattern based on Excel analysis: include FOUNDATION, LTD, and other company indicators
-            other_companies = re.findall(r'^[A-Z][A-Z\s\(\)&\-\.]*?(?:FOUNDATION|LTD|PRIVATE|PUBLIC|COMPANY|CORPORATION|INC|LLC|LLP)[A-Z\s\(\)&\-\.]*?$', private_subsidiary_section, re.MULTILINE)
-            all_companies = private_subsidiary_companies + other_companies
-            for company in all_companies:
-                company = company.strip()
-                # Skip NIL entries and empty lines
-                if company and not re.search(r'\bNIL\b', company, re.IGNORECASE) and company.upper() not in ["LIMITED", "LTD"]:
-                    # Clean up company name
-                    company = re.sub(r'\s+', ' ', company).strip()
-                    if company:
-                        company_types["Private - Subsidiary of Public"].append(company)
-    
-    # Pattern for Private Limited Companies which are not subsidiary(ies) of Public Companies
-    private_non_subsidiary_pattern = r"\(C\)\s*Private Limited Companies which are not subsidiary\(ies\) of Public Companies:\s*(.*?)(?=\n\([D-Z]\)|$)"
-    private_non_subsidiary_match = re.search(private_non_subsidiary_pattern, full_text_str, re.DOTALL | re.IGNORECASE)
-    if private_non_subsidiary_match:
-        private_non_subsidiary_section = private_non_subsidiary_match.group(1).strip()
-        # Check if it's not NIL (more robust check)
-        if not re.search(r'\bNIL\b', private_non_subsidiary_section, re.IGNORECASE):
-            # Extract company names - now extract all companies with comprehensive patterns
-            private_non_subsidiary_companies = re.findall(r'^.*?LIMITED.*?$', private_non_subsidiary_section, re.MULTILINE | re.IGNORECASE)
-            # Also look for other company names that don't contain "LIMITED" but are likely company names
-            other_companies = re.findall(r'^[A-Z][A-Z\s\(\)&\-\.]*?(?:FOUNDATION|LTD|PRIVATE|PUBLIC|COMPANY|CORPORATION|INC|LLC|LLP)[A-Z\s\(\)&\-\.]*?$', private_non_subsidiary_section, re.MULTILINE)
-            all_companies = private_non_subsidiary_companies + other_companies
-            for company in all_companies:
-                company = company.strip()
-                # Skip NIL entries and empty lines
-                if company and not re.search(r'\bNIL\b', company, re.IGNORECASE) and company.upper() not in ["LIMITED", "LTD"]:
-                    # Clean up company name
-                    company = re.sub(r'\s+', ' ', company).strip()
-                    if company:
-                        company_types["Private - Not Subsidiary of Public"].append(company)
+    for key, pattern in sections.items():
+        match = re.search(pattern, full_text_str, re.DOTALL | re.IGNORECASE)
+        if match:
+            batch = match.group(1).strip()
+            if re.search(r'\bNIL\b', batch, re.IGNORECASE):
+                continue
+            candidates = re.findall(r'^.*?LIMITED.*?$', batch, re.MULTILINE | re.IGNORECASE)
+            others = re.findall(r'^[A-Z][A-Z\s\(\)&\-\.]*?(?:FOUNDATION|LTD|PRIVATE|PUBLIC|COMPANY|CORPORATION|INC|LLC|LLP)[A-Z\s\(\)&\-\.]*?$', batch, re.MULTILINE)
+            for c in candidates + others:
+                c = re.sub(r'\s+', ' ', c).strip()
+                if c and not re.search(r'\bNIL\b', c, re.IGNORECASE) and c.upper() not in ["LIMITED", "LTD"]:
+                    company_types[key].append(c)
     
     return company_types
 
 def extract_companies_from_tables(doc) -> List[Dict]:
-    """
-    Extract companies information from document tables.
-    
-    Args:
-        doc: Document object
-        
-    Returns:
-        List[Dict]: List of company dictionaries
-    """
+    """Extract companies information from document tables."""
     companies = []
-    
-    # Process tables in the document
     for table in doc.tables:
-        # Check if this is a company table (look for specific headers)
         if len(table.rows) < 2:
             continue
-            
-        # Get header row
-        header_row = table.rows[0]
-        headers = [cell.text.strip() for cell in header_row.cells]
-        
-        # Check if this looks like a company table
-        if any("company" in header.lower() or "name" in header.lower() for header in headers):
-            # Process data rows
+        headers = [cell.text.strip() for cell in table.rows[0].cells]
+        if any("company" in h.lower() or "name" in h.lower() for h in headers):
             for i in range(1, len(table.rows)):
-                row = table.rows[i]
-                cells = [cell.text.strip() for cell in row.cells]
-                
-                # Skip empty rows
-                if not any(cells):
-                    continue
-                    
-                # Extract company information based on column positions
-                company_info = extract_company_info_from_row(cells, headers)
-                if company_info and company_info.get("name"):
-                    companies.append(company_info)
-    
+                cells = [cell.text.strip() for cell in table.rows[i].cells]
+                if not any(cells): continue
+                cinfo = extract_company_info_from_row(cells, headers)
+                if cinfo and cinfo.get("name"):
+                    companies.append(cinfo)
     return companies
 
 def extract_company_info_from_row(cells: List[str], headers: List[str]) -> Dict:
-    """
-    Extract company information from a table row.
-    
-    Args:
-        cells (List[str]): Cell values in the row
-        headers (List[str]): Header values for the table
-        
-    Returns:
-        Dict: Company information dictionary
-    """
-    company_info = {}
-    
-    # Map headers to cell values
-    header_to_value = {}
-    for i, header in enumerate(headers):
-        if i < len(cells):
-            header_to_value[header.lower()] = cells[i]
-    
-    # Extract company name
-    # Look for company name in various possible columns
+    """Extract company information from a table row."""
+    header_to_value = {h.lower(): (cells[i] if i < len(cells) else "") for i, h in enumerate(headers)}
     company_name = None
-    for key, value in header_to_value.items():
-        if "company" in key or "name" in key:
-            if value and (value.strip() and not re.search(r'\bNIL\b', value, re.IGNORECASE)):
-                company_name = value
-                break
-    
-    # If not found, try to find any cell that looks like a company name
+    for k, v in header_to_value.items():
+        if ("company" in k or "name" in k) and v and not re.search(r'\bNIL\b', v, re.IGNORECASE):
+            company_name = v
+            break
     if not company_name:
-        for value in cells:
-            # Check if the cell contains a company-like name with comprehensive patterns
-            # Updated pattern based on Excel analysis: include FOUNDATION, LTD, and other company indicators
-            if value and re.match(r'^[A-Z][A-Z\s\(\)&\-\.]*?(?:LIMITED|FOUNDATION|LTD|PRIVATE|PUBLIC|COMPANY|CORPORATION|INC|LLC|LLP)', value, re.IGNORECASE):
-                company_name = value
+        for v in cells:
+            if v and re.match(r'^[A-Z][A-Z\s\(\)&\-\.]*?(?:LIMITED|FOUNDATION|LTD|PRIVATE|PUBLIC|COMPANY|CORPORATION|INC|LLC|LLP)', v, re.IGNORECASE):
+                company_name = v
                 break
+    if not company_name: return {}
     
-    if not company_name:
-        return {}
-    
-    company_info["name"] = company_name
-    
-    # Extract position/type
-    # Look for position information
-    position = "Director"  # Default
-    for key, value in header_to_value.items():
-        if "position" in key or "nature" in key or "type" in key:
-            if value:
-                if "whole-time" in value.lower() or "whole time" in value.lower():
-                    position = "Whole-time Director"
-                elif "additional" in value.lower():
-                    position = "Additional Director"
-                elif "director" in value.lower():
-                    position = "Director"
-                else:
-                    position = value
-                break
-    
-    company_info["position"] = position
-    
-    # Extract company type (will be filled later)
-    company_info["type"] = "Unknown"
-    
-    # Extract appointment date
+    position = "Director"
+    for k, v in header_to_value.items():
+        if ("position" in k or "nature" in k or "type" in k) and v:
+            if "whole-time" in v.lower() or "whole time" in v.lower(): position = "Whole-time Director"
+            elif "additional" in v.lower(): position = "Additional Director"
+            elif "director" in v.lower(): position = "Director"
+            else: position = v
+            break
+            
     appointment_date = ""
-    for key, value in header_to_value.items():
-        if "date" in key:
-            # Look for date pattern (dd/mm/yyyy)
-            date_match = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})", value)
-            if date_match:
-                appointment_date = date_match.group(1)
-                break
-    
-    company_info["appointment_date"] = appointment_date
-    
-    return company_info
+    for k, v in header_to_value.items():
+        if "date" in k:
+            dm = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})", v)
+            if dm: appointment_date = dm.group(1); break
+            
+    return {"name": company_name, "position": position, "type": "Unknown", "appointment_date": appointment_date}
 
 def normalize_company_name(name: str) -> str:
-    """
-    Normalize company name by removing extra spaces and standardizing format.
-    
-    Args:
-        name (str): Original company name
-        
-    Returns:
-        str: Normalized company name
-    """
-    # Remove extra whitespace
+    """Normalize company name."""
     name = re.sub(r'\s+', ' ', name.strip())
-    
-    # Remove special characters at the beginning or end
     name = re.sub(r'^[^\w]+|[^\w]+$', '', name)
-    
-    # Remove newlines and extra spaces
-    name = re.sub(r'\n+', ' ', name)
-    
-    return name
+    return name.replace('\n', ' ')
 
 def normalize_position(position: str) -> str:
-    """
-    Normalize position values to standard formats.
-    
-    Args:
-        position (str): Original position text
-        
-    Returns:
-        str: Normalized position
-    """
-    if not position:
-        return "Director"
-        
-    position = position.lower().strip()
-    
-    if "whole-time" in position or "whole time" in position:
-        return "Whole-time Director"
-    elif "additional" in position:
-        return "Additional Director"
-    elif "director" in position:
-        return "Director"
-    else:
-        # If it's a specific position, keep it but title case it
-        return position.title()
+    """Normalize position values."""
+    if not position: return "Director"
+    p = position.lower().strip()
+    if any(x in p for x in ("whole-time", "whole time")): return "Whole-time Director"
+    if "additional" in p: return "Additional Director"
+    if "director" in p: return "Director"
+    return position.title()
 
 def store_director_data(director_info: Dict):
-    """
-    Store director data in the PostgreSQL database (fallback to SQLite).
-    
-    Args:
-        director_info (Dict): Director information dictionary
-    """
-    pg_conn = get_pg_connection()
-
+    """Store director data in PostgreSQL (mandatory)."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-
-            # Insert or update director information
             if director_info.get("din"):
                 cursor.execute(f"""
                     INSERT INTO {DB_SCHEMA}.directors (din, name, source_file)
@@ -538,582 +268,182 @@ def store_director_data(director_info: Dict):
                         source_file = EXCLUDED.source_file
                 """, (director_info["din"], director_info.get("name"), director_info.get("source_file")))
 
-            # Insert companies and directorships
             for company in director_info.get("companies", []):
-                if "name" not in company:
-                    continue
+                if "name" not in company: continue
+                cname = normalize_company_name(company.get("name", ""))
+                if not cname: continue
+                ctype = company.get("type", "Unknown")
+                pos = normalize_position(company.get("position", "Director"))
+                adate = company.get("appointment_date", "")
 
-                company_name = normalize_company_name(company.get("name", ""))
-                if not company_name:
-                    continue
-
-                company_type = company.get("type", "Unknown")
-                position = normalize_position(company.get("position", "Director"))
-                appointment_date = company.get("appointment_date", "")
-
-                cursor.execute(f"SELECT id, type FROM {DB_SCHEMA}.companies WHERE name = %s", (company_name,))
-                existing_company = cursor.fetchone()
-
-                if existing_company:
-                    company_id = existing_company["id"]
-                    existing_type = existing_company["type"]
-                    if existing_type == "Unknown" and company_type != "Unknown":
-                        cursor.execute(
-                            f"UPDATE {DB_SCHEMA}.companies SET type = %s WHERE id = %s",
-                            (company_type, company_id),
-                        )
+                cursor.execute(f"SELECT id, type FROM {DB_SCHEMA}.companies WHERE name = %s", (cname,))
+                existing = cursor.fetchone()
+                if existing:
+                    cid = existing["id"]
+                    if existing["type"] == "Unknown" and ctype != "Unknown":
+                        cursor.execute(f"UPDATE {DB_SCHEMA}.companies SET type = %s WHERE id = %s", (ctype, cid))
                 else:
-                    cursor.execute(
-                        f"INSERT INTO {DB_SCHEMA}.companies (name, type) VALUES (%s, %s) RETURNING id",
-                        (company_name, company_type),
-                    )
-                    company_id = cursor.fetchone()["id"]
+                    cursor.execute(f"INSERT INTO {DB_SCHEMA}.companies (name, type) VALUES (%s, %s) RETURNING id", (cname, ctype))
+                    cid = cursor.fetchone()["id"]
 
                 if director_info.get("din"):
                     cursor.execute(f"""
                         SELECT 1 FROM {DB_SCHEMA}.directorships
                         WHERE din = %s AND company_id = %s AND position = %s
-                    """, (director_info["din"], company_id, position))
-
+                    """, (director_info["din"], cid, pos))
                     if not cursor.fetchone():
                         cursor.execute(f"""
                             INSERT INTO {DB_SCHEMA}.directorships (din, company_id, position, appointment_date)
                             VALUES (%s, %s, %s, %s)
-                        """, (director_info["din"], company_id, position, appointment_date))
-
+                        """, (director_info["din"], cid, pos, adate))
             pg_conn.commit()
-            logger.info(f"Stored data for director (PG): {director_info.get('name')}")
-            return
+            logger.info(f"Stored data for director (PostgreSQL): {director_info.get('name')}")
         except Exception as e:
-            logger.warning(f"PG store failed for {director_info.get('name')}, falling back to SQLite: {e}")
-            try:
-                pg_conn.rollback()
-            except Exception:
-                pass
+            pg_conn.rollback()
+            logger.error(f"PostgreSQL store failed for {director_info.get('name')}: {e}")
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    # SQLite fallback
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        if director_info.get("din"):
-            scur.execute("""
-                INSERT INTO directors (din, name, source_file)
-                VALUES (?, ?, ?)
-                ON CONFLICT(din) DO UPDATE SET
-                    name = excluded.name,
-                    source_file = excluded.source_file
-            """, (director_info["din"], director_info.get("name"), director_info.get("source_file")))
-
-        for company in director_info.get("companies", []):
-            company_name = normalize_company_name(company.get("name", ""))
-            if not company_name:
-                continue
-
-            company_type = company.get("type", "Unknown")
-            position = normalize_position(company.get("position", "Director"))
-            appointment_date = company.get("appointment_date", "")
-
-            scur.execute("SELECT id, type FROM companies WHERE name = ?", (company_name,))
-            existing_company = scur.fetchone()
-
-            if existing_company:
-                company_id = existing_company["id"]
-                existing_type = existing_company["type"]
-                if existing_type == "Unknown" and company_type != "Unknown":
-                    scur.execute("UPDATE companies SET type = ? WHERE id = ?", (company_type, company_id))
-            else:
-                scur.execute("INSERT INTO companies (name, type) VALUES (?, ?)", (company_name, company_type))
-                company_id = scur.lastrowid
-
-            if director_info.get("din"):
-                scur.execute("""
-                    SELECT 1 FROM directorships
-                    WHERE din = ? AND company_id = ? AND position = ?
-                """, (director_info["din"], company_id, position))
-                if not scur.fetchone():
-                    scur.execute("""
-                        INSERT INTO directorships (din, company_id, position, appointment_date)
-                        VALUES (?, ?, ?, ?)
-                    """, (director_info["din"], company_id, position, appointment_date))
-
-        sconn.commit()
-        logger.info(f"Stored data for director (SQLite): {director_info.get('name')}")
-    except Exception as e:
-        logger.error(f"SQLite store failed for {director_info.get('name')}: {e}")
-        try:
-            sconn.rollback()
-        except Exception:
-            pass
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
+            pg_conn.close()
 
 def process_all_director_files(directory_path: str):
-    """
-    Process all director DOCX files in the given directory.
-    
-    Args:
-        directory_path (str): Path to the directory containing DOCX files
-    """
-    # Initialize database
+    """Process all director DOCX files in the given directory."""
     init_database()
-    
-    # Get all DOCX files
     docx_files = [f for f in os.listdir(directory_path) if f.endswith('.docx')]
-    
-    logger.info(f"Processing {len(docx_files)} director files...")
-    
-    processed_count = 0
     for filename in docx_files:
-        file_path = os.path.join(directory_path, filename)
-        logger.info(f"Processing {filename}...")
-        
-        # Extract director information
-        director_info = extract_director_info(file_path)
-        
-        # Store in database
-        store_director_data(director_info)
-        processed_count += 1
-    
-    logger.info(f"Successfully processed {processed_count} files")
+        info = extract_director_info(os.path.join(directory_path, filename))
+        store_director_data(info)
 
-# API Functions
 def get_all_directors():
-    """
-    Get all directors from the database.
-    
-    Returns:
-        List[Dict]: List of director dictionaries
-    """
-    pg_conn = get_pg_connection()
+    """Get all directors from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
             cursor.execute(f"SELECT din, name, source_file FROM {DB_SCHEMA}.directors")
             rows = cursor.fetchall()
-
-            return [
-                {"din": row["din"], "name": row["name"], "source_file": row["source_file"]}
-                for row in rows
-            ]
-        except Exception as e:
-            logger.warning(f"PG get_all_directors failed, falling back to SQLite: {e}")
+            return [{"din": r["din"], "name": r["name"], "source_file": r["source_file"]} for r in rows]
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("SELECT din, name, source_file FROM directors")
-        rows = scur.fetchall()
-        return [
-            {"din": row["din"], "name": row["name"], "source_file": row["source_file"]}
-            for row in rows
-        ]
-    except Exception as e:
-        logger.error(f"SQLite get_all_directors failed: {e}")
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
-    
-    logger.warning("get_all_directors falling through all paths, returning empty list")
+            pg_conn.close()
     return []
 
 def get_company_count():
-    """
-    Get company count statistics.
-    
-    Returns:
-        Dict: Company count statistics
-    """
-    pg_conn = get_pg_connection()
+    """Get company count statistics from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-
-            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies")
-            total_companies = cursor.fetchone()["count"]
-
-            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies WHERE type = 'Public'")
-            public_companies = cursor.fetchone()["count"]
-
-            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.companies WHERE type LIKE 'Private%%'")
-            private_companies = cursor.fetchone()["count"]
-
-            return {
-                "total": int(total_companies or 0),
-                "public": int(public_companies or 0),
-                "private": int(private_companies or 0),
-            }
-        except Exception as e:
-            logger.warning(f"PG get_company_count failed, falling back to SQLite: {e}")
+            cursor.execute(f"SELECT COUNT(*) AS count FROM {DB_SCHEMA}.companies")
+            total = cursor.fetchone()["count"] or 0
+            cursor.execute(f"SELECT COUNT(*) AS count FROM {DB_SCHEMA}.companies WHERE type = 'Public'")
+            public = cursor.fetchone()["count"] or 0
+            cursor.execute(f"SELECT COUNT(*) AS count FROM {DB_SCHEMA}.companies WHERE type LIKE 'Private%%'")
+            private = cursor.fetchone()["count"] or 0
+            return {"total": int(total), "public": int(public), "private": int(private)}
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("SELECT COUNT(*) FROM companies")
-        total_companies = scur.fetchone()[0] or 0
-
-        scur.execute("SELECT COUNT(*) FROM companies WHERE type = 'Public'")
-        public_companies = scur.fetchone()[0] or 0
-
-        scur.execute("SELECT COUNT(*) FROM companies WHERE type LIKE 'Private%'")
-        private_companies = scur.fetchone()[0] or 0
-
-        return {
-            "total": int(total_companies),
-            "public": int(public_companies),
-            "private": int(private_companies),
-        }
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
+            pg_conn.close()
+    return {"total": 0, "public": 0, "private": 0}
 
 def get_cross_directorship():
-    """
-    Get cross-directorship information.
-    
-    Returns:
-        List[Dict]: List of directors with their company counts
-    """
-    pg_conn = get_pg_connection()
+    """Get cross-directorship information from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
             cursor.execute(f"""
-                SELECT d.name, COUNT(DISTINCT ds.company_id) as company_count
+                SELECT d.name, d.din, COUNT(ds.company_id) AS company_count
                 FROM {DB_SCHEMA}.directors d
                 JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
-                GROUP BY d.din, d.name
+                GROUP BY d.name, d.din
+                HAVING COUNT(ds.company_id) > 1
                 ORDER BY company_count DESC
             """)
-
-            rows = cursor.fetchall()
-            return [{"name": row["name"], "companies": row["company_count"]} for row in rows]
-        except Exception as e:
-            logger.warning(f"PG get_cross_directorship failed, falling back to SQLite: {e}")
+            return [dict(r) for r in cursor.fetchall()]
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("""
-            SELECT d.name, COUNT(DISTINCT ds.company_id) as company_count
-            FROM directors d
-            JOIN directorships ds ON d.din = ds.din
-            GROUP BY d.din, d.name
-            ORDER BY company_count DESC
-        """)
-        rows = scur.fetchall()
-        return [{"name": row["name"], "companies": row["company_count"]} for row in rows]
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
+            pg_conn.close()
+    return []
 
 def get_clustering():
-    """
-    Get director clustering information (shared companies).
-    
-    Returns:
-        List[Dict]: List of director pairs with shared company counts
-    """
-    pg_conn = get_pg_connection()
+    """Get director clustering information (shared companies) from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
             cursor.execute(f"""
-                SELECT 
-                    d1.name as director1,
-                    d2.name as director2,
-                    COUNT(DISTINCT ds1.company_id) as shared_companies
+                SELECT d1.name AS director1, d2.name AS director2, COUNT(ds1.company_id) AS shared_companies
                 FROM {DB_SCHEMA}.directorships ds1
                 JOIN {DB_SCHEMA}.directorships ds2 ON ds1.company_id = ds2.company_id AND ds1.din < ds2.din
                 JOIN {DB_SCHEMA}.directors d1 ON ds1.din = d1.din
                 JOIN {DB_SCHEMA}.directors d2 ON ds2.din = d2.din
-                GROUP BY d1.din, d2.din, d1.name, d2.name
-                HAVING COUNT(DISTINCT ds1.company_id) > 0
+                GROUP BY d1.name, d2.name
                 ORDER BY shared_companies DESC
                 LIMIT 50
             """)
-
-            rows = cursor.fetchall()
-            return [
-                {"director1": row["director1"], "director2": row["director2"], "sharedCompanies": row["shared_companies"]}
-                for row in rows
-            ]
-        except Exception as e:
-            logger.warning(f"PG get_clustering failed, falling back to SQLite: {e}")
+            return [{"director1": r["director1"], "director2": r["director2"], "sharedCompanies": r["shared_companies"]} for r in cursor.fetchall()]
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("""
-            SELECT 
-                d1.name as director1,
-                d2.name as director2,
-                COUNT(DISTINCT ds1.company_id) as shared_companies
-            FROM directorships ds1
-            JOIN directorships ds2 ON ds1.company_id = ds2.company_id AND ds1.din < ds2.din
-            JOIN directors d1 ON ds1.din = d1.din
-            JOIN directors d2 ON ds2.din = d2.din
-            GROUP BY d1.din, d2.din, d1.name, d2.name
-            HAVING COUNT(DISTINCT ds1.company_id) > 0
-            ORDER BY shared_companies DESC
-            LIMIT 50
-        """)
-        rows = scur.fetchall()
-        return [
-            {"director1": row["director1"], "director2": row["director2"], "sharedCompanies": row["shared_companies"]}
-            for row in rows
-        ]
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
+            pg_conn.close()
+    return []
 
 def get_network():
-    """
-    Get network data for visualization.
-    
-    Returns:
-        Dict: Network nodes and links
-    """
-    def _format_network(directors_rows, companies_rows, directorship_rows):
-        nodes = []
-        links = []
-
-        director_names = set()
-        for row in directors_rows:
-            name = row["name"]
-            if name not in director_names:
-                nodes.append({"id": name, "type": "director"})
-                director_names.add(name)
-
-        company_names = set()
-        for row in companies_rows:
-            name = row["name"]
-            if name not in company_names:
-                nodes.append({"id": name, "type": "company"})
-                company_names.add(name)
-
-        link_set = set()
-        for row in directorship_rows:
-            d_name = row["director_name"]
-            c_name = row["company_name"]
-            link_key = (d_name, c_name)
-            if link_key not in link_set:
-                links.append({"source": d_name, "target": c_name})
-                link_set.add(link_key)
-
-        return {"nodes": nodes, "links": links}
-
-    pg_conn = get_pg_connection()
+    """Get network data (nodes and links) for visualization from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-
-            cursor.execute(f"SELECT din, name FROM {DB_SCHEMA}.directors")
+            # Fetch some directors and their companies to build a sample network
+            cursor.execute(f"SELECT din, name FROM {DB_SCHEMA}.directors LIMIT 100")
             directors = cursor.fetchall()
-
-            cursor.execute(f"SELECT id, name FROM {DB_SCHEMA}.companies")
+            
+            cursor.execute(f"SELECT id, name FROM {DB_SCHEMA}.companies LIMIT 50")
             companies = cursor.fetchall()
-
-            cursor.execute(f"""
-                SELECT d.name as director_name, c.name as company_name
-                FROM {DB_SCHEMA}.directorships ds
-                JOIN {DB_SCHEMA}.directors d ON ds.din = d.din
-                JOIN {DB_SCHEMA}.companies c ON ds.company_id = c.id
-            """)
-            directorships = cursor.fetchall()
-
-            return _format_network(directors, companies, directorships)
-        except Exception as e:
-            logger.warning(f"PG get_network failed, falling back to SQLite: {e}")
+            
+            cursor.execute(f"SELECT din, company_id FROM {DB_SCHEMA}.directorships LIMIT 300")
+            links = cursor.fetchall()
+            
+            nodes = []
+            for d in directors: nodes.append({"id": d["din"], "type": "director", "label": d["name"]})
+            for c in companies: nodes.append({"id": str(c["id"]), "type": "company", "label": c["name"]})
+            
+            link_data = []
+            for l in links:
+                link_data.append({"source": l["din"], "target": str(l["company_id"])})
+                
+            return {"nodes": nodes, "links": link_data}
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("SELECT din, name FROM directors")
-        directors = scur.fetchall()
-
-        scur.execute("SELECT id, name FROM companies")
-        companies = scur.fetchall()
-
-        scur.execute("""
-            SELECT d.name as director_name, c.name as company_name
-            FROM directorships ds
-            JOIN directors d ON ds.din = d.din
-            JOIN companies c ON ds.company_id = c.id
-        """)
-        directorships = scur.fetchall()
-
-        return _format_network(directors, companies, directorships)
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
+            pg_conn.close()
+    return {"nodes": [], "links": []}
 
 def get_wtd_count():
-    """
-    Get whole-time director count.
-    
-    Returns:
-        List[Dict]: List of directors with whole-time director positions
-    """
-    pg_conn = get_pg_connection()
+    """Get whole-time director count from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
             cursor.execute(f"""
-                SELECT d.name, COUNT(*) as wtd_positions
+                SELECT d.name, COUNT(di.id) AS positions
                 FROM {DB_SCHEMA}.directors d
-                JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
-                WHERE ds.position = 'Whole-time Director'
-                GROUP BY d.din, d.name
-                ORDER BY wtd_positions DESC
+                JOIN {DB_SCHEMA}.directorships di ON d.din = di.din
+                WHERE di.position ILIKE '%Whole-time%' OR di.position ILIKE '%WTD%'
+                GROUP BY d.name
+                ORDER BY positions DESC
             """)
-
-            rows = cursor.fetchall()
-            return [{"name": row["name"], "positions": row["wtd_positions"]} for row in rows]
-        except Exception as e:
-            logger.warning(f"PG get_wtd_count failed, falling back to SQLite: {e}")
+            return [dict(r) for r in cursor.fetchall()]
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("""
-            SELECT d.name, COUNT(*) as wtd_positions
-            FROM directors d
-            JOIN directorships ds ON d.din = ds.din
-            WHERE ds.position = 'Whole-time Director'
-            GROUP BY d.din, d.name
-            ORDER BY wtd_positions DESC
-        """)
-        rows = scur.fetchall()
-        return [{"name": row["name"], "positions": row["wtd_positions"]} for row in rows]
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
+            pg_conn.close()
+    return []
 
 def get_all_companies_with_director_count():
-    """
-    Get all companies with their director counts and types.
-    
-    Returns:
-        List[Dict]: List of companies with their director counts and types
-    """
-    pg_conn = get_pg_connection()
+    """Get all companies with their director counts and types from PostgreSQL."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
             cursor.execute(f"""
-                SELECT c.name, c.type, COUNT(ds.id) as director_count
+                SELECT c.name, c.type, COUNT(di.din) AS director_count
                 FROM {DB_SCHEMA}.companies c
-                LEFT JOIN {DB_SCHEMA}.directorships ds ON c.id = ds.company_id
+                LEFT JOIN {DB_SCHEMA}.directorships di ON c.id = di.company_id
                 GROUP BY c.id, c.name, c.type
-                ORDER BY c.name
+                ORDER BY director_count DESC, c.name ASC
             """)
-
-            rows = cursor.fetchall()
-            return [{"name": row["name"], "type": row["type"], "director_count": row["director_count"]} for row in rows]
-        except Exception as e:
-            logger.warning(f"PG get_all_companies_with_director_count failed, falling back to SQLite: {e}")
+            return [dict(r) for r in cursor.fetchall()]
         finally:
-            try:
-                pg_conn.close()
-            except Exception:
-                pass
-
-    _ensure_sqlite_schema()
-    sconn = _sqlite_connect()
-    scur = sconn.cursor()
-    try:
-        scur.execute("""
-            SELECT c.name, c.type, COUNT(ds.id) as director_count
-            FROM companies c
-            LEFT JOIN directorships ds ON c.id = ds.company_id
-            GROUP BY c.id, c.name, c.type
-            ORDER BY c.name
-        """)
-        rows = scur.fetchall()
-        return [{"name": row["name"], "type": row["type"], "director_count": row["director_count"]} for row in rows]
-    finally:
-        try:
-            scur.close()
-        finally:
-            sconn.close()
-
-# Test function
-def test_extraction():
-    """Test the extraction functionality with one file."""
-    file_path = "public/Directors Discloser Output/Abdul Ishad Khan_MBP.docx"
-    if os.path.exists(file_path):
-        director_info = extract_director_info(file_path)
-        print("Extracted Director Info:")
-        print(f"Name: {director_info['name']}")
-        print(f"DIN: {director_info['din']}")
-        print(f"Source File: {director_info['source_file']}")
-        print("Companies:")
-        for company in director_info['companies']:
-            print(f"  - {company}")
-    else:
-        print(f"File not found: {file_path}")
-
-if __name__ == "__main__":
-    # Process all director files when run directly
-    directory_path = "public/Directors Discloser Output"
-    if os.path.exists(directory_path):
-        process_all_director_files(directory_path)
-    else:
-        logger.error(f"Directory not found: {directory_path}")
+            pg_conn.close()
+    return []

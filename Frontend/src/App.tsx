@@ -35,6 +35,7 @@ import TemplateResolution from "./pages/minutes-preparation/TemplateResolution";
 import MeetingMinutes from "./pages/minutes-preparation/MeetingMinutes";
 import Templates from "./pages/minutes-preparation/Templates";
 import TemplateRenderer from "./pages/minutes-preparation/TemplateRenderer";
+import MinutesChatbot from "./pages/minutes-preparation/MinutesChatbot";
 
 
 // Import SEBI specific pages
@@ -238,6 +239,11 @@ const App = () => (
             <Route path="/minutes-preparation/template-resolution" element={
               <ProtectedRoute requiredRoute="/minutes-preparation">
                 <TemplateResolution />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/chatbot" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <MinutesChatbot />
               </ProtectedRoute>
             } />
             <Route path="/minutes-preparation/minutes" element={

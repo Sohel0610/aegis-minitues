@@ -97,13 +97,20 @@ class EmbeddingService:
         db: Session,
         query: str,
         user_id: int,
+        is_admin: bool = False,
         top_k: int = 5
     ) -> List[tuple]:
         query_embedding = self.generate_embedding(query)
         
-        embeddings = db.query(Embedding).join(Document).filter(
-            Document.user_id == user_id
-        ).all()
+        # If admin, search all docs, else search only user's own docs
+        if is_admin:
+            embeddings_query = db.query(Embedding).join(Document)
+        else:
+            embeddings_query = db.query(Embedding).join(Document).filter(
+                Document.user_id == user_id
+            )
+        
+        embeddings = embeddings_query.all()
         
         if not embeddings:
             return []

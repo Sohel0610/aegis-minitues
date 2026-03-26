@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 # Create database engine
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {},
-    pool_pre_ping=True
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
 )
 
 # Create session factory
