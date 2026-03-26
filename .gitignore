@@ -110,6 +110,14 @@ test_prompt.json
 scripts/test_*.py
 *sample*
 *.ipynb
+check_*.py
+**/check_*.py
+debug_*.py
+**/debug_*.py
+list_*.py
+**/list_*.py
+*migration*.py
+inspect_columns.py
 
 # Local runtime data and project tracking
 *.zip
