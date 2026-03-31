@@ -50,9 +50,9 @@ def get_user_permissions_from_db(email: str) -> dict:
     try:
         cursor = get_pg_cursor(conn)
         # Query all active permissions for this user (case-insensitive)
-        cursor.execute(f"""
+        cursor.execute("""
             SELECT route_path, permission_type
-            FROM {PG_SCHEMA}.route_permissions
+            FROM route_permissions
             WHERE LOWER(email) = LOWER(%s) AND is_active = TRUE
         """, (email,))
         

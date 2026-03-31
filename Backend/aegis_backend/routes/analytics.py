@@ -19,7 +19,7 @@ async def get_bse_monthly_count():
     """Get the count of BSE notifications for the current month using PostgreSQL."""
     try:
         def fetch_bse_monthly_count():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_BSE'))
             if not conn:
                 raise RuntimeError("Failed to connect to PostgreSQL")
             
@@ -27,7 +27,7 @@ async def get_bse_monthly_count():
             try:
                 cursor.execute("""
                     SELECT COUNT(*) AS count
-                    FROM bse.daily_logs
+                    FROM daily_logs
                     WHERE record_date >= DATE_TRUNC('month', CURRENT_DATE)
                     AND record_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
                     AND link IS NOT NULL AND link != 'NIL'
@@ -50,18 +50,18 @@ async def get_bse_alerts_monthly_count():
     """Get monthly count of BSE alerts using PostgreSQL."""
     try:
         def fetch_counts():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_BSE'))
             if not conn:
                 raise RuntimeError("Failed to connect to PostgreSQL")
             
             cursor = get_pg_cursor(conn)
             try:
-                # Use schema bse
+                # Use default public schema
                 cursor.execute("""
                     SELECT
                         TO_CHAR(record_date, 'YYYY-MM') as month,
                         COUNT(*) as count
-                    FROM bse.daily_logs
+                    FROM daily_logs
                     WHERE link IS NOT NULL AND link != 'NIL'
                     GROUP BY TO_CHAR(record_date, 'YYYY-MM')
                     ORDER BY month DESC
@@ -69,7 +69,7 @@ async def get_bse_alerts_monthly_count():
                 rows = cursor.fetchall()
                 monthly_data = [{"month": row["month"], "count": int(row["count"])} for row in rows]
 
-                cursor.execute("SELECT COUNT(*) AS count FROM bse.daily_logs WHERE link IS NOT NULL AND link != 'NIL'")
+                cursor.execute("SELECT COUNT(*) AS count FROM daily_logs WHERE link IS NOT NULL AND link != 'NIL'")
                 row_total = cursor.fetchone()
                 total_count = row_total["count"] if row_total else 0
 
@@ -96,13 +96,13 @@ async def get_bse_alerts_monthly_total():
     """Get total count of BSE alerts for the current month using PostgreSQL."""
     try:
         def fetch_total_count():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_BSE'))
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:
                 cursor.execute("""
                     SELECT COUNT(*) AS count
-                    FROM bse.daily_logs
+                    FROM daily_logs
                     WHERE record_date >= DATE_TRUNC('month', CURRENT_DATE)
                     AND record_date < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
                     AND link IS NOT NULL AND link != 'NIL'
@@ -126,12 +126,12 @@ async def get_rbi_total_count():
     """Get total count of RBI notifications from PostgreSQL."""
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('PG_DATABASE'))
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:
                 cursor.execute("""
-                    SELECT COUNT(*) AS count FROM rbi.master_summaries 
+                    SELECT COUNT(*) AS count FROM master_summaries 
                     WHERE pdf_link IS NOT NULL AND pdf_link != 'NIL'
                 """)
                 row = cursor.fetchone()
@@ -151,12 +151,12 @@ async def get_sebi_total_count():
     """Get total count of SEBI notifications from PostgreSQL."""
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_BSE'))
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:
                 cursor.execute("""
-                    SELECT COUNT(*) AS count FROM sebi.excel_summaries 
+                    SELECT COUNT(*) AS count FROM excel_summaries 
                     WHERE pdf_link IS NOT NULL AND pdf_link != 'NIL'
                 """)
                 row = cursor.fetchone()

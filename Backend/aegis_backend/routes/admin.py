@@ -56,7 +56,7 @@ async def admin_login(credentials: AdminLoginRequest):
             cursor = get_pg_cursor(conn)
             try:
                 # In production, use hashed passwords!
-                cursor.execute(f"SELECT id FROM {PG_SCHEMA}.admin_credentials WHERE username = %s AND password = %s",
+                cursor.execute("SELECT id FROM admin_credentials WHERE username = %s AND password = %s",
                              (credentials.username, credentials.password))
                 res = cursor.fetchone()
                 return res["id"] if res else None
@@ -82,9 +82,9 @@ async def get_emails(search: Optional[str] = None):
             cursor = get_pg_cursor(conn)
             try:
                 if search:
-                    cursor.execute(f"SELECT email FROM {PG_SCHEMA}.allowed_emails WHERE email ILIKE %s ORDER BY email", (f"%{search}%",))
+                    cursor.execute("SELECT email FROM allowed_emails WHERE email ILIKE %s ORDER BY email", (f"%{search}%",))
                 else:
-                    cursor.execute(f"SELECT email FROM {PG_SCHEMA}.allowed_emails ORDER BY email")
+                    cursor.execute("SELECT email FROM allowed_emails ORDER BY email")
                 rows = cursor.fetchall()
                 return [r["email"] for r in rows]
             finally:
@@ -108,7 +108,7 @@ async def add_email(email_entry: EmailEntry):
             if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"INSERT INTO {PG_SCHEMA}.allowed_emails (email) VALUES (%s) ON CONFLICT DO NOTHING", (email_lower,))
+                cursor.execute("INSERT INTO allowed_emails (email) VALUES (%s) ON CONFLICT DO NOTHING", (email_lower,))
                 conn.commit()
             finally:
                 conn.close()
@@ -126,7 +126,7 @@ async def delete_email(email_address: str):
             if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"DELETE FROM {PG_SCHEMA}.allowed_emails WHERE email = %s", (email,))
+                cursor.execute("DELETE FROM allowed_emails WHERE email = %s", (email,))
                 conn.commit()
             finally:
                 conn.close()

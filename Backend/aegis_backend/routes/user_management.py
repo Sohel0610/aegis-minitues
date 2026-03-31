@@ -17,9 +17,6 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # Create a router instance for user management endpoints
 router = APIRouter()
 
-# Schema for RBAC/User management
-DB_SCHEMA = "rbac"
-
 # Request models
 class RoleAssignmentRequest(BaseModel):
     user_email: str
@@ -44,11 +41,10 @@ def init_rbac_db():
     if conn:
         try:
             cursor = get_pg_cursor(conn)
-            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
             
             # Simple user roles table for SSO integration
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.user_roles (
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_roles (
                     id SERIAL PRIMARY KEY,
                     email TEXT NOT NULL,
                     role TEXT NOT NULL,
@@ -58,9 +54,9 @@ def init_rbac_db():
             """)
             
             # Seed initial admin if empty
-            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.user_roles WHERE email = %s", ("cogn206112@adani.com",))
+            cursor.execute("SELECT COUNT(*) FROM user_roles WHERE email = %s", ("cogn206112@adani.com",))
             if cursor.fetchone()["count"] == 0:
-                cursor.execute(f"INSERT INTO {DB_SCHEMA}.user_roles (email, role) VALUES (%s, %s)", ("cogn206112@adani.com", "admin"))
+                cursor.execute("INSERT INTO user_roles (email, role) VALUES (%s, %s)", ("cogn206112@adani.com", "admin"))
             
             conn.commit()
             logger.info("RBAC tables initialized in PostgreSQL")
@@ -77,7 +73,7 @@ async def get_all_users_with_roles():
             if not conn: raise RuntimeError("DB connection failed")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"SELECT email, role, assigned_at FROM {DB_SCHEMA}.user_roles ORDER BY email")
+                cursor.execute("SELECT email, role, assigned_at FROM user_roles ORDER BY email")
                 rows = cursor.fetchall()
                 # Group by email
                 users_map = {}
@@ -98,62 +94,55 @@ async def get_all_users_with_roles():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint to assign a role to a user
-@router.post("/admin/users/assign-role", response_model=UserRoleResponse)
-async def assign_role_to_user(role_assignment: RoleAssignmentRequest):
+@router.post("/admin/assign-role", response_model=UserRoleResponse)
+async def assign_role_to_user(request: RoleAssignmentRequest):
     """Assign a role to a user in PostgreSQL"""
+    email = request.user_email.lower().strip()
+    role = request.role.lower().strip()
+    
     try:
         def assign():
             conn = get_pg_connection()
-            if not conn: raise RuntimeError("DB connection failed")
+            if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"""
-                    INSERT INTO {DB_SCHEMA}.user_roles (email, role)
-                    VALUES (%s, %s)
-                    ON CONFLICT (email, role) DO NOTHING
-                """, (role_assignment.user_email.lower(), role_assignment.role))
+                cursor.execute("INSERT INTO user_roles (email, role) VALUES (%s, %s) ON CONFLICT (email, role) DO NOTHING", (email, role))
                 conn.commit()
-                
-                cursor.execute(f"SELECT role FROM {DB_SCHEMA}.user_roles WHERE email = %s", (role_assignment.user_email.lower(),))
+                # Fetch all roles
+                cursor.execute("SELECT role FROM user_roles WHERE email = %s", (email,))
                 rows = cursor.fetchall()
                 return [r["role"] for r in rows]
             finally:
                 conn.close()
-        
+                
         roles = await asyncio.get_event_loop().run_in_executor(thread_pool, assign)
-        return {
-            "user_email": role_assignment.user_email,
-            "roles": roles,
-            "message": f"Role {role_assignment.role} assigned successfully"
-        }
+        return UserRoleResponse(user_email=email, roles=roles, message=f"Role {role} assigned successfully")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint to remove a role from a user
-@router.delete("/admin/users/remove-role", response_model=UserRoleResponse)
-async def remove_role_from_user(role_removal: RoleRemovalRequest):
+@router.post("/admin/remove-role", response_model=UserRoleResponse)
+async def remove_role_from_user(request: RoleRemovalRequest):
     """Remove a role from a user in PostgreSQL"""
+    email = request.user_email.lower().strip()
+    role = request.role.lower().strip()
+    
     try:
         def remove():
             conn = get_pg_connection()
-            if not conn: raise RuntimeError("DB connection failed")
+            if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"DELETE FROM {DB_SCHEMA}.user_roles WHERE email = %s AND role = %s", 
-                             (role_removal.user_email.lower(), role_removal.role))
+                cursor.execute("DELETE FROM user_roles WHERE email = %s AND role = %s", (email, role))
                 conn.commit()
-                
-                cursor.execute(f"SELECT role FROM {DB_SCHEMA}.user_roles WHERE email = %s", (role_removal.user_email.lower(),))
+                # Fetch remaining roles
+                cursor.execute("SELECT role FROM user_roles WHERE email = %s", (email,))
                 rows = cursor.fetchall()
                 return [r["role"] for r in rows]
             finally:
                 conn.close()
-        
+                
         roles = await asyncio.get_event_loop().run_in_executor(thread_pool, remove)
-        return {
-            "user_email": role_removal.user_email,
-            "roles": roles,
-            "message": f"Role {role_removal.role} removed successfully"
-        }
+        return UserRoleResponse(user_email=email, roles=roles, message=f"Role {role} removed successfully")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
