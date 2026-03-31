@@ -19,11 +19,11 @@ router = APIRouter()
 
 # Model for SEBI Excel summary data
 class SEBIExcelSummary(BaseModel):
-    id: int
+    id: Optional[int] = None
     date_key: str
-    row_index: int
-    pdf_link: Optional[str]
-    summary: Optional[str]
+    row_index: Optional[int] = None
+    pdf_link: Optional[str] = None
+    summary: Optional[str] = None
     inserted_at: str
     entity_name: Optional[str] = None
     nature: Optional[str] = None
@@ -58,6 +58,7 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
                 total_count = row["count"] if row else 0
                 
                 # Fetch data from excel_summaries table
+                # We handle potential missing columns or NULLs in the result processing
                 cursor.execute("""
                     SELECT id, date_key, row_index, pdf_link, summary, inserted_at
                     FROM excel_summaries
@@ -69,11 +70,11 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
                 
                 # Convert to list of dictionaries with frontend-expected keys
                 data = []
-                for row in rows:
+                for idx, row in enumerate(rows):
                     record = {
-                        'id': row['id'],
+                        'id': row['id'] if row.get('id') is not None else (offset + idx + 1),
                         'date_key': str(row['date_key']),
-                        'row_index': row['row_index'],
+                        'row_index': row['row_index'] if row.get('row_index') is not None else (offset + idx + 1),
                         'pdf_link': row['pdf_link'],
                         'summary': row['summary'],
                         'inserted_at': str(row['inserted_at'])

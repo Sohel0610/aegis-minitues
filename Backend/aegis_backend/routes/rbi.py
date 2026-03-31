@@ -19,11 +19,11 @@ router = APIRouter()
 
 # Model for RBI data summaries
 class SEBIExcelSummary(BaseModel):
-    id: int
+    id: Optional[int] = None
     date_key: str
-    row_index: int
-    pdf_link: Optional[str]
-    summary: Optional[str]
+    row_index: Optional[int] = None
+    pdf_link: Optional[str] = None
+    summary: Optional[str] = None
     inserted_at: str
 
 # Response model for RBI analysis data
@@ -66,11 +66,11 @@ async def get_rbi_excel_data(limit: int = 100, offset: int = 0):
                 
                 # Convert to list of dictionaries
                 data = []
-                for row in rows:
+                for idx, row in enumerate(rows):
                     record = {
-                        'id': row['id'],
+                        'id': row['id'] if row.get('id') is not None else (offset + idx + 1),
                         'date_key': str(row['run_date']),
-                        'row_index': row['id'],
+                        'row_index': row['id'] if row.get('id') is not None else (offset + idx + 1),
                         'pdf_link': row['pdf_link'],
                         'summary': row['summary'],
                         'inserted_at': str(row['created_at'])
