@@ -14,11 +14,9 @@ def init_postgres_tracking():
     if conn:
         try:
             cursor = get_pg_cursor(conn)
-            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
-            
             # Visits table
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.visits (
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS visits (
                     id SERIAL PRIMARY KEY,
                     count INTEGER DEFAULT 0,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -26,13 +24,13 @@ def init_postgres_tracking():
             """)
             
             # Seed visit if empty
-            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.visits")
+            cursor.execute("SELECT COUNT(*) FROM visits")
             if cursor.fetchone()["count"] == 0:
-                cursor.execute(f"INSERT INTO {DB_SCHEMA}.visits (count) VALUES (0)")
+                cursor.execute("INSERT INTO visits (id, count) VALUES (1, 0)")
             
             # Places table
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.places (
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS places (
                     id SERIAL PRIMARY KEY,
                     name TEXT NOT NULL,
                     address TEXT NOT NULL,
@@ -42,10 +40,10 @@ def init_postgres_tracking():
             """)
             
             # Seed default place if empty
-            cursor.execute(f"SELECT COUNT(*) FROM {DB_SCHEMA}.places WHERE is_default = TRUE")
+            cursor.execute("SELECT COUNT(*) FROM places WHERE is_default = TRUE")
             if cursor.fetchone()["count"] == 0:
-                cursor.execute(f"""
-                    INSERT INTO {DB_SCHEMA}.places (name, address, is_default)
+                cursor.execute("""
+                    INSERT INTO places (name, address, is_default)
                     VALUES (%s, %s, TRUE)
                 """, ('Adani Corporate House', 'Shantigram, Near Vaishno Devi Circle, Ahmedabad', True))
             

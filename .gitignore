@@ -77,6 +77,7 @@ test_sharepoint_connection.py
 /public/
 Backend/aegis_backend/public/chatbot_docs/
 Backend/aegis_backend/public/ai_assistant_mom/
+Backend/aegis_backend/public/Directors\ Discloser\ Output/
 Backend/aegis_backend/server.log
 Backend/aegis_backend/uploads/
 Backend/aegis_backend/director_images/

@@ -20,11 +20,21 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # Create a router instance for minutes endpoints
 router = APIRouter()
 
-# Schema for minutes
-PG_SCHEMA = "minutes"
-TRACKING_SCHEMA = "tracking"
+# --- Models ---
 
-# Models
+class GeneratedMinuteResponse(BaseModel):
+    id: int
+    company_name: str
+    meeting_type: str
+    meeting_date: str
+    file_path: str
+    created_at: str
+    download_url: Optional[str] = None
+
+class MinutesHistoryResponse(BaseModel):
+    data: List[GeneratedMinuteResponse]
+    count: int
+
 class PlaceResponse(BaseModel):
     id: int
     name: str
@@ -46,10 +56,6 @@ class ResolutionTemplateResponse(BaseModel):
     template_name: str
     resolution_text: str
     created_at: str
-
-class ResolutionTemplateCreate(BaseModel):
-    template_name: str
-    resolution_text: str
 
 class ResolutionTemplatesList(BaseModel):
     data: List[ResolutionTemplateResponse]
@@ -75,17 +81,18 @@ class CompliancesList(BaseModel):
     data: List[ComplianceResponse]
     count: int
 
+# --- Database Init ---
+
 def init_minutes_pg():
     """Initialize minutes tables in PostgreSQL."""
     conn = get_pg_connection()
     if conn:
         try:
             cursor = get_pg_cursor(conn)
-            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {PG_SCHEMA}")
             
             # Generated Minutes
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {PG_SCHEMA}.generated_minutes (
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS generated_minutes (
                     id SERIAL PRIMARY KEY,
                     company_name TEXT,
                     meeting_type TEXT,
@@ -96,18 +103,18 @@ def init_minutes_pg():
             """)
             
             # Resolution Templates
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {PG_SCHEMA}.resolution_templates (
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS resolution_templates (
                     id SERIAL PRIMARY KEY,
                     template_name TEXT,
                     resolution_text TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
-            # Compliances
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {PG_SCHEMA}.compliances (
+
+            # Compliance Table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS compliances (
                     id SERIAL PRIMARY KEY,
                     form TEXT,
                     description TEXT,
@@ -117,191 +124,15 @@ def init_minutes_pg():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
             conn.commit()
-            logger.info("Minutes PostgreSQL tables initialized successfully")
+            logger.info("Minutes PostgreSQL tables initialized")
         except Exception as e:
             conn.rollback()
-            logger.error(f"Minutes PG init failed: {e}")
+            logger.error(f"Minutes init failed: {e}")
         finally:
             conn.close()
 
-# History models
-class GeneratedMinuteResponse(BaseModel):
-    id: int
-    company_name: str
-    meeting_type: str
-    meeting_date: str
-    file_path: str
-    created_at: str
-    download_url: str
-
-class MinutesHistoryResponse(BaseModel):
-    data: List[GeneratedMinuteResponse]
-    count: int
-
-class MinutesGenerationRequest(BaseModel):
-    template: str
-    companyName: str
-    meetingNumber: str
-    meetingType: str
-    meetingDay: str
-    meetingDate: str
-    meetingStartTime: str
-    meetingEndTime: str
-    meetingPlace: str
-    chairmanName: str
-    presentDirectors: List[Dict[str, str]]
-    inAttendance: List[Dict[str, str]]
-    companySecretary: str
-    previousMeetingDate: str
-    authorisedOfficer: str
-    quorum: str
-    concerns: str
-    declarations: str
-    auditorPaymentAmount: str
-    auditorPaymentWords: str
-    financialYear: str
-    agmNumber: str
-    agmDay: str
-    agmMonthName: str
-    agmDate: str
-    agmTime: str
-    agmPlace: str
-    recordingDate: str
-    signingDate: str
-    signingPlace: str
-    hasSection184Disclosure: bool = False
-    section184Subject: Optional[str] = ""
-    section184Text: Optional[str] = ""
-    resolutions: Optional[str] = ""
-    customTemplateFilename: Optional[str] = None
-
-class MinuteGenerationResponse(BaseModel):
-    success: bool
-    message: str
-    filename: str
-    download_url: str
-
-# Endpoints
-@router.get("/places", response_model=PlacesListResponse)
-async def get_places():
-    try:
-        def fetch():
-            conn = get_pg_connection()
-            if not conn: return []
-            cursor = get_pg_cursor(conn)
-            try:
-                cursor.execute(f"SELECT id, name, address, is_default, created_at FROM {TRACKING_SCHEMA}.places ORDER BY is_default DESC, name")
-                rows = cursor.fetchall()
-                return [PlaceResponse(id=r['id'], name=r['name'], address=r['address'], is_default=r['is_default'], created_at=str(r['created_at'])) for r in rows]
-            finally:
-                conn.close()
-        
-        loop = asyncio.get_event_loop()
-        places = await loop.run_in_executor(thread_pool, fetch)
-        return PlacesListResponse(data=places, count=len(places))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/places", response_model=PlaceResponse)
-async def create_place(request: PlaceCreateRequest):
-    try:
-        def insert():
-            conn = get_pg_connection()
-            if not conn: raise RuntimeError("DB connection failed")
-            cursor = get_pg_cursor(conn)
-            try:
-                if request.is_default:
-                    cursor.execute(f"UPDATE {TRACKING_SCHEMA}.places SET is_default = FALSE")
-                cursor.execute(f"INSERT INTO {TRACKING_SCHEMA}.places (name, address, is_default) VALUES (%s, %s, %s) RETURNING id, name, address, is_default, created_at",
-                             (request.name, request.address, request.is_default))
-                row = cursor.fetchone()
-                conn.commit()
-                return PlaceResponse(id=row['id'], name=row['name'], address=row['address'], is_default=row['is_default'], created_at=str(row['created_at']))
-            finally:
-                conn.close()
-        return await asyncio.get_event_loop().run_in_executor(thread_pool, insert)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/upload-template")
-async def upload_template(file: UploadFile = File(...)):
-    if not file.filename.endswith('.docx'):
-        raise HTTPException(status_code=400, detail="Only .docx files supported")
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        safe_filename = f"custom_{timestamp}_{file.filename}"
-        templates_dir = os.path.join(os.path.dirname(__file__), "..", "public", "templates")
-        os.makedirs(templates_dir, exist_ok=True)
-        file_path = os.path.join(templates_dir, safe_filename)
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        return {"filename": safe_filename, "message": "Template uploaded"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/generate-minutes", response_model=MinuteGenerationResponse)
-async def generate_minutes(request: MinutesGenerationRequest):
-    try:
-        template_dir = os.path.join(os.path.dirname(__file__), "..", "public", "templates")
-        if request.template == "custom" and request.customTemplateFilename:
-            template_path = os.path.join(template_dir, request.customTemplateFilename)
-        else:
-            template_path = os.path.join(template_dir, f"{request.template.lower()}_meeting_template.docx")
-        
-        if not os.path.exists(template_path):
-            fallback = os.path.join(template_dir, "q1_meeting_template.docx")
-            if os.path.exists(fallback): template_path = fallback
-            else: raise HTTPException(status_code=404, detail="Template not found")
-            
-        def generate():
-            doc = Document(template_path)
-            # Simplified placeholder logic (same as original basically)
-            placeholders = {
-                '[No. of Meeting]': request.meetingNumber,
-                '[Type of Meeting]': request.meetingType,
-                '[Name of Company]': request.companyName,
-                '[Day of Meeting]': request.meetingDay,
-                '[Date of Meeting]': request.meetingDate,
-                '[Time: COMMENCED AT]': request.meetingStartTime,
-                '[Time: CONCLUDED AT]': request.meetingEndTime,
-                '[Place of Meeting]': request.meetingPlace,
-                '[Chairman]': request.chairmanName
-                # ... other placeholders ...
-            }
-            for p in doc.paragraphs:
-                for k, v in placeholders.items():
-                    if k in p.text: p.text = p.text.replace(k, str(v))
-            
-            try:
-                dt = datetime.strptime(request.meetingDate, '%Y-%m-%d')
-                fmt_date = dt.strftime('%d-%m-%Y')
-            except:
-                fmt_date = request.meetingDate.replace('/', '-')
-            
-            san_co = "".join([c for c in request.companyName if c.isalnum() or c in (' ','-','_')]).strip()
-            filename = f"{san_co} - {request.meetingType} - {fmt_date}.docx"
-            out = os.path.join(template_dir, filename)
-            doc.save(out)
-            
-            conn = get_pg_connection()
-            if conn:
-                try:
-                    cursor = get_pg_cursor(conn)
-                    cursor.execute(f"INSERT INTO {PG_SCHEMA}.generated_minutes (company_name, meeting_type, meeting_date, file_path) VALUES (%s, %s, %s, %s)",
-                                 (request.companyName, request.meetingType, fmt_date, filename))
-                    conn.commit()
-                finally:
-                    conn.close()
-            return filename
-            
-        loop = asyncio.get_event_loop()
-        fn = await loop.run_in_executor(thread_pool, generate)
-        return MinuteGenerationResponse(success=True, message="Minutes generated", filename=fn, download_url=f"/api/generated-minutes/download/{fn}")
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# --- Generated Minutes Endpoints ---
 
 @router.get("/generated-minutes", response_model=MinutesHistoryResponse)
 async def get_history():
@@ -311,7 +142,7 @@ async def get_history():
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"SELECT id, company_name, meeting_type, meeting_date, file_path, created_at FROM {PG_SCHEMA}.generated_minutes ORDER BY created_at DESC")
+                cursor.execute("SELECT id, company_name, meeting_type, meeting_date, file_path, created_at FROM generated_minutes ORDER BY created_at DESC")
                 rows = cursor.fetchall()
                 return [GeneratedMinuteResponse(id=r['id'], company_name=r['company_name'], meeting_type=r['meeting_type'], 
                                               meeting_date=r['meeting_date'], file_path=r['file_path'], created_at=str(r['created_at']), 
@@ -328,22 +159,32 @@ async def delete_minute(id: int):
     try:
         def delete():
             conn = get_pg_connection()
-            if not conn: return
+            if not conn: return False
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"SELECT file_path FROM {PG_SCHEMA}.generated_minutes WHERE id = %s", (id,))
+                cursor.execute("SELECT file_path FROM generated_minutes WHERE id = %s", (id,))
                 row = cursor.fetchone()
                 if row:
                     fp = os.path.join(os.path.dirname(__file__), "..", "public", "templates", row['file_path'])
                     if os.path.exists(fp): os.remove(fp)
-                    cursor.execute(f"DELETE FROM {PG_SCHEMA}.generated_minutes WHERE id = %s", (id,))
+                    cursor.execute("DELETE FROM generated_minutes WHERE id = %s", (id,))
                     conn.commit()
+                    return True
             finally:
                 conn.close()
-        await asyncio.get_event_loop().run_in_executor(thread_pool, delete)
-        return {"success": True}
+            return False
+        success = await asyncio.get_event_loop().run_in_executor(thread_pool, delete)
+        return {"success": success}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/generated-minutes/download/{filename}")
+@router.get("/templates/download/{filename}")
+async def download_file(filename: str):
+    fp = os.path.join(os.path.dirname(__file__), "..", "public", "templates", filename)
+    if not os.path.exists(fp): raise HTTPException(status_code=404)
+    from fastapi.responses import FileResponse
+    return FileResponse(path=fp, filename=filename, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 
 @router.get("/templates")
 async def list_templates():
@@ -356,15 +197,28 @@ async def list_templates():
             fs.append({"name": f, "size": stats.st_size, "lastModified": datetime.fromtimestamp(stats.st_mtime).strftime('%Y-%m-%d %H:%M:%S'), "path": f})
     return {"data": fs, "count": len(fs)}
 
-@router.get("/generated-minutes/download/{filename}")
-@router.get("/templates/download/{filename}")
-async def download_file(filename: str):
-    fp = os.path.join(os.path.dirname(__file__), "..", "public", "templates", filename)
-    if not os.path.exists(fp): raise HTTPException(status_code=404)
-    from fastapi.responses import FileResponse
-    return FileResponse(path=fp, filename=filename, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+# --- Place Endpoints ---
 
-# Compliance endpoints
+@router.get("/places", response_model=PlacesListResponse)
+async def get_places():
+    try:
+        def fetch():
+            conn = get_pg_connection()
+            if not conn: return []
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute("SELECT id, name, address, is_default, created_at FROM places ORDER BY name")
+                rows = cursor.fetchall()
+                return [PlaceResponse(id=r['id'], name=r['name'], address=r['address'], is_default=r['is_default'], created_at=str(r['created_at'])) for r in rows]
+            finally:
+                conn.close()
+        data = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
+        return PlacesListResponse(data=data, count=len(data))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Compliance Endpoints ---
+
 @router.get("/compliances", response_model=CompliancesList)
 async def get_compliances():
     try:
@@ -373,7 +227,7 @@ async def get_compliances():
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"SELECT id, form, description, due_date, status, priority, created_at FROM {PG_SCHEMA}.compliances ORDER BY created_at DESC")
+                cursor.execute("SELECT id, form, description, due_date, status, priority, created_at FROM compliances ORDER BY created_at DESC")
                 rows = cursor.fetchall()
                 return [ComplianceResponse(id=r['id'], form=r['form'], description=r['description'],
                                           due_date=r['due_date'], status=r['status'], priority=r['priority'],
@@ -383,7 +237,6 @@ async def get_compliances():
         data = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
         return CompliancesList(data=data, count=len(data))
     except Exception as e:
-        logger.error(f"Error fetching compliances: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/compliances", response_model=ComplianceResponse)
@@ -395,7 +248,7 @@ async def create_compliance(request: ComplianceCreate):
             cursor = get_pg_cursor(conn)
             try:
                 cursor.execute(
-                    f"INSERT INTO {PG_SCHEMA}.compliances (form, description, due_date, status, priority) VALUES (%s, %s, %s, %s, %s) RETURNING id, form, description, due_date, status, priority, created_at",
+                    "INSERT INTO compliances (form, description, due_date, status, priority) VALUES (%s, %s, %s, %s, %s) RETURNING id, form, description, due_date, status, priority, created_at",
                     (request.form, request.description, request.due_date, request.status, request.priority))
                 row = cursor.fetchone()
                 conn.commit()
@@ -406,10 +259,10 @@ async def create_compliance(request: ComplianceCreate):
                 conn.close()
         return await asyncio.get_event_loop().run_in_executor(thread_pool, insert)
     except Exception as e:
-        logger.error(f"Error creating compliance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Resolution endpoints
+# --- Resolution Endpoints ---
+
 @router.get("/resolutions", response_model=ResolutionTemplatesList)
 async def get_resolutions():
     try:
@@ -418,10 +271,12 @@ async def get_resolutions():
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"SELECT id, template_name, resolution_text, created_at FROM {PG_SCHEMA}.resolution_templates ORDER BY template_name")
+                cursor.execute("SELECT id, template_name, resolution_text, created_at FROM resolution_templates ORDER BY template_name")
                 rows = cursor.fetchall()
                 return [ResolutionTemplateResponse(id=r['id'], template_name=r['template_name'], resolution_text=r['resolution_text'], created_at=str(r['created_at'])) for r in rows]
             finally:
                 conn.close()
-        return ResolutionTemplatesList(data=await asyncio.get_event_loop().run_in_executor(thread_pool, fetch), count=0) # count logic simplified
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+        data = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
+        return ResolutionTemplatesList(data=data, count=len(data))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,1 +1,0 @@
-{"task_id": "57d505a3-3de6-4d1a-b619-a1641bba72e4", "status": "failed", "message": "Failed to generate Meeting Minutes: Error processing with LLM: Could not extract JSON from LLM response", "created_at": "2025-11-20T17:03:15.190684", "started_at": "2025-11-20T17:03:16.756526", "completed_at": "2025-11-20T17:03:18.738264"}

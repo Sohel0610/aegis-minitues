@@ -49,7 +49,7 @@ async def get_bse_alerts_data(limit: int = 10000, offset: int = 0):
                 # First, get the total count of records
                 cursor.execute("""
                     SELECT COUNT(*)
-                    FROM bse.daily_logs
+                    FROM daily_logs
                     WHERE link IS NOT NULL AND link != 'NIL'
                 """)
                 row = cursor.fetchone()
@@ -58,7 +58,7 @@ async def get_bse_alerts_data(limit: int = 10000, offset: int = 0):
                 # Fetch data from daily_logs table with limit and offset
                 cursor.execute("""
                     SELECT id, sr_no, entity_name, link, nature, summary, record_date
-                    FROM bse.daily_logs
+                    FROM daily_logs
                     WHERE link IS NOT NULL AND link != 'NIL'
                     ORDER BY record_date DESC, id ASC
                     LIMIT %s OFFSET %s

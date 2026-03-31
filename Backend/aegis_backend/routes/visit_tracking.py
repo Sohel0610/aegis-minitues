@@ -31,8 +31,8 @@ async def get_visit_count():
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:
-                # Table is tracking.visits
-                cursor.execute(f"SELECT count FROM {DB_SCHEMA}.visits WHERE id = 1")
+                # Table is visits
+                cursor.execute(f"SELECT count FROM visits WHERE id = 1")
                 row = cursor.fetchone()
                 return row['count'] if row else 0
             finally:
@@ -54,10 +54,10 @@ async def increment_visit_count():
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute(f"UPDATE {DB_SCHEMA}.visits SET count = count + 1, last_updated = CURRENT_TIMESTAMP WHERE id = 1 RETURNING count")
+                cursor.execute(f"UPDATE visits SET count = count + 1, last_updated = CURRENT_TIMESTAMP WHERE id = 1 RETURNING count")
                 res = cursor.fetchone()
                 if not res:
-                    cursor.execute(f"INSERT INTO {DB_SCHEMA}.visits (id, count) VALUES (1, 1) RETURNING count")
+                    cursor.execute(f"INSERT INTO visits (id, count) VALUES (1, 1) RETURNING count")
                     res = cursor.fetchone()
                 conn.commit()
                 return res['count'] if res else 0
