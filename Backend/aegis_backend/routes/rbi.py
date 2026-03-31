@@ -37,7 +37,7 @@ async def get_rbi_excel_data(limit: int = 100, offset: int = 0):
     """Get RBI analysis data from PostgreSQL exclusively."""
     try:
         def fetch_rbi_data():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBI'))
             if not conn:
                 logger.error("Failed to connect to PG database for RBI alerts")
                 raise HTTPException(status_code=500, detail="Database connection failed")

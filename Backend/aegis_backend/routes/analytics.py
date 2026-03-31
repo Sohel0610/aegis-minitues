@@ -126,7 +126,7 @@ async def get_rbi_total_count():
     """Get total count of RBI notifications from PostgreSQL."""
     try:
         def fetch():
-            conn = get_pg_connection(os.getenv('PG_DATABASE'))
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBI'))
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:

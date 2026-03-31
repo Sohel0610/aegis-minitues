@@ -37,11 +37,14 @@ class SEBIAnalysisDataResponse(BaseModel):
 @router.get("/sebi-analysis-data", response_model=SEBIAnalysisDataResponse)
 async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
     """Get SEBI analysis data from PostgreSQL exclusively."""
+    # Production Database Selection
+    target_db = os.getenv('POSTGRES_DATABASE_SEBI') or os.getenv('POSTGRES_DATABASE_BSE')
+    
     try:
         def fetch_sebi_data():
-            conn = get_pg_connection()
+            conn = get_pg_connection(target_db)
             if not conn:
-                logger.error("Failed to connect to PG database for SEBI alerts")
+                logger.error(f"Failed to connect to PG database ({target_db}) for SEBI alerts")
                 raise HTTPException(status_code=500, detail="Database connection failed")
             
             cursor = get_pg_cursor(conn)
@@ -54,7 +57,7 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
                 row = cursor.fetchone()
                 total_count = row["count"] if row else 0
                 
-                # Fetch data from excel_summaries table with limit and offset
+                # Fetch data from excel_summaries table
                 cursor.execute("""
                     SELECT id, date_key, row_index, pdf_link, summary, inserted_at
                     FROM excel_summaries
@@ -79,12 +82,9 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
                 
                 return data, total_count
             finally:
-                try:
-                    cursor.close()
-                finally:
-                    conn.close()
+                cursor.close()
+                conn.close()
         
-        # Run the database operation in a thread pool
         loop = asyncio.get_event_loop()
         data, total_count = await loop.run_in_executor(thread_pool, fetch_sebi_data)
         
@@ -95,4 +95,4 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
     except Exception as e:
         logger.error(f"Error fetching SEBI analysis data: {e}")
         if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=500, detail=f"Failed to fetch SEBI analysis data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
