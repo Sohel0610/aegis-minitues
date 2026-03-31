@@ -45,7 +45,7 @@ async def increment_visit_count():
             if conn:
                 try:
                     cursor = get_pg_cursor(conn)
-                    cursor.execute("UPDATE visits SET count = count + 1, last_updated = CURRENT_TIMESTAMP WHERE id = 1")
+                    cursor.execute("UPDATE tracking.visits SET count = count + 1, last_updated = CURRENT_TIMESTAMP WHERE id = 1")
                     conn.commit()
                 finally:
                     conn.close()
@@ -66,7 +66,7 @@ async def get_visit_count():
             if conn:
                 try:
                     cursor = get_pg_cursor(conn)
-                    cursor.execute("SELECT count FROM visits WHERE id = 1")
+                    cursor.execute("SELECT count FROM tracking.visits WHERE id = 1")
                     row = cursor.fetchone()
                     return row["count"] if row else 0
                 finally:
@@ -89,7 +89,7 @@ async def get_places():
             if conn:
                 try:
                     cursor = get_pg_cursor(conn)
-                    cursor.execute("SELECT id, name, address, is_default, created_at FROM places ORDER BY name")
+                    cursor.execute("SELECT id, name, address, is_default, created_at FROM tracking.places ORDER BY name")
                     rows = cursor.fetchall()
                     data = []
                     for row in rows:

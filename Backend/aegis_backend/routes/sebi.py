@@ -52,7 +52,7 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
                 # First, get the total count of records
                 cursor.execute("""
                     SELECT COUNT(*)
-                    FROM excel_summaries
+                    FROM sebi.excel_summaries
                 """)
                 row = cursor.fetchone()
                 total_count = row["count"] if row else 0
@@ -61,7 +61,7 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
                 # We handle potential missing columns or NULLs in the result processing
                 cursor.execute("""
                     SELECT id, date_key, row_index, pdf_link, summary, inserted_at
-                    FROM excel_summaries
+                    FROM sebi.excel_summaries
                     ORDER BY date_key DESC, row_index ASC
                     LIMIT %s OFFSET %s
                 """, (limit, offset))
