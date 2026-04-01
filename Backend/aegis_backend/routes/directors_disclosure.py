@@ -149,7 +149,6 @@ class ImageDeleteResponse(BaseModel):
     message: str
 
 @router.get("/directors-disclosures", response_model=DisclosuresResponse)
-@router.get("/directors-master", response_model=DirectorsMasterResponse) 
 async def get_directors_disclosures():
     """Unified endpoint for master director list and disclosures (PostgreSQL)."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
