@@ -74,7 +74,10 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 @app.on_event("startup")
 async def startup_event():
+    """Startup initialization - restored for healthy LOCAL database."""
     try:
+        logger.info("Initializing LOCAL PostgreSQL Databases for Offline Resilience...")
+        
         from routes.director_data_analysis import init_database
         from routes.rbac import init_rbac_pg_tables
         from routes.user_management import init_rbac_db
@@ -90,9 +93,9 @@ async def startup_event():
 
         from chatbot_minutes.database import init_db as init_chatbot_db
         init_chatbot_db()
-        logger.info("PostgreSQL databases initialized")
+        logger.info("PostgreSQL LOCAL databases initialized successfully")
     except Exception as e:
-        logger.error(f"Startup error: {e}")
+        logger.error(f"Local Startup warning: {e}")
 
 # ---------------------------------------------------------
 # Static File Serving (strictly via FastAPI)
