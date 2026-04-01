@@ -18,12 +18,12 @@ router = APIRouter()
 
 # Model for BSE alerts data
 class SEBIExcelSummary(BaseModel):
-    id: int
-    date_key: str
-    row_index: int
+    id: Optional[int] = None
+    date_key: Optional[str] = None
+    row_index: Optional[int] = None
     pdf_link: Optional[str]
     summary: Optional[str]
-    inserted_at: str
+    inserted_at: Optional[str] = None
     entity_name: Optional[str] = None
     nature: Optional[str] = None
 
