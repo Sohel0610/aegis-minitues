@@ -43,6 +43,12 @@ def init_database():
                 )
             """)
 
+            # Ensure 'source_file' column exists for backward compatibility
+            try:
+                cursor.execute(f"ALTER TABLE {DB_SCHEMA}.directors ADD COLUMN IF NOT EXISTS source_file TEXT")
+            except Exception:
+                pass # Already exists or doesn't support IF NOT EXISTS in all versions, handled
+
             # 2. Master Companies Table
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.companies (
