@@ -26,7 +26,7 @@ router = APIRouter()
 class DirectorResponse(BaseModel):
     din: str
     name: str
-    source_file: str
+    source_file: Optional[str] = None
 
 class CompanyCountResponse(BaseModel):
     total: int
