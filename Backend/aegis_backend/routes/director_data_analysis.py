@@ -69,7 +69,24 @@ def init_database():
                 )
             """)
 
-            # Create document_summaries table (file_path must be unique for UPSERT)
+            # 3. Director Profile Table
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors_profile (
+                    id SERIAL PRIMARY KEY,
+                    din TEXT UNIQUE REFERENCES {DB_SCHEMA}.directors(din),
+                    name_of_director TEXT,
+                    pan TEXT,
+                    address TEXT,
+                    date_of_birth DATE,
+                    qualification TEXT,
+                    experience TEXT,
+                    image_path TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 4. Document Summaries Table
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.document_summaries (
                     id SERIAL PRIMARY KEY,
