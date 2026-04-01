@@ -69,7 +69,7 @@ async def get_all_users_with_roles():
     """Get all users and their assigned roles from PostgreSQL"""
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
             if not conn: raise RuntimeError("DB connection failed")
             cursor = get_pg_cursor(conn)
             try:

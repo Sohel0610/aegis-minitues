@@ -42,7 +42,7 @@ def get_user_permissions_from_db(email: str) -> dict:
     if not email:
         return {"routes": [], "has_any_access": False}
     
-    conn = get_pg_connection()
+    conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
     if not conn:
         logger.error("Failed to connect to PG for permissions")
         return {"routes": [], "has_any_access": False}
@@ -140,7 +140,7 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
         user_perms = get_user_permissions_from_db(email)
         
         # Log to audit (Postgres)
-        conn = get_pg_connection()
+        conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
         if conn:
             try:
                 cursor = get_pg_cursor(conn)
