@@ -148,49 +148,104 @@ class ImageDeleteResponse(BaseModel):
     success: bool
     message: str
 
-# ---------------------------------------------------------
-# DIRECTORS MASTER - PG Endpoints
-# ---------------------------------------------------------
-
-@router.get("/directors-master", response_model=DirectorsMasterResponse)
-async def get_directors_master():
-    """Get all directors exclusively from PostgreSQL."""
+@router.get("/directors-disclosures", response_model=DisclosuresResponse)
+@router.get("/directors-master", response_model=DirectorsMasterResponse) 
+async def get_directors_disclosures():
+    """Unified endpoint for master director list and disclosures (PostgreSQL)."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+    if not pg_conn: raise HTTPException(status_code=500, detail="DB connection failed")
+    cursor = get_pg_cursor(pg_conn)
     try:
-        def fetch_directors():
-            pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
-            if not pg_conn:
-                 raise Exception("Database connection failed")
-            cursor = get_pg_cursor(pg_conn)
-            try:
-                cursor.execute("""
-                    SELECT 
-                        d.id, d.name, d.din, d.created_at,
-                        p.pan
-                    FROM  directors d
-                    LEFT JOIN  directors_profile p ON d.din = p.din
-                    ORDER BY d.name
-                """)
-                rows = cursor.fetchall()
-                directors = []
-                for row in rows:
-                    directors.append({
-                        "id": row["id"],
-                        "name": row["name"],
-                        "din": row["din"],
-                        "pan": row["pan"],
-                        "created_at": row["created_at"].isoformat() if row["created_at"] else datetime.now().isoformat(),
-                    })
-                return directors
-            finally:
-                cursor.close()
-                pg_conn.close()
+        # We fetch from document_summaries as it represents the actual disclosures in the data source tab
+        cursor.execute("""
+            SELECT id, director_name, din, file_path, created_at, updated_at 
+            FROM document_summaries 
+            ORDER BY created_at DESC
+        """)
+        rows = cursor.fetchall()
         
-        loop = asyncio.get_event_loop()
-        directors = await loop.run_in_executor(thread_pool, fetch_directors)
-        return DirectorsMasterResponse(data=directors, count=len(directors))
-    except Exception as e:
-        logger.error(f"Error fetching directors master: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Transform for frontend Disclosure interface expectations
+        data = []
+        for r in rows:
+            data.append({
+                "id": r["id"],
+                "director_name": r["director_name"],
+                "din": r["din"] or "N/A",
+                "disclosure_date": r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "N/A",
+                "disclosure_type": "MBP-1", # Default to MBP-1 for unified registry
+                "file_path": r["file_path"]
+            })
+            
+        return DisclosuresResponse(data=data, count=len(data))
+    finally:
+        cursor.close(); pg_conn.close()
+
+@router.get("/directors-master", response_model=DirectorsMasterResponse) 
+async def get_directors_master():
+    """Get the master list of directors (PostgreSQL)."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+    if not pg_conn: raise HTTPException(status_code=500, detail="DB connection failed")
+    cursor = get_pg_cursor(pg_conn)
+    try:
+        cursor.execute("""
+            SELECT d.id, d.name, d.din, d.created_at, p.pan
+            FROM directors d
+            LEFT JOIN directors_profile p ON d.din = p.din
+            ORDER BY d.name
+        """)
+        rows = cursor.fetchall()
+        data = []
+        for r in rows:
+            data.append({
+                "id": r["id"],
+                "name": r["name"],
+                "din": r["din"] or "N/A",
+                "pan": r["pan"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
+            })
+        return DirectorsMasterResponse(data=data, count=len(data))
+    finally:
+        cursor.close(); pg_conn.close()
+
+@router.get("/directors-disclosures/{id}/summary", response_model=DocumentSummaryResponse)
+async def get_disclosure_summary(id: int):
+    """Fetch individual summary for a disclosure."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+    if not pg_conn: raise HTTPException(status_code=500)
+    cursor = get_pg_cursor(pg_conn)
+    try:
+        cursor.execute("SELECT * FROM document_summaries WHERE id = %s", (id,))
+        row = cursor.fetchone()
+        if not row: raise HTTPException(status_code=404, detail="Disclosure not found")
+        return {**row, "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()}
+    finally:
+        cursor.close(); pg_conn.close()
+
+@router.get("/directors-disclosures/{id}/download")
+async def download_disclosure_file(id: int):
+    """Download the actual disclosure DOCX file."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+    if not pg_conn: raise HTTPException(status_code=500)
+    cursor = get_pg_cursor(pg_conn)
+    try:
+        cursor.execute("SELECT file_path FROM document_summaries WHERE id = %s", (id,))
+        row = cursor.fetchone()
+        if not row: raise HTTPException(status_code=404)
+        
+        fname = os.path.basename(row["file_path"])
+        search_paths = [
+            os.path.join(os.path.dirname(__file__), "..", "uploads", fname),
+            os.path.join(os.path.dirname(__file__), "..", "public", "Directors Discloser Output", fname),
+            os.path.join(os.path.dirname(__file__), "..", "public", "templates", fname)
+        ]
+        
+        for p in search_paths:
+            if os.path.exists(p):
+                return FileResponse(path=p, filename=fname, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        
+        raise HTTPException(status_code=404, detail="Physical file not found on server")
+    finally:
+        cursor.close(); pg_conn.close()
 
 @router.post("/directors-master", response_model=DirectorMasterResponse)
 async def create_director(request: DirectorCreateRequest):
