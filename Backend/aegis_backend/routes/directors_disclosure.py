@@ -166,16 +166,24 @@ async def get_directors_disclosures():
         # Transform for frontend Disclosure interface expectations
         data = []
         for r in rows:
+            # Safe date extraction regardless of type (datetime or str)
+            d_date = "N/A"
+            if r["created_at"]:
+                d_date = str(r["created_at"])[:10]
+            
             data.append({
                 "id": r["id"],
                 "director_name": r["director_name"],
                 "din": r["din"] or "N/A",
-                "disclosure_date": r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "N/A",
+                "disclosure_date": d_date,
                 "disclosure_type": "MBP-1", # Default to MBP-1 for unified registry
                 "file_path": r["file_path"]
             })
             
         return DisclosuresResponse(data=data, count=len(data))
+    except Exception as e:
+        logger.error(f"Error in disclosures fetch: {e}")
+        return DisclosuresResponse(data=[], count=0)
     finally:
         cursor.close(); pg_conn.close()
 
