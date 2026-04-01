@@ -352,24 +352,25 @@ async def get_disclosure_analytics():
         raise HTTPException(status_code=500, detail="DB connection failed")
     cursor = get_pg_cursor(pg_conn)
     try:
-        cursor.execute("SELECT COUNT(*) FROM  document_summaries")
-        total = int(cursor.fetchone()[0])
+        cursor.execute("SELECT COUNT(*) AS total_count FROM document_summaries")
+        res = cursor.fetchone()
+        total = int(res["total_count"]) if res else 0
         
-        cursor.execute("SELECT 'MBP-1' as type, COUNT(*) as count FROM  document_summaries group by 1")
+        cursor.execute("SELECT 'MBP-1' as type, COUNT(*) as count FROM document_summaries group by 1")
         by_type = [{"label": r["type"], "value": int(r["count"])} for r in cursor.fetchall()]
         
         # Best effort monthly/director stats from document_summaries
         cursor.execute("""
-            SELECT TO_CHAR(created_at, 'Mon YYYY') as label, COUNT(*) as value 
-            FROM  document_summaries 
+            SELECT TO_CHAR(created_at, 'Mon YYYY') as label, COUNT(*) as count 
+            FROM document_summaries 
             GROUP BY 1 ORDER BY MIN(created_at)
         """)
         by_month = [{"label": r["label"], "value": int(r["count"])} for r in cursor.fetchall()]
         
         cursor.execute("""
-            SELECT director_name as label, COUNT(*) as value 
-            FROM  document_summaries 
-            GROUP BY 1 ORDER BY value DESC LIMIT 10
+            SELECT director_name as label, COUNT(*) as count 
+            FROM document_summaries 
+            GROUP BY 1 ORDER BY count DESC LIMIT 10
         """)
         by_director = [{"label": r["label"], "value": int(r["count"])} for r in cursor.fetchall()]
         
