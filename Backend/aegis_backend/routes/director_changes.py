@@ -41,8 +41,8 @@ def init_db():
         if pg_conn:
             pg_conn.close()
 
-# Initialize on import
-init_db()
+# Removed auto-initialization on import to prevent hangs when DB is unreachable
+# init_db()
 
 # Models
 class ChangeLog(BaseModel):
