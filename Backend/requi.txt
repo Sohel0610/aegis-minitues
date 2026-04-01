@@ -12,3 +12,8 @@ numpy>=1.26.4
 pandas>=2.2.2
 python-jose>=3.3.0
 requests>=2.31.0
+python-docx
+python-multipart
+psycopg2
+jwt
+#pip install "pydantic[email]"
