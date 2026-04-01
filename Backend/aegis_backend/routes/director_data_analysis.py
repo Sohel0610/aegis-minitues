@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 # Database schema in PostgreSQL (Unified Master Schema)
-DB_SCHEMA = "directors_master"
+DB_SCHEMA = "public"
 
 def init_database():
     """Verify the PostgreSQL database schema and tables (Unified)."""
@@ -30,7 +30,7 @@ def init_database():
             cursor = get_pg_cursor(pg_conn)
 
             # Ensure schema exists (Central Namespace)
-            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
+            cursor.execute( "SELECT 1")
 
             # 1. Master Directors Table (Unified with routes.directors_disclosure)
             cursor.execute(f"""
