@@ -85,7 +85,7 @@ class CompliancesList(BaseModel):
 
 def init_minutes_pg():
     """Initialize minutes tables in PostgreSQL."""
-    conn = get_pg_connection()
+    conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
     if conn:
         try:
             cursor = get_pg_cursor(conn)
@@ -106,15 +106,15 @@ def init_minutes_pg():
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS resolution_templates (
                     id SERIAL PRIMARY KEY,
-                    template_name TEXT,
+                    template_name TEXT UNIQUE,
                     resolution_text TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
-            # Compliance Table
+            
+            # Compliance Tracking
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS compliances (
+                CREATE TABLE IF NOT EXISTS compliance_records (
                     id SERIAL PRIMARY KEY,
                     form TEXT,
                     description TEXT,
@@ -124,34 +124,35 @@ def init_minutes_pg():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
             conn.commit()
-            logger.info("Minutes PostgreSQL tables initialized")
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"Minutes init failed: {e}")
+            logger.info("Minutes tables initialized successfully")
         finally:
             conn.close()
 
-# --- Generated Minutes Endpoints ---
+# --- API Endpoints ---
 
-@router.get("/generated-minutes", response_model=MinutesHistoryResponse)
-async def get_history():
+@router.post("/minutes/history", response_model=MinutesHistoryResponse)
+async def get_minutes_history_route():
+    """Get history of generated minutes from PostgreSQL."""
     try:
         def fetch():
-            conn = get_pg_connection()
-            if not conn: return []
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn: return [], 0
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("SELECT id, company_name, meeting_type, meeting_date, file_path, created_at FROM generated_minutes ORDER BY created_at DESC")
+                cursor.execute("SELECT id, company_name, meeting_type, meeting_date, file_path, created_at FROM generated_minutes ORDER BY id DESC")
                 rows = cursor.fetchall()
-                return [GeneratedMinuteResponse(id=r['id'], company_name=r['company_name'], meeting_type=r['meeting_type'], 
-                                              meeting_date=r['meeting_date'], file_path=r['file_path'], created_at=str(r['created_at']), 
-                                              download_url=f"/api/generated-minutes/download/{r['file_path']}") for r in rows]
+                data = [GeneratedMinuteResponse(**{k: str(v) if k in ('meeting_date', 'created_at') else v for k, v in dict(r).items()}) for r in rows]
+                return data, len(data)
             finally:
                 conn.close()
-        h = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
-        return MinutesHistoryResponse(data=h, count=len(h))
+        
+        loop = asyncio.get_event_loop()
+        data, count = await loop.run_in_executor(thread_pool, fetch)
+        return MinutesHistoryResponse(data=data, count=count)
     except Exception as e:
+        logger.error(f"Error fetching history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/generated-minutes/{id}")

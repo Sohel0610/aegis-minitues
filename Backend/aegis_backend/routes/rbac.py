@@ -95,7 +95,7 @@ class ReviewAccessRequestRequest(BaseModel):
 
 def init_rbac_pg_tables():
     """Verify and initialize the RBAC tables in PostgreSQL."""
-    conn = get_pg_connection()
+    conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
     if conn:
         try:
             cursor = get_pg_cursor(conn)
