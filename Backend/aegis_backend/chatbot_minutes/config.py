@@ -1,10 +1,28 @@
 import os
 from pydantic_settings import BaseSettings
 from typing import List
+import urllib.parse
 
 class ChatbotSettings(BaseSettings):
-    # Database - Default to SQLite in the Backend directory
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://az10psqldmrcbtp01.postgres.database.azure.com:5432/chatbot_minutes")
+    # --- Dynamic Database URL Construction ---
+    # We build the URL from individual POSTGRES_ variables to avoid manual URL encoding errors.
+    @property
+    def DATABASE_URL(self) -> str:
+        # Check for individual components first (Production Azure style)
+        host = os.getenv("POSTGRES_HOST")
+        user = os.getenv("POSTGRES_USER")
+        password = os.getenv("POSTGRES_PASSWORD")
+        database = os.getenv("POSTGRES_DATABASE")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        sslmode = os.getenv("POSTGRES_SSLMODE", "require")
+
+        if all([host, user, password, database]):
+            # Auto-encode the password to handle special characters safely
+            safe_password = urllib.parse.quote_plus(password)
+            return f"postgresql://{user}:{safe_password}@{host}:{port}/{database}?sslmode={sslmode}"
+        
+        # Fallback to hardcoded DATABASE_URL or Local SQLite (Legacy/Dev style)
+        return os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5436/chatbot_minutes")
     
     # Azure OpenAI
     AZURE_OPENAI_ENDPOINT: str | None = os.getenv("AZURE_OPENAI_ENDPOINT")
