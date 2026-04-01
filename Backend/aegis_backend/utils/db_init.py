@@ -44,7 +44,7 @@ def init_postgres_tracking():
                 cursor.execute("""
                     INSERT INTO places (name, address, is_default)
                     VALUES (%s, %s, TRUE)
-                """, ('Adani Corporate House', 'Shantigram, Near Vaishno Devi Circle, Ahmedabad', True))
+                """, ('Adani Corporate House', 'Shantigram, Near Vaishno Devi Circle, Ahmedabad'))
             
             conn.commit()
             logger.info("Tracking PostgreSQL public schema initialized successfully")

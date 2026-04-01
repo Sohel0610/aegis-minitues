@@ -28,7 +28,7 @@ def _resolve_id(conn, table, name_col, name_val):
 # ── Function wrappers using unified connection from pgsql_service ────
 
 def fetch_filter_options() -> Dict[str, Any]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return {"companies": [], "depositories": [], "batches": []}
         cur = get_pg_cursor(conn)
         cur.execute("SELECT company_name FROM companies ORDER BY company_name")
@@ -44,14 +44,14 @@ def fetch_filter_options() -> Dict[str, Any]:
         return {"companies": companies, "depositories": depositories, "batches": batches}
 
 def fetch_companies() -> List[Dict[str, Any]]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return []
         cur = get_pg_cursor(conn)
         cur.execute("SELECT id, company_name FROM companies ORDER BY company_name")
         return [dict(r) for r in cur.fetchall()]
 
 def fetch_batches() -> List[Dict[str, Any]]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return []
         cur = get_pg_cursor(conn)
         cur.execute("SELECT id, batch_name, older_date, latest_date FROM result_batches ORDER BY latest_date DESC")
@@ -62,14 +62,14 @@ def fetch_batches() -> List[Dict[str, Any]]:
         return res
 
 def fetch_depository_types() -> List[Dict[str, Any]]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return []
         cur = get_pg_cursor(conn)
         cur.execute("SELECT id, type_name FROM depository_types ORDER BY type_name")
         return [dict(r) for r in cur.fetchall()]
 
 def fetch_summary(company_name=None, batch_name=None, depository_type=None) -> List[Dict[str, Any]]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return []
         c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
         b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
@@ -84,7 +84,7 @@ def fetch_summary(company_name=None, batch_name=None, depository_type=None) -> L
         return [dict(r) for r in cur.fetchall()]
 
 def fetch_record_counts(company_name=None, batch_name=None, depository_type=None) -> Dict[str, int]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return {"TOTAL": 0}
         c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
         b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
@@ -100,7 +100,7 @@ def fetch_record_counts(company_name=None, batch_name=None, depository_type=None
         return {"ADDED": r['added'] or 0, "REMOVED": r['removed'] or 0, "CHANGED": r['changed'] or 0, "UNCHANGED": r['unchanged'] or 0, "TOTAL": r['total'] or 0}
 
 def fetch_records(status=None, company_name=None, batch_name=None, depository_type=None, limit=15, offset=0, cursor=None) -> Dict[str, Any]:
-    with get_pg_connection(os.getenv('DB_NAME')) as conn:
+    with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return {"records": []}
         c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
         b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)

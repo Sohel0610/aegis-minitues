@@ -24,7 +24,7 @@ def init_db():
             
             # Create changes table in directors_master schema
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS directors_master.director_changes (
+                CREATE TABLE IF NOT EXISTS  director_changes (
                     id SERIAL PRIMARY KEY,
                     director_id INTEGER,
                     director_name TEXT,
@@ -66,7 +66,7 @@ def log_director_change(director_id: Optional[int], director_name: str, change_t
             cursor = get_pg_cursor(pg_conn)
             
             cursor.execute('''
-                INSERT INTO directors_master.director_changes (director_id, director_name, change_type, description, changed_at)
+                INSERT INTO  director_changes (director_id, director_name, change_type, description, changed_at)
                 VALUES (%s, %s, %s, %s, %s)
             ''', (director_id, director_name, change_type, description, datetime.now()))
             
@@ -87,7 +87,7 @@ async def get_director_changes():
         if pg_conn:
             cursor = get_pg_cursor(pg_conn)
             
-            cursor.execute("SELECT * FROM directors_master.director_changes ORDER BY changed_at DESC")
+            cursor.execute("SELECT * FROM  director_changes ORDER BY changed_at DESC")
             rows = cursor.fetchall()
             
             changes = []

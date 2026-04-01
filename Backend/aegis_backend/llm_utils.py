@@ -101,15 +101,14 @@ def generate_summary(content, max_tokens=1000):
     return generate_summary_with_azure_openai(content, max_tokens)
 
 def save_summary_to_db(director_name, din, file_path, full_text, summary):
-    """Save full text and summary to PostgreSQL exclusively."""
-    pg_conn = get_pg_connection()
+    """Save full text and summary to PostgreSQL exclusively in the Director database."""
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            schema = "directors_data"
-            # Postgres UPSERT
-            cursor.execute(f"""
-                INSERT INTO {schema}.document_summaries (director_name, din, file_path, full_text, summary, updated_at)
+            # Remove schema prefix for unified architecture
+            cursor.execute("""
+                INSERT INTO document_summaries (director_name, din, file_path, full_text, summary, updated_at)
                 VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (file_path)
                 DO UPDATE SET
@@ -131,11 +130,11 @@ def save_summary_to_db(director_name, din, file_path, full_text, summary):
 
 def get_summary_from_db(file_path):
     """Retrieve summary from PostgreSQL."""
-    pg_conn = get_pg_connection()
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute("SELECT summary FROM directors_data.document_summaries WHERE file_path = %s", (file_path,))
+            cursor.execute("SELECT summary FROM document_summaries WHERE file_path = %s", (file_path,))
             res = cursor.fetchone()
             return res["summary"] if res else None
         finally:

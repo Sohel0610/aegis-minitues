@@ -59,7 +59,7 @@ def get_family_info_for_director(director_name: str):
         if pg_conn:
             cursor = get_pg_cursor(pg_conn)
             # Get all family information records from PG for matching
-            cursor.execute("SELECT director_name FROM family_information.director_family ORDER BY director_name")
+            cursor.execute("SELECT director_name FROM  director_family ORDER BY director_name")
             family_rows = cursor.fetchall()
             family_list = [row["director_name"] for row in family_rows]
 
@@ -77,7 +77,7 @@ def get_family_info_for_director(director_name: str):
                         director_name, section_2_77_i, section_2_77_ii, section_2_77_iii, 
                         father, mother, son, sons_wife, daughter, daughters_husband, brother, sister,
                         father_pan, mother_pan, father_pan_file, mother_pan_file, is_submitted
-                    FROM family_information.director_family 
+                    FROM  director_family 
                     WHERE director_name = %s
                 """, (best_match,))
 
@@ -133,7 +133,7 @@ def get_all_directors_with_family_info():
         pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
         if pg_conn:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute("SELECT name FROM directors_master.directors ORDER BY name")
+            cursor.execute("SELECT name FROM  directors ORDER BY name")
             directors_rows = cursor.fetchall()
 
             directors_with_family = []
@@ -207,13 +207,13 @@ async def update_director_family_info(director_name: str, family_info: Dict[str,
                     cursor = get_pg_cursor(pg_conn)
 
                     cursor.execute(
-                        "SELECT director_name FROM family_information.director_family WHERE director_name = %s",
+                        "SELECT director_name FROM  director_family WHERE director_name = %s",
                         (director_name,),
                     )
                     exists = cursor.fetchone()
                     if not exists:
                         cursor.execute(
-                            "INSERT INTO family_information.director_family (director_name) VALUES (%s)",
+                            "INSERT INTO  director_family (director_name) VALUES (%s)",
                             (director_name,),
                         )
 
@@ -229,7 +229,7 @@ async def update_director_family_info(director_name: str, family_info: Dict[str,
                     if update_fields:
                         params.append(director_name)
                         cursor.execute(
-                            f"UPDATE family_information.director_family SET {', '.join(update_fields)} WHERE director_name = %s",
+                            f"UPDATE  director_family SET {', '.join(update_fields)} WHERE director_name = %s",
                             params,
                         )
 
@@ -250,17 +250,17 @@ async def update_director_family_info(director_name: str, family_info: Dict[str,
                             continue
                         details_col, pan_col, pan_file_col = column_map[rel]
                         cursor.execute(
-                            f"UPDATE family_information.director_family SET {details_col} = %s WHERE director_name = %s",
+                            f"UPDATE  director_family SET {details_col} = %s WHERE director_name = %s",
                             ((member or {}).get("details"), director_name),
                         )
                         if pan_col:
                             cursor.execute(
-                                f"UPDATE family_information.director_family SET {pan_col} = %s WHERE director_name = %s",
+                                f"UPDATE  director_family SET {pan_col} = %s WHERE director_name = %s",
                                 ((member or {}).get("pan"), director_name),
                             )
                         if pan_file_col:
                             cursor.execute(
-                                f"UPDATE family_information.director_family SET {pan_file_col} = %s WHERE director_name = %s",
+                                f"UPDATE  director_family SET {pan_file_col} = %s WHERE director_name = %s",
                                 ((member or {}).get("pan_file"), director_name),
                             )
 

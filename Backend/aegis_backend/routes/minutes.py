@@ -8,7 +8,11 @@ import logging
 import asyncio
 import concurrent.futures
 from datetime import datetime
-from docx import Document
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
 import shutil
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
@@ -84,8 +88,9 @@ class CompliancesList(BaseModel):
 # --- Database Init ---
 
 def init_minutes_pg():
-    """Initialize minutes tables in PostgreSQL."""
-    conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+    """Initialize minutes tables in PostgreSQL public schema."""
+    target_db = os.getenv('POSTGRES_DATABASE_MINUTES')
+    conn = get_pg_connection(target_db)
     if conn:
         try:
             cursor = get_pg_cursor(conn)
@@ -114,7 +119,7 @@ def init_minutes_pg():
             
             # Compliance Tracking
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS compliance_records (
+                CREATE TABLE IF NOT EXISTS compliances (
                     id SERIAL PRIMARY KEY,
                     form TEXT,
                     description TEXT,
@@ -124,16 +129,30 @@ def init_minutes_pg():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Places Table (Local to minutes if needed, or shared)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS places (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT,
+                    address TEXT,
+                    is_default BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
             conn.commit()
-            logger.info("Minutes tables initialized successfully")
+            logger.info(f"Minutes tables initialized successfully in {target_db or 'default'}")
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Minutes init failed: {e}")
         finally:
             conn.close()
 
 # --- API Endpoints ---
 
-@router.post("/minutes/history", response_model=MinutesHistoryResponse)
-async def get_minutes_history_route():
+@router.get("/generated-minutes", response_model=MinutesHistoryResponse)
+async def get_history():
     """Get history of generated minutes from PostgreSQL."""
     try:
         def fetch():
@@ -143,7 +162,15 @@ async def get_minutes_history_route():
             try:
                 cursor.execute("SELECT id, company_name, meeting_type, meeting_date, file_path, created_at FROM generated_minutes ORDER BY id DESC")
                 rows = cursor.fetchall()
-                data = [GeneratedMinuteResponse(**{k: str(v) if k in ('meeting_date', 'created_at') else v for k, v in dict(r).items()}) for r in rows]
+                data = [GeneratedMinuteResponse(
+                    id=r['id'], 
+                    company_name=r['company_name'], 
+                    meeting_type=r['meeting_type'], 
+                    meeting_date=str(r['meeting_date']), 
+                    file_path=r['file_path'], 
+                    created_at=str(r['created_at']),
+                    download_url=f"/api/generated-minutes/download/{r['file_path']}"
+                ) for r in rows]
                 return data, len(data)
             finally:
                 conn.close()
@@ -155,11 +182,16 @@ async def get_minutes_history_route():
         logger.error(f"Error fetching history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/minutes/history", response_model=MinutesHistoryResponse)
+async def get_minutes_history_post():
+    """Fallback for POST history request."""
+    return await get_history()
+
 @router.delete("/generated-minutes/{id}")
 async def delete_minute(id: int):
     try:
         def delete():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: return False
             cursor = get_pg_cursor(conn)
             try:
@@ -204,7 +236,7 @@ async def list_templates():
 async def get_places():
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
@@ -224,7 +256,7 @@ async def get_places():
 async def get_compliances():
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
@@ -244,7 +276,7 @@ async def get_compliances():
 async def create_compliance(request: ComplianceCreate):
     try:
         def insert():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: raise RuntimeError("DB connection failed")
             cursor = get_pg_cursor(conn)
             try:
@@ -268,7 +300,7 @@ async def create_compliance(request: ComplianceCreate):
 async def get_resolutions():
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
