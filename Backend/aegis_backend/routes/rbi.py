@@ -20,11 +20,11 @@ router = APIRouter()
 # Model for RBI data summaries
 class SEBIExcelSummary(BaseModel):
     id: Optional[int] = None
-    date_key: str
+    date_key: Optional[str] = None
     row_index: Optional[int] = None
     pdf_link: Optional[str] = None
     summary: Optional[str] = None
-    inserted_at: str
+    inserted_at: Optional[str] = None
 
 # Response model for RBI analysis data
 class SEBIAnalysisDataResponse(BaseModel):
