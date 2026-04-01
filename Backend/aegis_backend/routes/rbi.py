@@ -47,7 +47,7 @@ async def get_rbi_excel_data(limit: int = 100, offset: int = 0):
                 # First, get the total count
                 cursor.execute("""
                     SELECT COUNT(*) 
-                    FROM rbi.master_summaries 
+                    FROM master_summaries 
                     WHERE NOT (pdf_link = 'NIL' AND summary = 'NIL')
                 """)
                 row = cursor.fetchone()
@@ -56,7 +56,7 @@ async def get_rbi_excel_data(limit: int = 100, offset: int = 0):
                 # Fetch data
                 cursor.execute("""
                     SELECT id, run_date, pdf_link, summary, created_at 
-                    FROM rbi.master_summaries 
+                    FROM master_summaries 
                     WHERE NOT (pdf_link = 'NIL' AND summary = 'NIL')
                     ORDER BY run_date DESC, id ASC 
                     LIMIT %s OFFSET %s

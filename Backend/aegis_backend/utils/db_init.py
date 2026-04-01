@@ -1,20 +1,19 @@
 # Database Initialization Utilities
 # Consolidating visits and places into PostgreSQL for production.
 import logging
+import os
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 
-# Schema for tracking
-DB_SCHEMA = "tracking"
-
 def init_postgres_tracking():
-    """Initialize visits and places in PostgreSQL."""
-    conn = get_pg_connection()
+    """Initialize visits and places in PostgreSQL's public schema."""
+    # Use dedicated visits database
+    conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_VISITS'))
     if conn:
         try:
             cursor = get_pg_cursor(conn)
-            # Visits table
+            # Visits table in public schema
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS visits (
                     id SERIAL PRIMARY KEY,
@@ -28,7 +27,7 @@ def init_postgres_tracking():
             if cursor.fetchone()["count"] == 0:
                 cursor.execute("INSERT INTO visits (id, count) VALUES (1, 0)")
             
-            # Places table
+            # Places table in public schema
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS places (
                     id SERIAL PRIMARY KEY,
@@ -48,12 +47,9 @@ def init_postgres_tracking():
                 """, ('Adani Corporate House', 'Shantigram, Near Vaishno Devi Circle, Ahmedabad', True))
             
             conn.commit()
-            logger.info("Tracking PostgreSQL schema initialized successfully")
+            logger.info("Tracking PostgreSQL public schema initialized successfully")
         except Exception as e:
             conn.rollback()
             logger.error(f"Tracking init failed: {e}")
         finally:
             conn.close()
-
-# Migration: No more SQLite calls on import
-# We will call this from fastapi_server.py
