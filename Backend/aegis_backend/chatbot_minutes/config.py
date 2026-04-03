@@ -2,6 +2,9 @@ import os
 from pydantic_settings import BaseSettings
 from typing import List
 import urllib.parse
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 class ChatbotSettings(BaseSettings):
     # --- Dynamic Database URL Construction ---
@@ -12,7 +15,7 @@ class ChatbotSettings(BaseSettings):
         host = os.getenv("POSTGRES_HOST")
         user = os.getenv("POSTGRES_USER")
         password = os.getenv("POSTGRES_PASSWORD")
-        database = os.getenv("POSTGRES_DATABASE")
+        database = os.getenv("POSTGRES_DATABASE_MINUTES") or os.getenv("POSTGRES_DATABASE")
         port = os.getenv("POSTGRES_PORT", "5432")
         sslmode = os.getenv("POSTGRES_SSLMODE", "require")
 

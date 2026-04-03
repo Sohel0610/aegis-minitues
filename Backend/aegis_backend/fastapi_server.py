@@ -43,10 +43,11 @@ from routes import (
     health, excel, bse, sebi, rbi, analytics, admin, directors,
     directors_disclosure, director_analysis, minutes, ai_assistant,
     visit_tracking, insider_trading, chat, auth, user_management, rbac,
-    director_family_info, director_changes
+    director_family_info, director_changes, interactive
 )
 
 from chatbot_minutes.router import router as chatbot_minutes_router
+
 
 app.include_router(health.router, prefix="/api")
 app.include_router(excel.router, prefix="/api")
@@ -68,7 +69,8 @@ app.include_router(user_management.router, prefix="/api")
 app.include_router(rbac.router, prefix="/api")
 app.include_router(director_family_info.router, prefix="/api")
 app.include_router(director_changes.router, prefix="/api")
-app.include_router(chatbot_minutes_router)
+app.include_router(chatbot_minutes_router,  prefix="/api")
+app.include_router(interactive.router,  prefix="/api")
 
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 

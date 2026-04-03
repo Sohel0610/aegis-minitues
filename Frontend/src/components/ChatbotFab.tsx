@@ -1,132 +1,106 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { X, Maximize2, Minimize2, User, Bot } from "lucide-react";
-
-type Channel = "BSE" | "SEBI" | "RBI" | "Minutes" | "All";
+import { X, Maximize2, Minimize2, TrendingUp } from "lucide-react";
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { InteractiveComparisonChart } from "@/components/InteractiveComparisonChart";
 
 type Msg = {
   role: "user" | "bot";
   text?: string;
   structured?: any;
+  chart_config?: any;
+  database_detected?: string;  // Which database was used
   ts: number;
 };
 
-const prompts: Record<Channel, string[]> = {
-  BSE: ["Latest alerts", "Top gainers", "Sector trends"],
-  SEBI: ["Weekly notifications", "Compliance highlights", "Investor updates"],
-  RBI: ["Policy rates", "Regulatory updates", "Compliance status"],
-  Minutes: ["What was discussed in the last meeting?", "List all action items", "Who attended the board meeting?"],
-  All: ["Latest updates", "Search all", "Summarize news"]
-};
+const CHART_COLORS = ["#0B74B0", "#75479C", "#BD3861", "#10B981", "#F59E0B"];
 
 export default function ChatbotFab() {
   const [open, setOpen] = useState(false);
-  const [channel, setChannel] = useState<Channel>("All");
   const [input, setInput] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const [messages, setMessages] = useState<Record<Channel, Msg[]>>({
-    BSE: [],
-    SEBI: [],
-    RBI: [],
-    Minutes: [],
-    All: []
-  });
-  const [pendingQuery, setPendingQuery] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Msg[]>([]);  // Single message array, no channels
+  const [isLoading, setIsLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const activeMsgs = useMemo(() => messages[channel], [messages, channel]);
+  // Interactive chart state
+  const [showCompanySelector, setShowCompanySelector] = useState<number | null>(null); // Track which chart
+  const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
+  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
+  const [interactiveChartData, setInteractiveChartData] = useState<{ labels: string[], values: number[] } | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMsgs.length, open, channel]);
+  }, [messages.length, open]);
 
-  const send = async (text?: string, dbOverride?: Channel) => {
-    const content = (text ?? input).trim();
-    if (!content) return;
-
-    const targetChannel = dbOverride || channel;
-
-    // Support for minutes chatbot
-    if (targetChannel === "Minutes") {
-      // Optimistically add user message
-      const u: Msg = { role: "user", text: content, ts: Date.now() };
-      setMessages((prev) => ({ ...prev, [targetChannel]: [...prev[targetChannel], u] }));
-      setInput("");
-
-      let botMsgIndex = -1;
-      setMessages((prev) => {
-        const next = [...prev[targetChannel], { role: "bot" as const, text: "", ts: Date.now() + 1 }];
-        botMsgIndex = next.length - 1;
-        return { ...prev, [targetChannel]: next };
-      });
-
-      try {
-        const res = await fetch("/api/minutes-chatbot/query", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: content,
-            session_id: `session_minutes`,
-          }),
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const data = await res.json();
-
-        setMessages((prev) => {
-          const arr = [...prev[targetChannel]];
-          if (botMsgIndex >= 0 && arr[botMsgIndex]) {
-            arr[botMsgIndex] = { ...arr[botMsgIndex], text: data.answer };
-          }
-          return { ...prev, [targetChannel]: arr };
-        });
-      } catch (e) {
-        setMessages((prev) => {
-          const arr = [...prev[targetChannel]];
-          if (botMsgIndex >= 0 && arr[botMsgIndex]) {
-            arr[botMsgIndex] = { ...arr[botMsgIndex], text: "Sorry, an error occurred while contacting the Minutes Assistant." };
-          }
-          return { ...prev, [targetChannel]: arr };
-        });
-      }
-      return;
+  const parseSampleQuestions = (text?: string) => {
+    if (!text || !text.includes("Sample questions you can ask:")) {
+      return { mainText: text || "", sampleQuestions: [] as string[] };
     }
 
+    const [mainText, sampleBlock = ""] = text.split("Sample questions you can ask:");
+    const sampleQuestions = sampleBlock
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replace(/^\d+\.\s*/, "").trim())
+      .filter(Boolean);
 
-    const db = targetChannel === "All" ? "all" : targetChannel.toLowerCase();
+    return { mainText: mainText.trim(), sampleQuestions };
+  };
 
+  // Auto-detect database from query
+  const detectDatabase = (query: string): string => {
+    const lowerQuery = query.toLowerCase();
 
-    // Optimistically add user message
+    // Check for explicit database mentions
+    if (lowerQuery.includes("bse") || lowerQuery.includes("stock") || lowerQuery.includes("equity")) {
+      return "bse";
+    }
+    if (lowerQuery.includes("sebi") || lowerQuery.includes("securities") || lowerQuery.includes("regulatory")) {
+      return "sebi";
+    }
+    if (lowerQuery.includes("rbi") || lowerQuery.includes("reserve bank") || lowerQuery.includes("monetary")) {
+      return "rbi";
+    }
+
+    // Default to 'all' if not specified
+    return "all";
+  };
+
+  const send = async (text?: string) => {
+    const content = (text ?? input).trim();
+    if (!content || isLoading) return;
+
     const u: Msg = { role: "user", text: content, ts: Date.now() };
-    setMessages((prev) => ({ ...prev, [targetChannel]: [...prev[targetChannel], u] }));
+    setMessages((prev) => [...prev, u]);
     setInput("");
+    setIsLoading(true);
 
     try {
-      let botIndex = -1;
-      setMessages((prev) => {
-        const next = [...prev[targetChannel], { role: "bot", text: "", ts: Date.now() + 1 }];
-        botIndex = next.length - 1;
-        return { ...prev, [targetChannel]: next };
-      });
+      // Auto-detect database from user query
+      const detectedDb = detectDatabase(content);
+
+      // Add loading message
+      const loadingMsg: Msg = {
+        role: "bot",
+        text: "Analyzing your query...",
+        ts: Date.now() + 1
+      };
+      setMessages((prev) => [...prev, loadingMsg]);
 
       const normalize = (s: string) =>
         (s || "")
           .replace(/Â/g, "")
-          .replace(/â€¢/g, "-")
-          .replace(/â€“/g, "-")
-          .replace(/â€”/g, "-")
-          .replace(/•/g, "-")
-          .replace(/–/g, "-")
-          .replace(/—/g, "-")
-          .replace(/â€˜/g, "‘")
-          .replace(/â€™/g, "’")
-          .replace(/â€œ/g, "“")
-          .replace(/â€ /g, "”")
+          .replace(/â€¢|•/g, "-")
+          .replace(/â€"|–|—/g, "-")
+          .replace(/â€˜/g, "'")
+          .replace(/â€™/g, "'")
+          .replace(/â€œ/g, "\"")
+          .replace(/â€/g, "\"")
           .replace(/â€¦/g, "…");
 
       const res = await fetch("/api/chat/message", {
@@ -134,335 +108,505 @@ export default function ChatbotFab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: content,
-          session_id: `session_${db}`,
-          database: db,
+          session_id: "session_unified",
+          database: detectedDb,  // Send detected database
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-      const structured = data.structured ?? null;
 
-      // Check for clarification needed
-      if (structured && structured.response_type === "clarification_needed") {
-        setPendingQuery(content);
-      } else {
-        setPendingQuery(null);
-      }
-
+      // Remove loading message and add actual response
       setMessages((prev) => {
-        const arr = [...prev[targetChannel]];
-        if (botIndex >= 0 && arr[botIndex]) {
-          // If response text is empty but we have a structured message (like clarification), use that description
-          const responseText = normalize(data.response ?? "") || (structured?.message ?? "");
-          arr[botIndex] = { ...arr[botIndex], text: responseText, structured };
+        const withoutLoading = prev.slice(0, -1);
+
+        // Parse backend response format
+        let structured = null;
+        let chart_config = null;
+        let responseText = "";
+
+        // CRITICAL FIX: Backend returns table/chart data in data.structured field!
+        const responseData = data.structured || data;
+
+        // Prefer nested chart_config from ChatResponse when present.
+        if (responseData.chart_config) {
+          chart_config = {
+            chart_type: responseData.chart_config.chart_type || "bar",
+            title: responseData.chart_config.title || "Chart",
+            data: responseData.chart_config.data || { labels: [], values: [] }
+          };
+          responseText = responseData.response || data.response || responseData.chart_config.title || "";
         }
-        return { ...prev, [targetChannel]: arr };
+        // Handle backend-native chart response: {response_type: "chart", chart_type: "bar", data: {...}}
+        else if (responseData.response_type === "chart") {
+          // Backend returns chart in this format
+          chart_config = {
+            chart_type: responseData.chart_type || "bar",
+            title: responseData.title || "Chart",
+            data: responseData.data || { labels: [], values: [] }
+          };
+          responseText = responseData.message || responseData.title || "";
+        }
+        // Handle table response: {response_type: "table", columns: [...], rows: [[...]]}
+        else if (responseData.response_type === "table" && responseData.columns && responseData.rows) {
+          // Convert rows array to array of objects
+          structured = responseData.rows.map((row: any[]) => {
+            const obj: any = {};
+            responseData.columns.forEach((col: string, idx: number) => {
+              obj[col] = row[idx];
+            });
+            return obj;
+          });
+          responseText = responseData.title || responseData.message || `Found ${responseData.total_count || responseData.rows.length} results`;
+        }
+        // Handle text response
+        else {
+          responseText = data.response || "";
+          // Don't set structured if it's the raw table/chart object
+          if (responseData.response_type !== "table" && responseData.response_type !== "chart" && !responseData.chart_config) {
+            structured = Array.isArray(responseData) ? responseData : null;
+          }
+        }
+
+        const botMsg: Msg = {
+          role: "bot",
+          text: normalize(responseText),
+          structured: structured,
+          chart_config: chart_config,
+          database_detected: detectedDb,  // Store which DB was used
+          ts: Date.now(),
+        };
+
+        return [...withoutLoading, botMsg];
       });
-    } catch (e) {
-      const b: Msg = {
-        role: "bot",
-        text: `Sorry, an error occurred while contacting the backend.`,
-        ts: Date.now() + 1,
-      };
-      setMessages((prev) => ({ ...prev, [targetChannel]: [...prev[targetChannel], b] }));
+    } catch (error) {
+      setMessages((prev) => {
+        const withoutLoading = prev.slice(0, -1);
+        return [
+          ...withoutLoading,
+          {
+            role: "bot",
+            text: "Sorry, an error occurred while processing your request. Please try again.",
+            ts: Date.now(),
+          },
+        ];
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleOptionClick = (option: string) => {
-    // Switch context and re-send pending query
-    const newChannel = option as Channel;
-    setChannel(newChannel);
-
-    // Move chat history? Or just start fresh?
-    // For simplicity, we just switch tabs. 
-    // But user context/history is per-tab.
-    // Ideally we should copy the history or something.
-    // But let's just re-send the query in the new channel.
-    if (pendingQuery) {
-      send(pendingQuery, newChannel);
+  // Fetch companies for interactive chart
+  const fetchCompaniesForChart = async (title: string) => {
+    const monthMatch = title?.match(/\((\w+)\s+(\d{4})\)/);
+    const params = new URLSearchParams();
+    if (monthMatch) {
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthNum = monthNames.indexOf(monthMatch[1]) + 1;
+      if (monthNum > 0) params.append('month', monthNum.toString());
+      params.append('year', monthMatch[2]);
     }
+
+    try {
+      const res = await fetch(`/api/companies?${params.toString()}`);
+      const data = await res.json();
+      setAvailableCompanies(data.companies || []);
+    } catch (err) {
+      console.error('Failed to fetch companies:', err);
+    }
+  };
+
+  // Toggle company selection
+  const toggleCompany = async (company: string, messageIndex: number, config: any) => {
+    const newSelected = new Set(selectedCompanies);
+
+    if (newSelected.has(company)) {
+      newSelected.delete(company);
+    } else {
+      newSelected.add(company);
+    }
+    setSelectedCompanies(newSelected);
+
+    // Fetch updated chart data
+    const monthMatch = config.title?.match(/\((\w+)\s+(\d{4})\)/);
+    const params = new URLSearchParams();
+    params.append('companies', Array.from(newSelected).join(','));
+
+    if (monthMatch) {
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthNum = monthNames.indexOf(monthMatch[1]) + 1;
+      if (monthNum > 0) params.append('month', monthNum.toString());
+      params.append('year', monthMatch[2]);
+    }
+
+    try {
+      const res = await fetch(`/api/compare?${params.toString()}`);
+      const data = await res.json();
+
+      // Update the message with new chart data
+      setMessages(prev => prev.map((msg, idx) => {
+        if (idx === messageIndex && msg.chart_config) {
+          return {
+            ...msg,
+            chart_config: {
+              ...msg.chart_config,
+              data: {
+                labels: data.labels,
+                values: data.values
+              }
+            }
+          };
+        }
+        return msg;
+      }));
+    } catch (err) {
+      console.error('Failed to update chart:', err);
+    }
+  };
+
+  // Render chart function
+  const renderChart = (config: any, messageIndex: number) => {
+    if (!config || !config.data) return null;
+
+    const chartData = config.data.labels?.map((label: string, idx: number) => ({
+      name: label,
+      value: config.data.values?.[idx] || 0,
+    })) || [];
+
+    // Check if this is a comparison chart
+    const isComparison = config.title?.toLowerCase().includes('comparison');
+    const isThisChartOpen = showCompanySelector === messageIndex;
+
+    if (isComparison && config.chart_type === "bar") {
+      const monthMatch = config.title?.match(/\((\w+)\s+(\d{4})\)/);
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const month = monthMatch ? monthNames.indexOf(monthMatch[1]) + 1 : undefined;
+      const year = monthMatch ? Number(monthMatch[2]) : undefined;
+
+      return (
+        <InteractiveComparisonChart
+          initialData={{
+            labels: config.data.labels || [],
+            values: config.data.values || [],
+          }}
+          title={config.title || "Notification Comparison"}
+          month={month && month > 0 ? month : undefined}
+          year={year}
+        />
+      );
+    }
+
+    return (
+      <div className="w-full min-w-[600px] mt-3 bg-white p-4 rounded-lg border">
+        <div className="flex justify-between items-center mb-3">
+          <div className="text-sm font-semibold">{config.title || "Chart"}</div>
+          {isComparison && (
+            <button
+              onClick={() => {
+                if (isThisChartOpen) {
+                  setShowCompanySelector(null);
+                } else {
+                  setShowCompanySelector(messageIndex);
+                  setSelectedCompanies(new Set(config.data.labels || []));
+                  fetchCompaniesForChart(config.title);
+                }
+              }}
+              className="text-xs px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+            >
+              {isThisChartOpen ? 'Hide' : 'Add/Remove Companies'}
+            </button>
+          )}
+        </div>
+
+        {isThisChartOpen && isComparison && (
+          <div className="mb-4 p-3 bg-gray-50 rounded border max-h-40 overflow-y-auto">
+            <div className="text-xs font-semibold mb-2">Select Companies:</div>
+            <div className="grid grid-cols-2 gap-2">
+              {availableCompanies.map(company => (
+                <label key={company} className="flex items-center text-xs cursor-pointer hover:bg-gray-100 p-1 rounded">
+                  <input
+                    type="checkbox"
+                    checked={selectedCompanies.has(company)}
+                    onChange={() => toggleCompany(company, messageIndex, config)}
+                    className="mr-2"
+                  />
+                  <span className="truncate" title={company}>{company}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <ResponsiveContainer width="100%" height={350}>
+          {config.chart_type === "line" ? (
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 11 }}
+                angle={-25}
+                textAnchor="end"
+                height={80}
+                interval={0}
+              />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }} />
+              <Line type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ fill: CHART_COLORS[0], r: 4 }} />
+            </LineChart>
+          ) : config.chart_type === "bar" ? (
+            chartData.length === 0 ? (
+              <div className="h-[320px] flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                No chart data available.
+              </div>
+            ) : (
+              <BarChart data={chartData} margin={{ top: 5, right: 20, bottom: 60, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 11 }}
+                  angle={-25}
+                  textAnchor="end"
+                  height={80}
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }}
+                  formatter={(value: any) => [`${value} notifications`, 'Count']}
+                />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                  {chartData.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )
+          ) : config.chart_type === "pie" ? (
+            <PieChart>
+              <Pie
+                data={chartData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {chartData.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }} />
+            </PieChart>
+          ) : null}
+        </ResponsiveContainer>
+      </div>
+    );
   };
 
   return (
     <>
+      {/* FAB */}
       <div className="fixed bottom-6 right-20 z-50 flex items-center gap-3">
-        <div
-          className="hidden md:flex items-center gap-2 rounded-2xl px-3 py-2 border shadow-sm"
-          style={{
-            background: "#ffffff",
-            borderColor: "#e5e7eb",
-            color: "#0B74B0",
-          }}
-        >
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: "#22c55e" }}
-            aria-hidden="true"
-          />
-          <span className="text-xs">How can I assist you today?</span>
-        </div>
         <button
           onClick={() => setOpen(true)}
-          className="relative w-28 h-28 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:shadow-xl"
+          className="relative w-28 h-28 rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
           style={{
             background:
               "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #0B74B0, #75479C, #BD3861) border-box",
             border: "2px solid transparent",
-            color: "#0B74B0",
           }}
-          aria-label="Open chatbot"
         >
           <Avatar className="h-24 w-24">
-            <AvatarImage src="/avatar.jpg" alt="Assistant" />
+            <AvatarImage src="/avatar.jpg" />
             <AvatarFallback>AI</AvatarFallback>
           </Avatar>
-          <span
-            className="absolute -bottom-0 -right-0 h-4 w-4 rounded-full border-2"
-            style={{ backgroundColor: "#22c55e", borderColor: "#ffffff" }}
-            aria-label="Online"
-          />
         </button>
       </div>
 
+      {/* CHAT WINDOW */}
       {open && (
-        <div className="fixed inset-0 z-50" aria-hidden="true">
+        <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/20" onClick={() => setOpen(false)} />
-          <div className={expanded ? "absolute inset-4" : "absolute bottom-6 right-6 w-[95vw] sm:w-[420px]"}>
-            <Card
-              className={expanded ? "border-2 h-full rounded-2xl overflow-hidden" : "border-2 rounded-2xl overflow-hidden"}
-              style={{ borderColor: "#0B74B0", background: "#ffffff" }}
-            >
-              <CardHeader className="relative h-16">
-                {/* Avatar Floating */}
-                <Avatar
-                  className="h-20 w-20 absolute left-1/2 -bottom-10 -translate-x-1/2
-               border-4 border-white shadow-md"
-                >
-                  <AvatarImage src="/avatar.jpg" alt="Assistant" />
-                  <AvatarFallback>AI</AvatarFallback>
-                </Avatar>
-
-                {/* Actions */}
-                <div className="absolute right-2 top-2 flex items-center gap-1 z-10">
-                  <button
-                    onClick={() => setExpanded((e) => !e)}
-                    className="p-1 rounded hover:bg-gray-100"
-                  >
-                    {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                  </button>
-                  <button
-                    onClick={() => setOpen(false)}
-                    className="p-1 rounded hover:bg-gray-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+          <div className={expanded ? "absolute inset-4" : "absolute bottom-6 right-6 w-[480px]"}>
+            <Card className="h-full rounded-2xl overflow-hidden border-2" style={{ borderColor: "#0B74B0" }}>
+              <CardHeader className="relative h-20 bg-gradient-to-r from-[#0B74B0] via-[#4A5FA8] to-[#75479C] text-white shadow-lg">
+                <div className="flex items-center justify-between h-full px-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                      <TrendingUp size={24} className="text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xl tracking-wide">AEGIS Intelligence</h3>
+                      <p className="text-xs opacity-95 font-medium">Regulatory Insights & Market Analytics</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setExpanded(!expanded)}
+                      className="p-2 hover:bg-white/20 rounded-lg transition-all duration-200"
+                      title={expanded ? "Minimize" : "Maximize"}
+                    >
+                      {expanded ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                    </button>
+                    <button
+                      onClick={() => setOpen(false)}
+                      className="p-2 hover:bg-white/20 rounded-lg transition-all duration-200"
+                      title="Close"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
                 </div>
               </CardHeader>
 
-
-              <CardContent className="pt-12">
-                <Tabs value={channel} onValueChange={(v) => setChannel(v as Channel)}>
-                  <TabsList
-                    className="grid grid-cols-4 h-10 rounded-xl border"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(11,116,176,0.05), rgba(117,71,156,0.05))",
-                      borderColor: "#0B74B0",
-                    }}
-                  >
-                    <TabsTrigger
-                      value="All"
-                      className="text-sm font-medium rounded-sm"
-                      style={{
-                        color: channel === "All" ? "#ffffff" : "#333333",
-                        backgroundColor: channel === "All" ? "#333333" : "transparent",
-                      }}
-                    >
-                      All
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="BSE"
-                      className="text-sm font-medium rounded-sm"
-                      style={{
-                        color: channel === "BSE" ? "#ffffff" : "#0B74B0",
-                        backgroundColor: channel === "BSE" ? "#0B74B0" : "transparent",
-                      }}
-                    >
-                      BSE
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="SEBI"
-                      className="text-sm font-medium rounded-sm"
-                      style={{
-                        color: channel === "SEBI" ? "#ffffff" : "#75479C",
-                        backgroundColor: channel === "SEBI" ? "#75479C" : "transparent",
-                      }}
-                    >
-                      SEBI
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="RBI"
-                      className="text-sm font-medium rounded-sm"
-                      style={{
-                        color: channel === "RBI" ? "#ffffff" : "#BD3861",
-                        backgroundColor: channel === "RBI" ? "#BD3861" : "transparent",
-                      }}
-                    >
-                      RBI
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-
-                <div className="mt-3 flex gap-2 flex-wrap">
-                  {prompts[channel].map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => send(p)}
-                      className="px-2 py-1 rounded text-xs border"
-                      style={{
-                        borderColor: "#0B74B0",
-                        color: "#0B74B0",
-                        background: "rgba(11, 116, 176, 0.08)",
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-
+              <CardContent className="pt-4 h-[calc(100%-5rem)] flex flex-col overflow-hidden">
+                {/* Messages Area - FIXED: Added proper overflow scrolling */}
                 <div
-                  className="mt-3 overflow-y-auto rounded-2xl border p-2"
-                  style={{
-                    borderColor: "#e5e7eb",
-                    background: "#f7fafc",
-                    height: expanded ? "60vh" : "16rem",
-                  }}
+                  className="flex-1 overflow-y-auto overflow-x-hidden border rounded-lg p-3 mb-3 scroll-smooth"
+                  style={{ background: "#f7fafc", maxHeight: expanded ? "calc(100vh - 200px)" : "400px" }}
                 >
-                  {activeMsgs.length === 0 && (
-                    <div className="text-sm" style={{ color: "#666666" }}>Ask something about {channel}.</div>
+                  {messages.length === 0 && (
+                    <div className="text-center text-gray-500 text-sm mt-8">
+                      <div className="mb-4">
+                        <TrendingUp size={48} className="mx-auto text-[#0B74B0] opacity-50" />
+                      </div>
+                      <p className="font-semibold mb-2">Welcome to AEGIS AI Assistant</p>
+                      <p className="text-xs mb-4">I'll automatically detect which database to query</p>
+                      <div className="text-left space-y-2">
+                        <p className="text-xs font-semibold">Try asking:</p>
+                        <button
+                          onClick={() => send("Show me Adani Green notifications")}
+                          className="block w-full text-left px-3 py-2 bg-white rounded hover:bg-gray-100 text-xs"
+                        >
+                          "Show me Adani Green notifications"
+                        </button>
+                        <button
+                          onClick={() => send("What are the latest SEBI updates?")}
+                          className="block w-full text-left px-3 py-2 bg-white rounded hover:bg-gray-100 text-xs"
+                        >
+                          "What are the latest SEBI updates?"
+                        </button>
+                        <button
+                          onClick={() => send("Show RBI policy updates")}
+                          className="block w-full text-left px-3 py-2 bg-white rounded hover:bg-gray-100 text-xs"
+                        >
+                          "Show RBI policy updates"
+                        </button>
+                      </div>
+                    </div>
                   )}
-                  {activeMsgs.map((m, i) => (
-                    <div key={i} className={`mb-2 flex ${m.role === "user" ? "justify-end" : "justify-start"} items-end gap-2`}>
-                      {m.role === "bot" && (
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src="/avatar.jpg" alt="Agent" />
-                          <AvatarFallback>
-                            <Bot className="h-4 w-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "text-white" : "bg-white border"}`}
-                        style={{
-                          ...(m.role === "bot" ? { borderColor: "#e5e7eb", color: "#000000" } : {}),
-                          ...(m.role === "user" ? { backgroundColor: "#0B74B0", color: "#ffffff" } : {}),
-                        }}
-                      >
-                        {m.role === "bot" ? (
-                          m.structured ? (
-                            Array.isArray(m.structured) ? (
-                              (() => {
-                                const rows = m.structured as Array<any>;
-                                const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
-                                return (
-                                  <div className="overflow-auto">
-                                    <table className="min-w-full text-sm border">
-                                      <thead>
-                                        <tr>
-                                          {cols.map((c) => (
-                                            <th key={c} className="px-2 py-1 text-left border">{c}</th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {rows.map((r, idx) => (
-                                          <tr key={idx} className={idx % 2 ? "bg-gray-50" : ""}>
+
+                  {messages.map((m, i) => (
+                    <div key={i} className={`mb-3 flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`${m.chart_config ? 'max-w-[95%]' : 'max-w-[85%]'} rounded-xl px-4 py-3 ${m.role === "user"
+                        ? "bg-gradient-to-r from-[#0B74B0] to-[#75479C] text-white"
+                        : "bg-white border shadow-sm"
+                        }`}>
+                        {(() => {
+                          const { mainText, sampleQuestions } = parseSampleQuestions(m.text);
+
+                          return (
+                            <>
+                              {/* Database Detection Badge */}
+                              {m.role === "bot" && m.database_detected && m.database_detected !== "all" && (
+                                <div className="text-xs mb-2 inline-block px-2 py-1 rounded bg-blue-100 text-blue-700 font-semibold">
+                                  📊 {m.database_detected.toUpperCase()} Data
+                                </div>
+                              )}
+
+                              {/* Text Content - Don't show if chart is present (to avoid duplicate title) */}
+                              {mainText && !m.chart_config && (
+                                <div className="text-sm whitespace-pre-wrap">{mainText}</div>
+                              )}
+
+                              {/* Clickable sample questions for unrelated-query fallback */}
+                              {m.role === "bot" && sampleQuestions.length > 0 && !m.chart_config && (
+                                <div className="mt-3 space-y-2">
+                                  <div className="text-xs font-semibold text-slate-600">Sample questions you can ask:</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {sampleQuestions.map((question) => (
+                                      <button
+                                        key={question}
+                                        onClick={() => send(question)}
+                                        disabled={isLoading}
+                                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs text-slate-700 transition hover:border-[#0B74B0] hover:bg-blue-50 hover:text-[#0B74B0] disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {question}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Table Content */}
+                              {m.structured && Array.isArray(m.structured) && (
+                                (() => {
+                                  const rows = m.structured;
+                                  const cols = Object.keys(rows[0] || {});
+
+                                  return (
+                                    <div className="overflow-auto max-h-[320px] mt-2">
+                                      <table className="min-w-full text-xs border-collapse">
+                                        <thead className="sticky top-0 bg-gray-100">
+                                          <tr>
                                             {cols.map((c) => (
-                                              <td key={c} className="px-2 py-1 align-top border">{String(r[c] ?? "")}</td>
+                                              <th key={c} className="px-2 py-2 border text-left font-semibold">
+                                                {c}
+                                              </th>
                                             ))}
                                           </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                );
-                              })()
-                            ) : m.structured && m.structured.columns && m.structured.rows ? (
-                              <div className="overflow-auto">
-                                <table className="min-w-full text-sm border">
-                                  <thead>
-                                    <tr>
-                                      {m.structured.columns.map((c: any) => (
-                                        <th key={c} className="px-2 py-1 text-left border">{c}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {m.structured.rows.map((row: any, idx: number) => (
-                                      <tr key={idx} className={idx % 2 ? "bg-gray-50" : ""}>
-                                        {row.map((cell: any, i: number) => (
-                                          <td key={i} className="px-2 py-1 align-top border">{String(cell ?? "")}</td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : m.structured.response_type === "clarification_needed" ? (
-                              <div>
-                                <div className="mb-2 whitespace-pre-wrap">{m.structured.message}</div>
-                                <div className="flex gap-2 flex-wrap">
-                                  {m.structured.options.map((opt: string) => (
-                                    <button
-                                      key={opt}
-                                      onClick={() => handleOptionClick(opt)}
-                                      className="px-3 py-1 bg-white rounded border hover:bg-blue-50 text-xs transition-colors"
-                                      style={{ borderColor: "#0B74B0", color: "#0B74B0" }}
-                                    >
-                                      {opt}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
-                            )
-                          ) : (
-                            <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
-                          )
-                        ) : (
-                          <div style={{ color: "#ffffff", whiteSpace: "pre-wrap" }}>{m.text}</div>
-                        )}
+                                        </thead>
+                                        <tbody>
+                                          {rows.map((r: any, idx: number) => (
+                                            <tr key={idx} className={idx % 2 ? "bg-gray-50" : ""}>
+                                              {cols.map((c) => (
+                                                <td key={c} className="px-2 py-2 border whitespace-pre-wrap">
+                                                  {String(r[c] ?? "")}
+                                                </td>
+                                              ))}
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  );
+                                })()
+                              )}
+
+                              {/* Chart Content */}
+                              {m.chart_config && renderChart(m.chart_config, i)}
+                            </>
+                          );
+                        })()}
                       </div>
-                      {m.role === "user" && (
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>
-                            <User className="h-4 w-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
                     </div>
                   ))}
                   <div ref={endRef} />
                 </div>
 
-                <div className="mt-4 flex gap-2">
+                {/* Input Area */}
+                <div className="flex gap-2">
                   <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        send();
-                      }
-                    }}
-                    placeholder={`Message ${channel}`}
-                    className="rounded-2xl"
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+                    placeholder="Ask about BSE, SEBI, or RBI data..."
+                    disabled={isLoading}
+                    className="flex-1"
                   />
-                  <Button onClick={() => send()} className="rounded-2xl" style={{ backgroundColor: "#0B74B0", borderColor: "#0B74B0" }}>Send</Button>
+                  <Button
+                    onClick={() => send()}
+                    disabled={isLoading || !input.trim()}
+                    className="bg-gradient-to-r from-[#0B74B0] to-[#75479C]"
+                  >
+                    {isLoading ? "..." : "Send"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -472,5 +616,3 @@ export default function ChatbotFab() {
     </>
   );
 }
-
-

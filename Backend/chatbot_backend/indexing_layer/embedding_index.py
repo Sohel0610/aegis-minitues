@@ -12,14 +12,12 @@ from data_layer.db_models import get_sebi_session, get_rbi_session, SEBINotifica
 import os
 from dotenv import load_dotenv
  
-# Load environment variables from the root directory
-# Look for .env file in parent directories
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
-if os.path.exists(env_path):
-    load_dotenv(env_path)
-else:
-    # Fallback to default loading
-    load_dotenv()
+env_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "aegis_backend",
+    ".env",
+)
+load_dotenv(env_path)
  
 class EmbeddingIndex:
     """

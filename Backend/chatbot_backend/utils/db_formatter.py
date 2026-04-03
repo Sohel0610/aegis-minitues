@@ -48,7 +48,7 @@ def format_rbi_notification(notification) -> Dict[str, Any]:
     """Format RBI notification to common format"""
     return {
         "entity_name": "RBI Monetary Policy Update",
-        "notice_date": notification.run_date or "Unknown",
+        "notice_date": notification.run_date.strftime("%Y-%m-%d") if notification.run_date else "Unknown",
         "notice_type": "Monetary Policy Update",
         "title": f"RBI Update - {notification.run_date}" if notification.run_date else "RBI Monetary Policy Update",
         "summary": notification.summary or "No summary available",
@@ -76,3 +76,24 @@ def convert_to_common_format(results: List[Any], database: str) -> List[Dict[str
             formatted_results.append(format_daily_log(notification))
     
     return formatted_results
+
+def format_mixed_notification(notification) -> Dict[str, Any]:
+    """Format mixed-source notifications using available attributes."""
+    if hasattr(notification, "EntityName") or hasattr(notification, "Link"):
+        return format_daily_log(notification)
+    if hasattr(notification, "date_key"):
+        return format_sebi_notification(notification)
+    if hasattr(notification, "run_date"):
+        return format_rbi_notification(notification)
+    if isinstance(notification, dict):
+        return notification
+    return {
+        "entity_name": "Unknown",
+        "notice_date": "Unknown",
+        "notice_type": "Unknown",
+        "title": "Notification",
+        "summary": str(notification),
+        "full_text": str(notification),
+        "link": "No link available",
+        "source_system": "UNKNOWN",
+    }

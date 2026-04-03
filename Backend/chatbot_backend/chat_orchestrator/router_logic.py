@@ -1,4 +1,3 @@
-
 """
 Router Logic - FINAL FIX (Month Detection Fixed)
 ✅ Detects "december month", "dec month"
@@ -11,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Tuple, List, Optional
 from chatbot_backend.data_layer.models import get_db_session, DailyLog
 from chatbot_backend.data_layer.db_models import get_sebi_session, get_rbi_session, SEBINotification, RBINotification
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func, extract
 
 # Month name to number mapping
 MONTH_MAP = {
@@ -29,6 +28,35 @@ MONTH_MAP = {
     "december": 12, "dec": 12
 }
 
+def get_most_recent_year_from_db() -> int:
+    """
+    Query database to find the most recent year with data.
+    This allows the system to work with both historical and future data.
+    
+    Returns: Most recent year in database, or current year as fallback
+    """
+    try:
+        session = get_db_session()
+        try:
+            # Get the maximum date from the database
+            max_date = session.query(func.max(DailyLog.Date)).scalar()
+            if max_date:
+                # Parse the date and extract year
+                if isinstance(max_date, str):
+                    year = int(max_date.split('-')[0])
+                else:
+                    year = max_date.year
+                print(f" [YEAR_DETECT] Most recent year in database: {year}")
+                return year
+        finally:
+            session.close()
+    except Exception as e:
+        print(f" [YEAR_DETECT] Error querying database: {e}, using current year")
+    
+    # Fallback to current year if database query fails
+    return datetime.now().year
+
+
 def extract_month_year(query: str) -> Optional[Tuple[int, int]]:
     """
     Extract month and year from query
@@ -37,7 +65,9 @@ def extract_month_year(query: str) -> Optional[Tuple[int, int]]:
     Returns: (month, year) or None
     """
     q = query.lower()
-    current_year = datetime.now().year
+    # SMART FIX: Get the most recent year from database
+    # This allows: "nov month" → latest year in DB, "jan 2026" → explicit 2026
+    current_year = get_most_recent_year_from_db()
     
     # Pattern 1: "december month", "dec month summary"
     for month_name, month_num in MONTH_MAP.items():
@@ -91,75 +121,80 @@ def extract_dates(query: str) -> List[str]:
         start_date = end_date - timedelta(days=days)
         print(f"[DATE_PARSE] Last {days} days: {start_date} to {end_date}")
         return [str(start_date), str(end_date)]
+
+    # Priority 1.5: "last N months"
+    last_months = re.search(r"last\s+(\d+)\s+months?", q)
+    if last_months:
+        months = int(last_months.group(1))
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=months * 30)
+        print(f"[DATE_PARSE] Last {months} months: {start_date} to {end_date}")
+        return [str(start_date), str(end_date)]
     
-    # Priority 2: Natural language month/day with optional year
-    # e.g., "dec 24", "24 dec", "29th december", "dec 24 2025", "24th december 2025", "december 24, 2025"
+    # Priority 2: explicit year with month/day, e.g. "25 dec 2025", "dec 25 2025"
     for month_name, month_num in MONTH_MAP.items():
-        # A) "dec 24" or "dec 24 2025" or "december 24, 2025"
-        pattern_a = rf"\b{month_name}\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,)?(?:\s+(\d{{4}}))?\b"
-        match_a = re.search(pattern_a, q)
-        if match_a:
-            day = int(match_a.group(1))
-            year = int(match_a.group(2)) if match_a.group(2) else datetime.now().year
+        patterns = [
+            rf"(\d{{1,2}})(?:st|nd|rd|th)?\s+{month_name}\s+(\d{{4}})\b",
+            rf"{month_name}\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+(\d{{4}})\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, q)
+            if match:
+                if pattern.startswith(r"(\d"):
+                    day = int(match.group(1))
+                    year = int(match.group(2))
+                else:
+                    day = int(match.group(1))
+                    year = int(match.group(2))
+                try:
+                    date_obj = datetime(year, month_num, day).date()
+                    date_str = str(date_obj)
+                    print(f" [DATE_PARSE] Explicit year date: {date_str}")
+                    return [date_str, date_str]
+                except ValueError:
+                    continue
+
+    # Priority 3: "dec 24", "24 dec", "29th december"
+    for month_name, month_num in MONTH_MAP.items():
+        # "dec 24", "december 24"
+        pattern_a = rf"{month_name}\s+(\d{{1,2}})(?:st|nd|rd|th)?\b"
+        match = re.search(pattern_a, q)
+        if match:
+            day = int(match.group(1))
+            year = datetime.now().year
             try:
                 date_obj = datetime(year, month_num, day).date()
                 date_str = str(date_obj)
-                print(f" [DATE_PARSE] Single date (month first): {date_str}")
+                print(f" [DATE_PARSE] Single date: {date_str}")
                 return [date_str, date_str]
             except ValueError:
-                # Invalid day/month combo; continue trying
-                pass
+                continue
         
-        # B) "24 dec" or "24th december 2025"
-        pattern_b = rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+{month_name}(?:,)?(?:\s+(\d{{4}}))?\b"
-        match_b = re.search(pattern_b, q)
-        if match_b:
-            day = int(match_b.group(1))
-            year = int(match_b.group(2)) if match_b.group(2) else datetime.now().year
+        # "24 dec", "24th december"
+        pattern_b = rf"(\d{{1,2}})(?:st|nd|rd|th)?\s+{month_name}\b"
+        match = re.search(pattern_b, q)
+        if match:
+            day = int(match.group(1))
+            year = datetime.now().year
             try:
                 date_obj = datetime(year, month_num, day).date()
                 date_str = str(date_obj)
-                print(f" [DATE_PARSE] Single date (day first): {date_str}")
+                print(f" [DATE_PARSE] Single date: {date_str}")
                 return [date_str, date_str]
             except ValueError:
-                # Invalid day/month combo; continue trying
-                pass
+                continue
     
-    # Pattern 3: YYYY-MM-DD
+    # Pattern 4: YYYY-MM-DD
     pattern1 = r"(\d{4}-\d{2}-\d{2})"
     matches = re.findall(pattern1, query)
     if matches:
         dates.extend(matches)
     
-    # Pattern 4: DD-MM-YYYY
+    # Pattern 5: DD-MM-YYYY
     pattern2 = r"(\d{2}-\d{2}-\d{4})"
     matches = re.findall(pattern2, query)
     if matches:
         dates.extend(matches)
-
-    # Pattern 5: DD/MM/YYYY
-    pattern3 = r"(\d{2}/\d{2}/\d{4})"
-    matches = re.findall(pattern3, query)
-    if matches:
-        # Normalize to YYYY-MM-DD
-        for d in matches:
-            try:
-                parsed = datetime.strptime(d, "%d/%m/%Y").date()
-                dates.append(parsed.strftime("%Y-%m-%d"))
-            except ValueError:
-                pass
-
-    # Pattern 6: YYYY/MM/DD
-    pattern4 = r"(\d{4}/\d{2}/\d{2})"
-    matches = re.findall(pattern4, query)
-    if matches:
-        # Normalize to YYYY-MM-DD
-        for d in matches:
-            try:
-                parsed = datetime.strptime(d, "%Y/%m/%d").date()
-                dates.append(parsed.strftime("%Y-%m-%d"))
-            except ValueError:
-                pass
     
     return dates
 
@@ -178,129 +213,79 @@ def detect_query_type(query: str, strict_entity: str = None) -> str:
 
 def execute_structured_query(
     strict_entity: str = None, 
+    entity_aliases: List[str] = None,
     dates: List[str] = None,
     month_year: Tuple[int, int] = None,
     limit: int = 10, 
     database: str = "all"
 ) -> List:
     """Execute structured SQL query"""
+    if database == "all":
+        combined = []
+        for db_name in ["bse", "sebi", "rbi"]:
+            combined.extend(
+                execute_structured_query(
+                    strict_entity=strict_entity,
+                    entity_aliases=entity_aliases,
+                    dates=dates,
+                    month_year=month_year,
+                    limit=limit,
+                    database=db_name,
+                )
+            )
+        return combined
+
     if database == "bse":
         session = get_db_session()
         try:
-            q = session.query(DailyLog)
-            
-            # Filter out NIL entries
-            q = q.filter(
+            q = session.query(DailyLog).filter(
                 or_(
-                    DailyLog.Summary != "NIL",
-                    DailyLog.Nature != "NIL"
+                    func.coalesce(DailyLog.Summary, "") != "NIL",
+                    func.coalesce(DailyLog.Nature, "") != "NIL",
                 )
             )
-            
-            # Entity filter
-            if strict_entity:
+
+            if entity_aliases:
+                alias_filters = [DailyLog.EntityName.ilike(f"%{alias}%") for alias in entity_aliases if alias]
+                if alias_filters:
+                    q = q.filter(or_(*alias_filters))
+                    print(f" [SQL_FILTER] EntityName matched aliases: {entity_aliases}")
+            elif strict_entity:
                 q = q.filter(DailyLog.EntityName.ilike(f"%{strict_entity}%"))
                 print(f" [SQL_FILTER] EntityName LIKE '%{strict_entity}%'")
-            
-            #  Month/Year filter - STRICT FILTERING
+
             if month_year:
                 month, year = month_year
+                q = q.filter(extract("month", DailyLog.Date) == month)
+                q = q.filter(extract("year", DailyLog.Date) == year)
                 print(f" [SQL_FILTER] Filtering for EXACT Month={month}, Year={year}")
-                
-                # --- NEW: DB-side range filter for target month ---
-                # Compute first/last day of the month
-                first_day = datetime(year, month, 1).date()
-                if month == 12:
-                    last_day = datetime(year, 12, 31).date()
-                else:
-                    next_month_first = datetime(year, month + 1, 1).date()
-                    last_day = (next_month_first - timedelta(days=1))
-                
-                # Apply DB-side filter (preferred; avoids format inconsistencies)
-                q_month = q.filter(
-                    and_(
-                        DailyLog.Date >= first_day,
-                        DailyLog.Date <= last_day
-                    )
-                )
-                results = q_month.order_by(DailyLog.Date.desc()).all()
-                print(f" [DEBUG] DB-side month filter results: {len(results)}")
-                if results:
-                    return results
-                # --- END NEW ---
 
-                # Fallback: Python-side filter with robust parsing
-                results = q.order_by(DailyLog.Date.desc()).all()
-                print(f" [DEBUG] Total results before month filter: {len(results)}")
-                
-                # Robust date extraction
-                def _parse_date_any(dval):
-                    """Return a date object from various possible formats/attrs."""
-                    if dval is None:
-                        return None
-                    # Already a date/datetime
-                    if hasattr(dval, "year") and hasattr(dval, "month"):
-                        try:
-                            return dval.date() if hasattr(dval, "date") else dval
-                        except Exception:
-                            pass
-                    # String formats
-                    if isinstance(dval, str):
-                        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
-                            try:
-                                return datetime.strptime(dval.strip(), fmt).date()
-                            except ValueError:
-                                continue
-                    return None
-
-                filtered = []
-                for r in results:
-                    # Try primary date field
-                    d = getattr(r, "Date", None)
-                    # Fallback: some rows store date in notice_date
-                    if d is None:
-                        d = getattr(r, "notice_date", None)
-
-                    d_obj = _parse_date_any(d)
-                    if d_obj and d_obj.month == month and d_obj.year == year:
-                        filtered.append(r)
-                
-                print(f" [SQL_FILTER] Found {len(filtered)} notifications in month {month}/{year}")
-                if filtered:
-                    print(f" [SQL_FILTER] Date range: {filtered[-1].Date} to {filtered[0].Date}")
-                return filtered
-            
-            # Specific date filter
             if dates:
                 parsed_dates = []
                 for date_str in dates:
                     try:
                         if "-" in date_str and len(date_str.split("-")[0]) == 4:
-                            parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                            parsed_dates.append(datetime.strptime(date_str, "%Y-%m-%d").date().isoformat())
                         elif "-" in date_str:
-                           d_date = datetime.strptime(date_str, "%d-%m-%Y").date()
-                        else:
-                            continue
-                        parsed_dates.append(parsed_date)
+                            parsed_dates.append(datetime.strptime(date_str, "%d-%m-%Y").date().isoformat())
                     except ValueError:
                         continue
-                
+
                 if len(parsed_dates) == 2 and parsed_dates[0] != parsed_dates[1]:
-                    # Date range
+                    start_date = datetime.strptime(parsed_dates[0], "%Y-%m-%d").date()
+                    end_date = datetime.strptime(parsed_dates[1], "%Y-%m-%d").date()
+                    q = q.filter(DailyLog.Date.between(start_date, end_date))
                     print(f" [SQL_FILTER] Date Range: {parsed_dates[0]} to {parsed_dates[1]}")
-                    q = q.filter(
-                        and_(
-                            DailyLog.Date >= parsed_dates[0],
-                            DailyLog.Date <= parsed_dates[1]
-                        )
-                    )
-                elif len(parsed_dates) >= 1:
-                    # Single date
-                    single_date = parsed_dates[0]
-                    print(f" [SQL_FILTER] Single Date: {single_date}")
+                elif parsed_dates:
+                    single_date = datetime.strptime(parsed_dates[0], "%Y-%m-%d").date()
                     q = q.filter(DailyLog.Date == single_date)
-            
-            results = q.order_by(DailyLog.Date.desc()).limit(limit).all()
+                    print(f" [SQL_FILTER] Single Date: {parsed_dates[0]}")
+
+            q = q.order_by(DailyLog.Date.desc())
+            if limit:
+                q = q.limit(limit)
+
+            results = q.all()
             print(f" [SQL_QUERY] Returned {len(results)} results")
             return results
         finally:
@@ -310,8 +295,24 @@ def execute_structured_query(
         session = get_sebi_session()
         try:
             q = session.query(SEBINotification)
-            if strict_entity:
+            if entity_aliases:
+                alias_filters = [SEBINotification.summary.ilike(f"%{alias}%") for alias in entity_aliases if alias]
+                if alias_filters:
+                    q = q.filter(or_(*alias_filters))
+            elif strict_entity:
                 q = q.filter(SEBINotification.summary.ilike(f"%{strict_entity}%"))
+            if month_year:
+                month, year = month_year
+                results = q.order_by(SEBINotification.inserted_at.desc()).all()
+                filtered = []
+                for row in results:
+                    try:
+                        parsed = datetime.strptime(str(row.date_key), "%d-%m-%Y")
+                        if parsed.month == month and parsed.year == year:
+                            filtered.append(row)
+                    except ValueError:
+                        continue
+                return filtered
             if dates:
                 date_filters = [SEBINotification.date_key == d for d in dates]
                 q = q.filter(or_(*date_filters))
@@ -324,20 +325,46 @@ def execute_structured_query(
         session = get_rbi_session()
         try:
             q = session.query(RBINotification)
-            if strict_entity:
+            if entity_aliases:
+                alias_filters = [RBINotification.summary.ilike(f"%{alias}%") for alias in entity_aliases if alias]
+                if alias_filters:
+                    q = q.filter(or_(*alias_filters))
+            elif strict_entity:
                 q = q.filter(RBINotification.summary.ilike(f"%{strict_entity}%"))
+            if month_year:
+                month, year = month_year
+                results = q.order_by(RBINotification.run_date.desc()).all()
+                filtered = []
+                for row in results:
+                    for fmt in ("%d-%m-%Y", "%Y-%m-%d"):
+                        try:
+                            parsed = datetime.strptime(str(row.run_date), fmt)
+                            if parsed.month == month and parsed.year == year:
+                                filtered.append(row)
+                            break
+                        except ValueError:
+                            continue
+                return filtered
             if dates:
-                date_filters = [RBINotification.run_date == d for d in dates]
-                q = q.filter(or_(*date_filters))
+                parsed_dates = []
+                for date_str in dates:
+                    for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
+                        try:
+                            parsed_dates.append(datetime.strptime(date_str, fmt).date())
+                            break
+                        except ValueError:
+                            pass
+                if parsed_dates:
+                    q = q.filter(or_(*[RBINotification.run_date == d for d in parsed_dates]))
             results = q.order_by(RBINotification.run_date.desc()).limit(limit).all()
             return results
         finally:
             session.close()
     
     else:
-        return execute_structured_query(strict_entity, dates, month_year, limit, "bse")
+        return execute_structured_query(strict_entity, entity_aliases, dates, month_year, limit, "bse")
 
-def route_query(query: str, limit: int = 10, database: str = "all", strict_entity: str = None) -> Tuple[str, List]:
+def route_query(query: str, limit: int = 10, database: str = "all", strict_entity: str = None, entity_aliases: List[str] = None) -> Tuple[str, List]:
     """Main routing function"""
     print(f" [ROUTER] Query: '{query}'")
     print(f" [ROUTER] Entity Lock: {strict_entity}")
@@ -361,6 +388,7 @@ def route_query(query: str, limit: int = 10, database: str = "all", strict_entit
     if query_type == "structured":
         results = execute_structured_query(
             strict_entity=strict_entity,
+            entity_aliases=entity_aliases,
             dates=dates,
             month_year=month_year,
             limit=limit,

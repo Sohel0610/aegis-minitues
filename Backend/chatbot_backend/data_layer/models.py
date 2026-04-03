@@ -1,38 +1,43 @@
 """
 Data Layer Models
-Unified schema for all regulatory notifications
+Unified schema for BSE notifications from PostgreSQL
 """
-from sqlalchemy import create_engine, Column, Integer, String, Date, Text, DateTime, DECIMAL, REAL
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import os
 from datetime import datetime
 
-# Create base class for declarative models
+from dotenv import load_dotenv
+from sqlalchemy import Column, Date, DateTime, DECIMAL, Integer, String, Text, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 Base = declarative_base()
 
-# Database connection URLs
-import os
-DATABASE_URL = f"sqlite:///{os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'database', 'notifications.db'))}"
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", "aegis_backend", ".env"))
 
-# Create engine
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = (
+    f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
+    f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DATABASE_BSE')}"
+)
 
-# Create session maker
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args={"sslmode": os.getenv("POSTGRES_SSLMODE", "require")},
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class DailyLog(Base):
-    """
-    Model for DailyLogs table
-    """
-    __tablename__ = "DailyLogs"
-    
-    SrNo = Column(REAL, primary_key=True)
-    EntityName = Column(Text)
-    Link = Column(Text)
-    Nature = Column(Text)
-    Summary = Column(Text)
-    Date = Column(Date)
+    """Model for daily_logs table in PostgreSQL."""
+
+    __tablename__ = "daily_logs"
+
+    id = Column(Integer, primary_key=True)
+    SrNo = Column("sr_no", Integer, unique=True, index=True)
+    EntityName = Column("entity_name", Text)
+    Link = Column("link", Text)
+    Nature = Column("nature", Text)
+    Summary = Column("summary", Text)
+    Date = Column("record_date", Date)
 
 class RegulatoryNotification(Base):
     """
@@ -60,41 +65,24 @@ class RegulatoryNotification(Base):
 
 # Create tables
 def init_db():
-    """
-    Initialize the database
-    """
     Base.metadata.create_all(bind=engine)
 
 def get_db_session():
-    """
-    Get database session
-    """
     return SessionLocal()
 
 def get_non_nil_notifications(entity_name=None, notice_date=None):
-    """
-    Get notifications that are not all NIL
-    Filters out records where Link, Nature, and Summary are all 'NIL'
-    """
     session = get_db_session()
     try:
-        query = session.query(DailyLog)
-        
-        # Filter out NIL entries
-        query = query.filter(
-            ~((DailyLog.Link == "NIL") & 
-              (DailyLog.Nature == "NIL") & 
-              (DailyLog.Summary == "NIL"))
+        query = session.query(DailyLog).filter(
+            ~((DailyLog.Link == "NIL") & (DailyLog.Nature == "NIL") & (DailyLog.Summary == "NIL"))
         )
-        
-        # Apply entity name filter if provided
+
         if entity_name:
-            query = query.filter(DailyLog.EntityName.contains(entity_name))
-            
-        # Apply date filter if provided
+            query = query.filter(DailyLog.EntityName.ilike(f"%{entity_name}%"))
+
         if notice_date:
             query = query.filter(DailyLog.Date == notice_date)
-            
+
         return query.all()
     finally:
         session.close()

@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from typing import Generator
 import logging
 from .config import settings
-from .models import Base
+from .models import Base, User, Agenda, Decision, ActionItem, Attendee, Document, ChatHistory, Embedding
 
 logger = logging.getLogger(__name__)
 
@@ -40,4 +40,7 @@ def get_db_session() -> Generator[Session, None, None]:
         db.close()
 
 def init_db():
+    logger.info("Initializing minutes chatbot tables")
+    logger.info(f"Minutes chatbot database target: {settings.DATABASE_URL}")
+    _ = (User, Agenda, Decision, ActionItem, Attendee, Document, ChatHistory, Embedding)
     Base.metadata.create_all(bind=engine)
