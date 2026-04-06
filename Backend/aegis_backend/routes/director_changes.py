@@ -34,7 +34,7 @@ def init_db():
                 )
             ''')
             pg_conn.commit()
-            logger.info("Director changes PostgreSQL table verified")
+            logger.info("Director changes PostgreSQL table (directors_master.director_changes) verified")
     except Exception as e:
         logger.error(f"Failed to initialize director changes PG table: {e}")
     finally:
@@ -66,7 +66,7 @@ def log_director_change(director_id: Optional[int], director_name: str, change_t
             cursor = get_pg_cursor(pg_conn)
             
             cursor.execute('''
-                INSERT INTO  director_changes (director_id, director_name, change_type, description, changed_at)
+                INSERT INTO directors_master.director_changes (director_id, director_name, change_type, description, changed_at)
                 VALUES (%s, %s, %s, %s, %s)
             ''', (director_id, director_name, change_type, description, datetime.now()))
             
@@ -87,7 +87,7 @@ async def get_director_changes():
         if pg_conn:
             cursor = get_pg_cursor(pg_conn)
             
-            cursor.execute("SELECT * FROM  director_changes ORDER BY changed_at DESC")
+            cursor.execute("SELECT * FROM directors_master.director_changes ORDER BY changed_at DESC")
             rows = cursor.fetchall()
             
             changes = []

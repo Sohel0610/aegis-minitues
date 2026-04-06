@@ -51,7 +51,7 @@ async def admin_login(credentials: AdminLoginRequest):
     """Authenticate admin user from PostgreSQL."""
     try:
         def verify():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_EMAIL"))
             if not conn: raise RuntimeError("Database connection failed")
             cursor = get_pg_cursor(conn)
             try:
@@ -77,14 +77,14 @@ async def get_emails(search: Optional[str] = None):
     """Get all email addresses from PostgreSQL."""
     try:
         def fetch():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_EMAIL"))
             if not conn: return []
             cursor = get_pg_cursor(conn)
             try:
                 if search:
-                    cursor.execute("SELECT email FROM allowed_emails WHERE email ILIKE %s ORDER BY email", (f"%{search}%",))
+                    cursor.execute("SELECT email FROM email WHERE email ILIKE %s ORDER BY email", (f"%{search}%",))
                 else:
-                    cursor.execute("SELECT email FROM allowed_emails ORDER BY email")
+                    cursor.execute("SELECT email FROM email ORDER BY email")
                 rows = cursor.fetchall()
                 return [r["email"] for r in rows]
             finally:
@@ -104,11 +104,11 @@ async def add_email(email_entry: EmailEntry):
          
     try:
         def add():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_EMAIL"))
             if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("INSERT INTO allowed_emails (email) VALUES (%s) ON CONFLICT DO NOTHING", (email_lower,))
+                cursor.execute("INSERT INTO email (email) VALUES (%s) ON CONFLICT DO NOTHING", (email_lower,))
                 conn.commit()
             finally:
                 conn.close()
@@ -122,11 +122,11 @@ async def delete_email(email_address: str):
     email = urllib.parse.unquote(email_address).lower().strip()
     try:
         def delete():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_EMAIL"))
             if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("DELETE FROM allowed_emails WHERE email = %s", (email,))
+                cursor.execute("DELETE FROM email WHERE email = %s", (email,))
                 conn.commit()
             finally:
                 conn.close()

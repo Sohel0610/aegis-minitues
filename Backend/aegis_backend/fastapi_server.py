@@ -12,6 +12,12 @@ from dotenv import load_dotenv
 import asyncio
 import concurrent.futures
 from functools import partial
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+import sqlite3  # Add this import for database access
 import urllib.parse
 from datetime import datetime
 from typing import Union
@@ -21,17 +27,20 @@ import platform
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from docx import Document as DocxDocument
 
-# Ensure we load the backend-local .env even when the server is started from `Backend/`.
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+# Load environment variables
+load_dotenv()
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize FastAPI app
 app = FastAPI(title="Financial Data API", version="1.0.0", docs_url="/api/docs", redoc_url="/api/redoc")
 
+# Add CORS middleware with more permissive settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8080", "http://localhost:8081", "http://127.0.0.1:8080", "http://127.0.0.1:8081", "http://localhost:5173", "https://localhost", "http://localhost:9000", "http://127.0.0.1:9000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,121 +48,159 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
+# Import route modules
 from routes import (
-    health, excel, bse, sebi, rbi, analytics, admin, directors,
-    directors_disclosure, director_analysis, minutes, ai_assistant,
-    visit_tracking, insider_trading, chat, auth, user_management, rbac,
-    director_family_info, director_changes, interactive
+    health,
+    excel,
+    bse,
+    sebi,
+    rbi,
+    analytics,
+    admin,
+    directors,
+    directors_disclosure,
+    director_analysis,
+    minutes,
+    ai_assistant,
+    visit_tracking,
+    insider_trading,
+    chat,
+    auth,
+    user_management,
+    interactive,
+    rbac  # New RBAC module
 )
 
-from chatbot_minutes.router import router as chatbot_minutes_router
+# Include all route modules
+app.include_router(health.router)
+app.include_router(excel.router)
+app.include_router(bse.router)
+app.include_router(sebi.router)
+app.include_router(rbi.router)
+app.include_router(analytics.router)
+app.include_router(admin.router)
+app.include_router(directors.router)
+app.include_router(directors_disclosure.router)
+app.include_router(director_analysis.router)
+app.include_router(minutes.router)
+app.include_router(ai_assistant.router)
+app.include_router(visit_tracking.router)
+app.include_router(insider_trading.router)
+app.include_router(chat.router)
+app.include_router(auth.router)
+app.include_router(user_management.router)
+app.include_router(interactive.router)
 
+app.include_router(rbac.router)  # Register RBAC routes
 
-app.include_router(health.router, prefix="/api")
-app.include_router(excel.router, prefix="/api")
-app.include_router(bse.router, prefix="/api")
-app.include_router(sebi.router, prefix="/api")
-app.include_router(rbi.router, prefix="/api")
-app.include_router(analytics.router, prefix="/api")
-app.include_router(admin.router, prefix="/api")
-app.include_router(director_analysis.router, prefix="/api")
-app.include_router(directors_disclosure.router, prefix="/api")
-app.include_router(directors.router, prefix="/api")
-app.include_router(minutes.router, prefix="/api")
-app.include_router(ai_assistant.router, prefix="/api")
-app.include_router(visit_tracking.router, prefix="/api")
-app.include_router(insider_trading.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
-app.include_router(user_management.router, prefix="/api")
-app.include_router(rbac.router, prefix="/api")
-app.include_router(director_family_info.router, prefix="/api")
-app.include_router(director_changes.router, prefix="/api")
-app.include_router(chatbot_minutes_router,  prefix="/api")
-app.include_router(interactive.router,  prefix="/api")
-
+# Custom thread pool for handling blocking operations
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
+# Initialize directors data database on startup
 @app.on_event("startup")
 async def startup_event():
-    """Startup initialization - restored for healthy LOCAL database."""
     try:
-        logger.info("Initializing LOCAL PostgreSQL Databases for Offline Resilience...")
-        
+        # Ensure directors_data.db exists and has required tables
+        directors_db_path = os.path.join(os.path.dirname(__file__), "directors_data.db")
+
+        # Create database and tables if they don't exist
+        conn = sqlite3.connect(directors_db_path)
+        cursor = conn.cursor()
+
+        # Create document_summaries table with full_text and summary
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                director_name TEXT NOT NULL,
+                din TEXT,
+                file_path TEXT NOT NULL UNIQUE,
+                full_text TEXT,
+                summary TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        # Create indexes
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_document_summaries_file_path
+            ON document_summaries (file_path)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_document_summaries_director_name
+            ON document_summaries (director_name)
+            """
+        )
+
+        conn.commit()
+        conn.close()
+
+        # Initialize core directors tables in PostgreSQL
         from routes.director_data_analysis import init_database
-        from routes.rbac import init_rbac_pg_tables
-        from routes.user_management import init_rbac_db
-        from utils.db_init import init_postgres_tracking
-        from routes.minutes import init_minutes_pg
-        
+        # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(thread_pool, init_database)
-        await loop.run_in_executor(thread_pool, init_rbac_pg_tables)
-        await loop.run_in_executor(thread_pool, init_rbac_db)
-        await loop.run_in_executor(thread_pool, init_postgres_tracking)
-        await loop.run_in_executor(thread_pool, init_minutes_pg)
 
+        # Initialize chatbot database
         from chatbot_minutes.database import init_db as init_chatbot_db
         init_chatbot_db()
-        logger.info("PostgreSQL LOCAL databases initialized successfully")
+
+        logger.info("Directors data and chatbot database initialized")
     except Exception as e:
-        logger.error(f"Local Startup warning: {e}")
+        logger.error(f"Error initializing directors data database: {e}")
 
-# ---------------------------------------------------------
-# Static File Serving (strictly via FastAPI)
-# ---------------------------------------------------------
+# NOTE: The root endpoint (/) is intentionally not defined here to allow
+# the React app to be served from the root path via static file serving.
+# All API endpoints are available at their respective paths.
 
-# Define important directories
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKEND_PUBLIC_DIR = os.path.join(BASE_DIR, "public")
-FRONTEND_DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "Frontend", "dist")
-
-# Custom static files class to handle SPA routing (frontend)
+# Custom static files class to handle SPA routing
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
-        # Normalize path
+        # Normalize path to check for API routes
         normalized_path = path.lstrip("/")
         
-        # Don't serve index.html for API paths that aren't found
+        # Skip API routes entirely - let FastAPI handle them
+        # FastAPI routes are checked before mounted static files, but this is a safety check
         if normalized_path.startswith("api/"):
             raise StarletteHTTPException(status_code=404)
-            
+        
         try:
             return await super().get_response(path, scope)
         except (StarletteHTTPException, HTTPException) as ex:
             if ex.status_code == 404:
-                # Return index.html for any non-existent file path (SPA routing)
-                # This only applies to the root mount
-                return await super().get_response("index.html", scope)
-            raise ex
+                # Skip API routes - don't serve index.html for them
+                normalized_path = path.lstrip("/")
+                if normalized_path.startswith("api/"):
+                    raise ex
+                # Return index.html for any non-existent file (SPA routing)
+                # But only if it's not an API request
+                if not normalized_path.startswith("api"):
+                    return await super().get_response("index.html", scope)
+                else:
+                    raise ex
+            else:
+                raise ex
 
-# Custom class for backend public files (forbid sensitive files)
-class SafeStaticFiles(StaticFiles):
-    async def get_response(self, path: str, scope):
-        # Prevent downloading database files or hidden files
-        if path.endswith(".db") or path.startswith("."):
-            logger.warning(f"Forbidden access attempt to: {path}")
-            raise StarletteHTTPException(status_code=403)
-        return await super().get_response(path, scope)
+# Serve static files from the dist directory (React build) - this must be the last route
+# Only add this if the dist directory exists
+DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "Frontend", "dist")
+if os.path.exists(DIST_DIR):
+    
+    app.mount("/", SPAStaticFiles(directory=DIST_DIR, html=True), name="static")
 
-# 1. Serve backend public files at /public
-if os.path.exists(BACKEND_PUBLIC_DIR):
-    logger.info(f"Mounting backend public directory: {BACKEND_PUBLIC_DIR}")
-    app.mount("/public", SafeStaticFiles(directory=BACKEND_PUBLIC_DIR), name="public-assets")
-else:
-    logger.warning(f"Backend public directory not found: {BACKEND_PUBLIC_DIR}")
-
-# 2. Serve frontend dist files at / (SPA routing)
-if os.path.exists(FRONTEND_DIST_DIR):
-    logger.info(f"Mounting frontend dist directory: {FRONTEND_DIST_DIR}")
-    app.mount("/", SPAStaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend-spa")
-else:
-    logger.warning(f"Frontend dist directory not found: {FRONTEND_DIST_DIR}")
-
-@app.get("/api/test-static")
+# Add a test endpoint to verify static file serving is working
+@app.get("/test-static")
 async def test_static_serving():
-    return {"message": "Success"}
+    """Test endpoint to verify static file serving is working"""
+    return {"message": "Static file serving should be working correctly"}
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Run without SSL on port 8001
     uvicorn.run(app, host="0.0.0.0", port=8000)

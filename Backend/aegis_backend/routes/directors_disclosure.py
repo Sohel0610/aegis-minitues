@@ -155,13 +155,22 @@ async def get_directors_disclosures():
     if not pg_conn: raise HTTPException(status_code=500, detail="DB connection failed")
     cursor = get_pg_cursor(pg_conn)
     try:
-        # We fetch from document_summaries as it represents the actual disclosures in the data source tab
+        # We join document_summaries with the master directors table with normalized 
+        # name comparison to handle case/space differences.
         cursor.execute("""
-            SELECT id, director_name, din, file_path, created_at, updated_at 
-            FROM document_summaries 
-            ORDER BY created_at DESC
+            SELECT 
+                ds.id, 
+                ds.director_name, 
+                COALESCE(NULLIF(ds.din, ''), d.din) as din, 
+                ds.file_path, 
+                ds.created_at, 
+                ds.updated_at 
+            FROM directors_data.document_summaries ds
+            LEFT JOIN directors_master.directors d ON TRIM(UPPER(ds.director_name)) = TRIM(UPPER(d.name))
+            ORDER BY ds.director_name ASC
         """)
         rows = cursor.fetchall()
+
         
         # Transform for frontend Disclosure interface expectations
         data = []
@@ -181,6 +190,7 @@ async def get_directors_disclosures():
             })
             
         return DisclosuresResponse(data=data, count=len(data))
+
     except Exception as e:
         logger.error(f"Error in disclosures fetch: {e}")
         return DisclosuresResponse(data=[], count=0)
@@ -196,8 +206,8 @@ async def get_directors_master():
     try:
         cursor.execute("""
             SELECT d.id, d.name, d.din, d.created_at, p.pan
-            FROM directors d
-            LEFT JOIN directors_profile p ON d.din = p.din
+            FROM directors_master.directors d
+            LEFT JOIN directors_profile.directors_profile p ON d.din = p.din
             ORDER BY d.name
         """)
         rows = cursor.fetchall()
@@ -221,7 +231,7 @@ async def get_disclosure_summary(id: int):
     if not pg_conn: raise HTTPException(status_code=500)
     cursor = get_pg_cursor(pg_conn)
     try:
-        cursor.execute("SELECT * FROM document_summaries WHERE id = %s", (id,))
+        cursor.execute("SELECT * FROM directors_data.document_summaries WHERE id = %s", (id,))
         row = cursor.fetchone()
         if not row: raise HTTPException(status_code=404, detail="Disclosure not found")
         return {**row, "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()}
@@ -235,7 +245,7 @@ async def download_disclosure_file(id: int):
     if not pg_conn: raise HTTPException(status_code=500)
     cursor = get_pg_cursor(pg_conn)
     try:
-        cursor.execute("SELECT file_path FROM document_summaries WHERE id = %s", (id,))
+        cursor.execute("SELECT file_path FROM directors_data.document_summaries WHERE id = %s", (id,))
         row = cursor.fetchone()
         if not row: raise HTTPException(status_code=404)
         
@@ -264,12 +274,12 @@ async def create_director(request: DirectorCreateRequest):
                  raise Exception("Database connection failed")
             cursor = get_pg_cursor(pg_conn)
             try:
-                cursor.execute("SELECT id FROM  directors WHERE din = %s", (request.din,))
+                cursor.execute("SELECT id FROM directors_master.directors WHERE din = %s", (request.din,))
                 if cursor.fetchone():
                     raise HTTPException(status_code=400, detail="Director with this DIN already exists")
 
                 cursor.execute(
-                    "INSERT INTO  directors (name, din) VALUES (%s, %s) RETURNING id, name, din, created_at",
+                    "INSERT INTO directors_master.directors (name, din) VALUES (%s, %s) RETURNING id, name, din, created_at",
                     (request.name, request.din),
                 )
                 row = cursor.fetchone()
@@ -303,19 +313,19 @@ async def update_director(director_id: int, request: DirectorUpdateRequest):
                  raise Exception("Database connection failed")
             cursor = get_pg_cursor(pg_conn)
             try:
-                cursor.execute("SELECT id FROM  directors WHERE id = %s", (director_id,))
+                cursor.execute("SELECT id FROM directors_master.directors WHERE id = %s", (director_id,))
                 if not cursor.fetchone():
                     raise HTTPException(status_code=404, detail="Director not found")
 
                 cursor.execute(
-                    "SELECT id FROM  directors WHERE din = %s AND id != %s",
+                    "SELECT id FROM directors_master.directors WHERE din = %s AND id != %s",
                     (request.din, director_id),
                 )
                 if cursor.fetchone():
                     raise HTTPException(status_code=400, detail="Another director with this DIN already exists")
 
                 cursor.execute(
-                    "UPDATE  directors SET name = %s, din = %s WHERE id = %s RETURNING id, name, din, created_at",
+                    "UPDATE directors_master.directors SET name = %s, din = %s WHERE id = %s RETURNING id, name, din, created_at",
                     (request.name, request.din, director_id),
                 )
                 row = cursor.fetchone()
@@ -349,10 +359,10 @@ async def delete_director(director_id: int):
                  raise Exception("Database connection failed")
             cursor = get_pg_cursor(pg_conn)
             try:
-                cursor.execute("SELECT id FROM  directors WHERE id = %s", (director_id,))
+                cursor.execute("SELECT id FROM directors_master.directors WHERE id = %s", (director_id,))
                 if not cursor.fetchone():
                     raise HTTPException(status_code=404, detail="Director not found")
-                cursor.execute("DELETE FROM  directors WHERE id = %s", (director_id,))
+                cursor.execute("DELETE FROM directors_master.directors WHERE id = %s", (director_id,))
                 pg_conn.commit()
             finally:
                 cursor.close()
@@ -376,7 +386,7 @@ async def update_director_pan(director_id: int, request: DirectorPanUpdateReques
                  raise Exception("Database connection failed")
             cursor = get_pg_cursor(pg_conn)
             try:
-                cursor.execute("SELECT din FROM  directors WHERE id = %s", (director_id,))
+                cursor.execute("SELECT din FROM directors_master.directors WHERE id = %s", (director_id,))
                 row = cursor.fetchone()
                 if not row:
                     raise HTTPException(status_code=404, detail="Director not found")
@@ -385,7 +395,7 @@ async def update_director_pan(director_id: int, request: DirectorPanUpdateReques
                     raise HTTPException(status_code=400, detail="Director DIN is empty")
 
                 cursor.execute("""
-                    INSERT INTO  directors_profile (din, pan)
+                    INSERT INTO directors_profile.directors_profile (din, pan)
                     VALUES (%s, %s)
                     ON CONFLICT (din) DO UPDATE SET pan = EXCLUDED.pan
                 """, (din, request.pan.strip()))
@@ -414,24 +424,24 @@ async def get_disclosure_analytics():
         raise HTTPException(status_code=500, detail="DB connection failed")
     cursor = get_pg_cursor(pg_conn)
     try:
-        cursor.execute("SELECT COUNT(*) AS total_count FROM document_summaries")
+        cursor.execute("SELECT COUNT(*) AS total_count FROM directors_data.document_summaries")
         res = cursor.fetchone()
         total = int(res["total_count"]) if res else 0
         
-        cursor.execute("SELECT 'MBP-1' as type, COUNT(*) as count FROM document_summaries group by 1")
+        cursor.execute("SELECT 'MBP-1' as type, COUNT(*) as count FROM directors_data.document_summaries group by 1")
         by_type = [{"label": r["type"], "value": int(r["count"])} for r in cursor.fetchall()]
         
         # Best effort monthly/director stats from document_summaries
         cursor.execute("""
             SELECT TO_CHAR(created_at, 'Mon YYYY') as label, COUNT(*) as count 
-            FROM document_summaries 
+            FROM directors_data.document_summaries 
             GROUP BY 1 ORDER BY MIN(created_at)
         """)
         by_month = [{"label": r["label"], "value": int(r["count"])} for r in cursor.fetchall()]
         
         cursor.execute("""
             SELECT director_name as label, COUNT(*) as count 
-            FROM document_summaries 
+            FROM directors_data.document_summaries 
             GROUP BY 1 ORDER BY count DESC LIMIT 10
         """)
         by_director = [{"label": r["label"], "value": int(r["count"])} for r in cursor.fetchall()]
@@ -461,7 +471,7 @@ async def get_director_profile(din: str):
             try:
                 cursor.execute("""
                     SELECT name_of_director, din, address, date_of_birth, pan, qualification, experience
-                    FROM  directors_profile WHERE din = %s
+                    FROM directors_profile.directors_profile WHERE din = %s
                 """, (din,))
                 row = cursor.fetchone()
                 if not row: raise HTTPException(status_code=404, detail="Profile not found")
@@ -501,12 +511,12 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
                         update_fields.append(f"{field} = %s"); values.append(val)
                 if not update_fields: raise HTTPException(status_code=400, detail="No fields to update")
                 values.append(din)
-                cursor.execute(f"UPDATE  directors_profile SET {', '.join(update_fields)} WHERE din = %s", values)
+                cursor.execute(f"UPDATE directors_profile.directors_profile SET {', '.join(update_fields)} WHERE din = %s", values)
                 pg_conn.commit()
 
                 cursor.execute("""
                     SELECT name_of_director, din, address, date_of_birth, pan, qualification, experience
-                    FROM  directors_profile WHERE din = %s
+                    FROM directors_profile.directors_profile WHERE din = %s
                 """, (din,))
                 row = cursor.fetchone()
                 return {
@@ -546,7 +556,7 @@ async def get_all_summaries():
     if not pg_conn: raise HTTPException(status_code=500)
     cursor = get_pg_cursor(pg_conn)
     try:
-        cursor.execute("SELECT id, director_name, din, file_path, full_text, summary, created_at, updated_at FROM  document_summaries ORDER BY updated_at DESC")
+        cursor.execute("SELECT id, director_name, din, file_path, full_text, summary, created_at, updated_at FROM directors_data.document_summaries ORDER BY updated_at DESC")
         rows = cursor.fetchall()
         return [{**row, "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()} for row in rows]
     finally:
@@ -572,7 +582,7 @@ async def upload_disclosure_form(director_name: str, din: str, file: UploadFile 
             cursor = get_pg_cursor(pg_conn)
             try:
                 cursor.execute("""
-                    INSERT INTO  document_summaries (director_name, din, file_path, full_text, summary)
+                    INSERT INTO directors_data.document_summaries (director_name, din, file_path, full_text, summary)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (din) DO UPDATE SET 
                         full_text = EXCLUDED.full_text,

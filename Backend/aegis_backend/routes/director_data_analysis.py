@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 # Database schema in PostgreSQL (Unified Master Schema)
-DB_SCHEMA = "public"
+DB_SCHEMA = "directors_data"
 
 def init_database():
     """Verify the PostgreSQL database schema and tables (Unified)."""
@@ -29,27 +29,31 @@ def init_database():
         try:
             cursor = get_pg_cursor(pg_conn)
 
-            # Ensure schema exists (Central Namespace)
-            cursor.execute( "SELECT 1")
+            # Ensure schemas exist
+            cursor.execute("CREATE SCHEMA IF NOT EXISTS directors_data")
+            cursor.execute("CREATE SCHEMA IF NOT EXISTS directors_master")
+            cursor.execute("CREATE SCHEMA IF NOT EXISTS directors_profile")
 
-            # 1. Master Directors Table (Unified with routes.directors_disclosure)
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors (
+            # 1. Master Directors Table (Registry)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS directors_master.directors (
                     id SERIAL PRIMARY KEY,
                     name TEXT NOT NULL,
                     din TEXT UNIQUE,
-                    source_file TEXT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
-            # Ensure 'source_file' column exists for backward compatibility
-            try:
-                cursor.execute(f"ALTER TABLE {DB_SCHEMA}.directors ADD COLUMN IF NOT EXISTS source_file TEXT")
-            except Exception:
-                pass # Already exists or doesn't support IF NOT EXISTS in all versions, handled
+            # 2. Directors Data table (for analysis extraction)
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors (
+                    din TEXT PRIMARY KEY,
+                    name TEXT,
+                    source_file TEXT
+                )
+            """)
 
-            # 2. Master Companies Table
+            # 3. Master Companies Table
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.companies (
                     id SERIAL PRIMARY KEY,
@@ -58,35 +62,34 @@ def init_database():
                 )
             """)
 
-            # Create directorships table
+            # 4. Directorships table
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directorships (
                     id SERIAL PRIMARY KEY,
-                    din TEXT REFERENCES {DB_SCHEMA}.directors(din),
-                    company_id INTEGER REFERENCES {DB_SCHEMA}.companies(id),
+                    din TEXT REFERENCES {DB_SCHEMA}.directors(din) ON DELETE CASCADE,
+                    company_id INTEGER REFERENCES {DB_SCHEMA}.companies(id) ON DELETE CASCADE,
                     position TEXT,
                     appointment_date TEXT
                 )
             """)
 
-            # 3. Director Profile Table
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.directors_profile (
+            # 5. Director Profile Table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS directors_profile.directors_profile (
                     id SERIAL PRIMARY KEY,
-                    din TEXT UNIQUE REFERENCES {DB_SCHEMA}.directors(din),
-                    name_of_director TEXT,
+                    din TEXT UNIQUE,
                     pan TEXT,
+                    name_of_director TEXT,
                     address TEXT,
                     date_of_birth DATE,
                     qualification TEXT,
                     experience TEXT,
-                    image_path TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
-            # 4. Document Summaries Table
+            # 6. Document Summaries Table
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.document_summaries (
                     id SERIAL PRIMARY KEY,
@@ -100,13 +103,43 @@ def init_database():
                 )
             """)
 
-            # Create indexes for document_summaries
+            # Create family information schema and table
+            cursor.execute("CREATE SCHEMA IF NOT EXISTS family_information")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS family_information.director_family (
+                    id SERIAL PRIMARY KEY,
+                    director_name TEXT NOT NULL,
+                    section_2_77_i TEXT,
+                    section_2_77_ii TEXT,
+                    section_2_77_iii TEXT,
+                    father TEXT,
+                    mother TEXT,
+                    son TEXT,
+                    sons_wife TEXT,
+                    daughter TEXT,
+                    daughters_husband TEXT,
+                    brother TEXT,
+                    sister TEXT,
+                    father_pan TEXT,
+                    mother_pan TEXT,
+                    father_pan_file TEXT,
+                    mother_pan_file TEXT,
+                    is_submitted INTEGER DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+            # Create indexes
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_file_path ON {DB_SCHEMA}.document_summaries (file_path)")
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_doc_summ_dir_name ON {DB_SCHEMA}.document_summaries (director_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_directors_master_din ON directors_master.directors(din)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_directors_profile_din ON directors_profile.directors_profile(din)")
 
             pg_conn.commit()
-            logger.info("PostgreSQL database schemas for Directors initialized successfully")
+            logger.info(f"PostgreSQL comprehensive schemas for Directors ({DB_SCHEMA}, master, profile) initialized successfully")
             return True
+
         except Exception as e:
             logger.error(f"PostgreSQL initialization failed: {e}")
             try:
@@ -116,6 +149,7 @@ def init_database():
             raise RuntimeError(f"Database initialization failed: {e}")
         finally:
             pg_conn.close()
+
     else:
         logger.error("Could not get a database connection for initialization")
         raise RuntimeError("Database connection failed during initialization")
