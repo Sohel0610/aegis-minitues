@@ -13,9 +13,9 @@ import asyncio
 import concurrent.futures
 from functools import partial
 
-# Load environment variables
-from dotenv import load_dotenv
-load_dotenv()
+# Load environment variables from current directory
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+load_dotenv(env_path)
 
 import sqlite3  # Add this import for database access
 import urllib.parse
@@ -27,8 +27,7 @@ import platform
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from docx import Document as DocxDocument
 
-# Load environment variables
-load_dotenv()
+# Environment variables loaded above
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +59,8 @@ from routes import (
     directors,
     directors_disclosure,
     director_analysis,
+    director_changes,
+    director_family_info,
     minutes,
     ai_assistant,
     visit_tracking,
@@ -71,27 +72,29 @@ from routes import (
     rbac  # New RBAC module
 )
 
-# Include all route modules
-app.include_router(health.router)
-app.include_router(excel.router)
-app.include_router(bse.router)
-app.include_router(sebi.router)
-app.include_router(rbi.router)
-app.include_router(analytics.router)
-app.include_router(admin.router)
-app.include_router(directors.router)
-app.include_router(directors_disclosure.router)
-app.include_router(director_analysis.router)
-app.include_router(minutes.router)
-app.include_router(ai_assistant.router)
-app.include_router(visit_tracking.router)
-app.include_router(insider_trading.router)
-app.include_router(chat.router)
-app.include_router(auth.router)
-app.include_router(user_management.router)
-app.include_router(interactive.router)
+# Include all route modules with /api prefix where needed
+app.include_router(health.router, prefix="/api")
+app.include_router(excel.router, prefix="/api")
+app.include_router(bse.router, prefix="/api")
+app.include_router(sebi.router, prefix="/api")
+app.include_router(rbi.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(directors.router, prefix="/api")
+app.include_router(directors_disclosure.router, prefix="/api")
+app.include_router(director_analysis.router, prefix="/api")
+app.include_router(director_changes.router, prefix="/api")
+app.include_router(director_family_info.router, prefix="/api")
+app.include_router(minutes.router, prefix="/api")
+app.include_router(ai_assistant.router, prefix="/api")
+app.include_router(visit_tracking.router, prefix="/api")
+app.include_router(insider_trading.router, prefix="/api")
+app.include_router(chat.router) # Already has /api/chat prefix in its definition
+app.include_router(auth.router, prefix="/api")
+app.include_router(user_management.router, prefix="/api")
+app.include_router(interactive.router) # Already has /api prefix in its definition
 
-app.include_router(rbac.router)  # Register RBAC routes
+app.include_router(rbac.router, prefix="/api")  # Register RBAC routes with /api prefix
 
 # Custom thread pool for handling blocking operations
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
