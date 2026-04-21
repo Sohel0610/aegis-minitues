@@ -52,6 +52,7 @@ interface ExcelViewProps {
   enableDateRangeFilter?: boolean; // Add date range filter prop
   onDateRangeChange?: (dateRange: DateRange) => void; // Callback for date range changes
   initialDateRange?: DateRange; // Initial date range
+  isEditable?: boolean; // New prop to control editability
 }
 
 const ExcelView = ({
@@ -66,7 +67,8 @@ const ExcelView = ({
   containerHeight = '500px', // Custom container height prop, default to 500px
   enableDateRangeFilter = false, // Date range filter prop
   onDateRangeChange, // Callback for date range changes
-  initialDateRange // Initial date range
+  initialDateRange, // Initial date range
+  isEditable = false // Default to false for safety
 }: ExcelViewProps) => {
   const [data, setData] = useState<ExcelData[]>(initialData);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
@@ -320,12 +322,25 @@ const ExcelView = ({
 
   // Start editing cell (admin only for certain columns)
   const startEditing = (rowIndex: number, column: string): void => {
+    // If global editing is disabled for this view, return immediately
+    if (!isEditable) return;
+
+    // DISCLOSURE: User requested to disable editing for summaries and restricted data
+    // These columns are ALWAYS read-only regardless of Admin status
+    const restrictedColumns = ['Summary', 'Date', 'PDF Link', 'Link to Intimation', 'Sr. No'];
+    
+    if (restrictedColumns.includes(column)) {
+      return;
+    }
+
     // Adjust rowIndex for pagination
     const actualRowIndex = (currentPage - 1) * rowsPerPage + rowIndex;
+    
+    // Safety check for data existence
+    if (!data[actualRowIndex]) return;
 
-    // Allow editing for all users on non-sensitive columns
     // Restrict editing for sensitive columns to admin only
-    const sensitiveColumns = ['Link to Intimation', 'PDF Link']; // Add more columns as needed
+    const sensitiveColumns = ['Link to Intimation', 'PDF Link']; 
 
     if (sensitiveColumns.includes(column) && !isAdmin) {
       alert("Permission denied. You must be an administrator to edit this column.");

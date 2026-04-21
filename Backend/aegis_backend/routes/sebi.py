@@ -1,12 +1,15 @@
 # SEBI Data Route Module
-# This module handles SEBI (Securities and Exchange Board of India) data processing using PostgreSQL
+# This module handles SEBI (Securities and Exchange Board of India) data processing and retrieval operations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
+import sqlite3
 import logging
 import asyncio
 import concurrent.futures
+
+# Import our PostgreSQL service
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
@@ -19,12 +22,12 @@ router = APIRouter()
 
 # Model for SEBI Excel summary data
 class SEBIExcelSummary(BaseModel):
-    id: Optional[int] = None
-    date_key: Optional[str] = None
-    row_index: Optional[int] = None
-    pdf_link: Optional[str] = None
-    summary: Optional[str] = None
-    inserted_at: Optional[str] = None
+    id: int
+    date_key: str
+    row_index: int
+    pdf_link: Optional[str]
+    summary: Optional[str]
+    inserted_at: Any # Can be datetime or str
     entity_name: Optional[str] = None
     nature: Optional[str] = None
 
@@ -36,56 +39,47 @@ class SEBIAnalysisDataResponse(BaseModel):
 # Endpoint to get SEBI analysis data from the database
 @router.get("/sebi-analysis-data", response_model=SEBIAnalysisDataResponse)
 async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
-    """Get SEBI analysis data from PostgreSQL exclusively."""
-    # Production Database Selection
-    target_db = os.getenv('POSTGRES_DATABASE_SEBI') or os.getenv('POSTGRES_DATABASE_BSE')
-    
+    """Get SEBI analysis data from the Azure PostgreSQL database"""
     try:
+        # Define the target database name
+        SEBI_DB = "aegis_sebi_db"
+        
+        # Connect to the database and fetch data
         def fetch_sebi_data():
-            conn = get_pg_connection(target_db)
+            conn = get_pg_connection(database=SEBI_DB)
             if not conn:
-                logger.error(f"Failed to connect to PG database ({target_db}) for SEBI alerts")
-                raise HTTPException(status_code=500, detail="Database connection failed")
-            
-            cursor = get_pg_cursor(conn)
-            try:
-                # First, get the total count of records
-                cursor.execute("""
-                    SELECT COUNT(*)
-                    FROM excel_summaries
-                """)
-                row = cursor.fetchone()
-                total_count = row["count"] if row else 0
+                raise Exception(f"Could not connect to Azure PostgreSQL database: {SEBI_DB}")
                 
-                # Fetch data from excel_summaries table
-                # We handle potential missing columns or NULLs in the result processing
+            try:
+                cursor = get_pg_cursor(conn)
+                
+                # First, get the total count of records
+                cursor.execute("SELECT COUNT(*) FROM aegis_sebi_data")
+                total_count = cursor.fetchone()['count']
+                
+                # Fetch data from aegis_sebi_data table with limit and offset for pagination
                 cursor.execute("""
-                    SELECT id, date_key, row_index, pdf_link, summary, inserted_at
-                    FROM excel_summaries
-                    ORDER BY date_key DESC, row_index ASC
+                    SELECT id, date_key, row_index, pdf_link, summary, inserted_at 
+                    FROM aegis_sebi_data 
+                    ORDER BY date_key DESC, row_index ASC 
                     LIMIT %s OFFSET %s
                 """, (limit, offset))
                 
                 rows = cursor.fetchall()
                 
-                # Convert to list of dictionaries with frontend-expected keys
-                data = []
-                for idx, row in enumerate(rows):
-                    record = {
-                        'id': row['id'] if row.get('id') is not None else (offset + idx + 1),
-                        'date_key': str(row['date_key']),
-                        'row_index': row['row_index'] if row.get('row_index') is not None else (offset + idx + 1),
-                        'pdf_link': row['pdf_link'],
-                        'summary': row['summary'],
-                        'inserted_at': str(row['inserted_at'])
-                    }
-                    data.append(record)
+                # Data is already in list of dictionaries format due to RealDictCursor
+                # But we convert date objects to string for JSON serialization if needed
+                for row in rows:
+                    if hasattr(row['inserted_at'], 'isoformat'):
+                        row['inserted_at'] = row['inserted_at'].isoformat()
+                    else:
+                        row['inserted_at'] = str(row['inserted_at'])
                 
-                return data, total_count
+                return rows, total_count
             finally:
-                cursor.close()
                 conn.close()
         
+        # Run the database operation in a thread pool
         loop = asyncio.get_event_loop()
         data, total_count = await loop.run_in_executor(thread_pool, fetch_sebi_data)
         
@@ -94,6 +88,6 @@ async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
             count=total_count
         )
     except Exception as e:
-        logger.error(f"Error fetching SEBI analysis data: {e}")
-        if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        error_message = str(e)
+        logger.error(f"Error fetching SEBI analysis data: {error_message}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch SEBI analysis data: {error_message}")

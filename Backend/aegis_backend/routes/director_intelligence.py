@@ -1,0 +1,151 @@
+# director_intelligence.py
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List, Dict, Any
+import os
+import psycopg2
+from psycopg2 import extras
+from dotenv import load_dotenv
+
+router = APIRouter(
+    prefix="/director-intelligence",
+    tags=["Director Intelligence"]
+)
+
+# Load environment variables from the parent aegis_backend folder
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(env_path)
+
+def get_db_connection():
+    try:
+        # Check if environment variables are loaded
+        host = os.getenv('POSTGRES_HOST')
+        if not host:
+            print("WARNING: POSTGRES_HOST not found in router. Check .env path.")
+            
+        conn = psycopg2.connect(
+            host=host,
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            user=os.getenv('POSTGRES_USER'),
+            password=os.getenv('POSTGRES_PASSWORD'),
+            dbname=os.getenv('POSTGRES_DATABASE_DIRECTOR', 'director_disclosure_system'),
+            sslmode='require'
+        )
+        return conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        return None
+
+@router.get("/summary")
+async def get_intelligence_summary():
+    """Returns high-level KPIs for enriched director data."""
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+    try:
+        # 1. Total Enriched vs Total
+        cur.execute("SELECT COUNT(*) as total, COUNT(last_api_sync) as enriched FROM directors_master.directors")
+        counts = cur.fetchone()
+        
+        # 2. DIN Status Breakdown
+        cur.execute("""
+            SELECT d.din_status, COUNT(DISTINCT d.din) as count 
+            FROM directors_master.directors d
+            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            WHERE d.last_api_sync IS NOT NULL 
+            GROUP BY d.din_status
+        """)
+        status_breakdown = cur.fetchall()
+        
+        # 3. Gender Breakdown - Strict Male/Female only
+        cur.execute("""
+            SELECT d.gender, COUNT(DISTINCT d.din) as count 
+            FROM directors_master.directors d
+            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            WHERE d.last_api_sync IS NOT NULL 
+            AND UPPER(d.gender) IN ('MALE', 'FEMALE')
+            GROUP BY 1
+        """)
+        gender_breakdown = cur.fetchall()
+        
+        # 4. DIR-3 KYC Breakdown
+        cur.execute("""
+            SELECT COALESCE(d.dir3_kyc, 'Pending') as status, COUNT(DISTINCT d.din) as count 
+            FROM directors_master.directors d
+            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            WHERE d.last_api_sync IS NOT NULL
+            GROUP BY 1
+        """)
+        kyc_breakdown = cur.fetchall()
+
+        # 5. Total Associations tracked
+        cur.execute("SELECT COUNT(*) as total FROM directors_master.external_associations")
+        assoc_count = cur.fetchone()
+
+        return {
+            "counts": counts,
+            "status": status_breakdown,
+            "gender": gender_breakdown,
+            "kyc": kyc_breakdown,
+            "total_external_boards": assoc_count['total']
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+@router.get("/directors")
+async def get_enriched_directors():
+    """Returns all directors with their registry status and association counts."""
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT 
+                d.din, 
+                d.name, 
+                d.din_status, 
+                d.gender, 
+                d.nationality, 
+                d.dir3_kyc,
+                COUNT(ea.id) as external_board_count
+            FROM directors_master.directors d
+            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            WHERE d.last_api_sync IS NOT NULL
+            GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc
+            HAVING COUNT(ea.id) > 0
+            ORDER BY d.name
+        """)
+        return cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+@router.get("/associations/{din}")
+async def get_director_associations(din: str):
+    """Returns all external board associations for a specific director."""
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT cin, company_name, designation, appointment_date 
+            FROM directors_master.external_associations 
+            WHERE din = %s
+            ORDER BY appointment_date DESC
+        """, (din,))
+        return cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()

@@ -120,6 +120,7 @@ const ExcelDataLoader = ({ fileName, title, onDataLoaded }: ExcelDataLoaderProps
       initialData={formattedData}
       columns={columns}
       title={title}
+      isEditable={fileName === 'email.xlsx'}
       columnWidths={columns.reduce((acc, col) => {
         if (col === 'Date') {
           acc[col] = '120px';

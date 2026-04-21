@@ -177,7 +177,7 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                   style={{ borderColor: '#75479C' }}
                 />
               </div>
-              
+
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger style={{ borderColor: '#75479C' }}>
                   <Filter className="h-4 w-4 mr-2" />
@@ -190,7 +190,7 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                   ))}
                 </SelectContent>
               </Select>
-              
+
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger style={{ borderColor: '#75479C' }}>
                   <SelectValue placeholder="Sort by" />
@@ -201,7 +201,7 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                   <SelectItem value="director_count">Director Count</SelectItem>
                 </SelectContent>
               </Select>
-              
+
               <Button
                 onClick={() => {
                   setSearchTerm("");
@@ -224,7 +224,7 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                 <TableHeader>
                   <TableRow style={{ backgroundColor: '#f5f5f5' }}>
                     <TableHead className="font-semibold w-12">#</TableHead>
-                    <TableHead 
+                    <TableHead
                       className="font-semibold cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort("name")}
                     >
@@ -237,7 +237,7 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                         )}
                       </div>
                     </TableHead>
-                    <TableHead 
+                    <TableHead
                       className="font-semibold cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort("type")}
                     >
@@ -250,7 +250,7 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                         )}
                       </div>
                     </TableHead>
-                    <TableHead 
+                    <TableHead
                       className="font-semibold text-right cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort("director_count")}
                     >
@@ -344,6 +344,9 @@ const DirectorsDisclosureCompaniesMasterData = () => {
           </CardContent>
         </Card>
       </motion.div>
+      <footer className="mt-20 pt-10 border-t border-gray-100 text-center opacity-30">
+        <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Aegis Institutional Risk & Compliance Terminal</span>
+      </footer>
     </div>
   );
 };

@@ -24,7 +24,7 @@ import RBIUserGuide from "./pages/RBIUserGuide";
 import SEBIUserGuide from "./pages/SEBIUserGuide";
 import InsiderTrading from "./pages/InsiderTrading";
 import InsiderTradingUserGuide from "./pages/InsiderTradingUserGuide";
-import DirectorsDisclosure from "./pages/DirectorsDisclosure";
+import DirectorsDisclosure from "./pages/DirectorsDisclosure.tsx";
 import MinutesPreparation from "./pages/MinutesPreparation";
 import FormBasedGenerator from "./pages/minutes-preparation/FormBasedGenerator";
 import AIAssistant from "./pages/minutes-preparation/AIAssistant";

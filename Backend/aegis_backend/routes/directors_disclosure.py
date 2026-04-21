@@ -49,6 +49,8 @@ class DirectorMasterResponse(BaseModel):
     name: str
     din: str
     pan: Optional[str] = None
+    din_status: Optional[str] = None
+    gender: Optional[str] = None
     created_at: str
 
 class DirectorsMasterResponse(BaseModel):
@@ -59,6 +61,8 @@ class DisclosureResponse(BaseModel):
     id: int
     director_name: str
     din: str
+    pan: Optional[str] = None
+    din_status: Optional[str] = None
     disclosure_date: str
     disclosure_type: str
     file_path: str
@@ -150,49 +154,71 @@ class ImageDeleteResponse(BaseModel):
 
 @router.get("/directors-disclosures", response_model=DisclosuresResponse)
 async def get_directors_disclosures():
-    """Unified endpoint for master director list and disclosures (PostgreSQL)."""
+    """
+    Primary data source endpoint — pulls directly from the Falconebiz API-enriched
+    directors_master.directors registry. Each director appears exactly once with
+    their verified DIN, sync status, and profile details.
+    MBP-1 document_summaries are preserved for summary/download features only.
+    """
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if not pg_conn: raise HTTPException(status_code=500, detail="DB connection failed")
     cursor = get_pg_cursor(pg_conn)
     try:
-        # We join document_summaries with the master directors table with normalized 
-        # name comparison to handle case/space differences.
         cursor.execute("""
-            SELECT 
-                ds.id, 
-                ds.director_name, 
-                COALESCE(NULLIF(ds.din, ''), d.din) as din, 
-                ds.file_path, 
-                ds.created_at, 
-                ds.updated_at 
-            FROM directors_data.document_summaries ds
-            LEFT JOIN directors_master.directors d ON TRIM(UPPER(ds.director_name)) = TRIM(UPPER(d.name))
-            ORDER BY ds.director_name ASC
+            SELECT
+                d.id,
+                d.name                                          AS director_name,
+                d.din,
+                COALESCE(d.din_status, 'Sync Pending')         AS din_status,
+                d.gender,
+                p.pan,
+                d.last_api_sync,
+                d.created_at,
+                ds.file_path,
+                ds.id                                           AS doc_id
+            FROM directors_master.directors d
+            LEFT JOIN directors_profile.directors_profile p
+                   ON p.din = d.din
+            LEFT JOIN LATERAL (
+                SELECT id, file_path
+                FROM directors_data.document_summaries
+                WHERE TRIM(UPPER(director_name)) = TRIM(UPPER(d.name))
+                   OR din = d.din
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ds ON TRUE
+            WHERE EXISTS (
+                SELECT 1 FROM directors_master.external_associations ea
+                WHERE ea.din = d.din
+            )
+            ORDER BY d.name ASC
         """)
         rows = cursor.fetchall()
 
-        
-        # Transform for frontend Disclosure interface expectations
         data = []
         for r in rows:
-            # Safe date extraction regardless of type (datetime or str)
-            d_date = "N/A"
-            if r["created_at"]:
-                d_date = str(r["created_at"])[:10]
-            
+            sync_date = "N/A"
+            if r["last_api_sync"]:
+                sync_date = str(r["last_api_sync"])[:10]
+            elif r["created_at"]:
+                sync_date = str(r["created_at"])[:10]
+
             data.append({
-                "id": r["id"],
-                "director_name": r["director_name"],
-                "din": r["din"] or "N/A",
-                "disclosure_date": d_date,
-                "disclosure_type": "MBP-1", # Default to MBP-1 for unified registry
-                "file_path": r["file_path"]
+                "id":               r["doc_id"] or r["id"],
+                "director_name":    r["director_name"],
+                "din":              r["din"] or "Pending Sync",
+                "pan":              r["pan"] or "–",
+                "din_status":       r["din_status"],
+                "disclosure_date":  sync_date,
+                "disclosure_type":  "Registry Sync",
+                "file_path":        r["file_path"] or ""
             })
-            
+
         return DisclosuresResponse(data=data, count=len(data))
 
     except Exception as e:
         logger.error(f"Error in disclosures fetch: {e}")
+        import traceback; traceback.print_exc()
         return DisclosuresResponse(data=[], count=0)
     finally:
         cursor.close(); pg_conn.close()
@@ -205,7 +231,7 @@ async def get_directors_master():
     cursor = get_pg_cursor(pg_conn)
     try:
         cursor.execute("""
-            SELECT d.id, d.name, d.din, d.created_at, p.pan
+            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan
             FROM directors_master.directors d
             LEFT JOIN directors_profile.directors_profile p ON d.din = p.din
             ORDER BY d.name
@@ -218,6 +244,8 @@ async def get_directors_master():
                 "name": r["name"],
                 "din": r["din"] or "N/A",
                 "pan": r["pan"],
+                "din_status": r["din_status"],
+                "gender": r["gender"],
                 "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
             })
         return DirectorsMasterResponse(data=data, count=len(data))
@@ -431,13 +459,16 @@ async def get_disclosure_analytics():
         cursor.execute("SELECT 'MBP-1' as type, COUNT(*) as count FROM directors_data.document_summaries group by 1")
         by_type = [{"label": r["type"], "value": int(r["count"])} for r in cursor.fetchall()]
         
-        # Best effort monthly/director stats from document_summaries
+        # Real Association Trend from Registry
         cursor.execute("""
-            SELECT TO_CHAR(created_at, 'Mon YYYY') as label, COUNT(*) as count 
-            FROM directors_data.document_summaries 
-            GROUP BY 1 ORDER BY MIN(created_at)
+            SELECT TO_CHAR(appointment_date, 'Mon YYYY') as month, COUNT(*) as count 
+            FROM directors_master.external_associations 
+            WHERE appointment_date IS NOT NULL
+            GROUP BY 1 ORDER BY MIN(appointment_date) DESC LIMIT 12
         """)
-        by_month = [{"label": r["label"], "value": int(r["count"])} for r in cursor.fetchall()]
+        rows = cursor.fetchall()
+        # Ensure chronological order (ASC after DESC limit)
+        by_month = [{"month": r["month"], "count": int(r["count"])} for r in reversed(rows)]
         
         cursor.execute("""
             SELECT director_name as label, COUNT(*) as count 

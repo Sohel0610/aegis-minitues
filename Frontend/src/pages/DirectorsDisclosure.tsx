@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { FileText, Database, BarChart3, Home, FileSpreadsheet, History } from "lucide-react";
+import { FileText, Database, BarChart3, Home, FileSpreadsheet, History, Network, Shield } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import DirectorsDisclosureDataSource from "./DirectorsDisclosure/DirectorsDisclosureDataSource";
@@ -8,6 +8,8 @@ import DirectorsDisclosureAnalytics from "./DirectorsDisclosure/DirectorsDisclos
 import DirectorsDisclosureMasterData from "./DirectorsDisclosure/DirectorsDisclosureMasterData";
 import DirectorsDisclosureCompaniesMasterData from "./DirectorsDisclosure/DirectorsDisclosureCompaniesMasterData";
 import DirectorDisclosureChanges from "./DirectorsDisclosure/DirectorDisclosureChanges";
+import DirectorRegistryIntelligence from "./DirectorsDisclosure/DirectorRegistryIntelligence";
+import InstitutionalRiskMonitor from "./DirectorsDisclosure/InstitutionalRiskMonitor";
 
 type TabType = 'analytics' | 'datasource' | 'masterdata' | 'companies';
 
@@ -26,6 +28,7 @@ const DirectorsDisclosure = () => {
         label: 'Home',
         icon: Home,
         href: '/',
+        isActive: false
       },
       {
         id: 'analytics',
@@ -35,32 +38,46 @@ const DirectorsDisclosure = () => {
         isActive: currentPath === '/directors-disclosure' || currentPath === '/directors-disclosure/' || currentPath.endsWith('/analytics')
       },
       {
+        id: 'institutional-risk',
+        label: 'Institutional risk',
+        icon: Shield,
+        href: '/directors-disclosure/institutional-risk',
+        isActive: currentPath.endsWith('/institutional-risk')
+      },
+      {
+        id: 'intelligence',
+        label: 'Registry intelligence',
+        icon: Network,
+        href: '/directors-disclosure/registry-intelligence',
+        isActive: currentPath.endsWith('/registry-intelligence')
+      },
+      {
         id: 'masterdata',
-        label: 'Directors Master Data',
+        label: 'Directors master data',
         icon: Database,
         href: '/directors-disclosure/master-data',
         isActive: currentPath.endsWith('/master-data')
       },
       {
-        id: 'datasource',
-        label: 'Data Source',
-        icon: FileText,
-        href: '/directors-disclosure/data-source',
-        isActive: currentPath.endsWith('/data-source')
+        id: 'companies',
+        label: 'Companies master list',
+        icon: FileSpreadsheet,
+        href: '/directors-disclosure/companies-master-data',
+        isActive: currentPath.endsWith('/companies-master-data')
       },
       {
         id: 'changes',
-        label: 'Director Disclosure Changes',
+        label: 'Director disclosure history',
         icon: History,
         href: '/directors-disclosure/changes',
         isActive: currentPath.endsWith('/changes')
       },
       {
-        id: 'companies',
-        label: 'Companies Master List',
-        icon: FileSpreadsheet,
-        href: '/directors-disclosure/companies-master-data',
-        isActive: currentPath.endsWith('/companies-master-data')
+        id: 'datasource',
+        label: 'Data source',
+        icon: FileText,
+        href: '/directors-disclosure/data-source',
+        isActive: currentPath.endsWith('/data-source')
       }
     ];
   }, [location.pathname]);
@@ -77,6 +94,10 @@ const DirectorsDisclosure = () => {
       return <DirectorsDisclosureCompaniesMasterData />;
     } else if (location.pathname.endsWith('/changes')) {
       return <DirectorDisclosureChanges />;
+    } else if (location.pathname.endsWith('/registry-intelligence')) {
+      return <DirectorRegistryIntelligence />;
+    } else if (location.pathname.endsWith('/institutional-risk')) {
+      return <InstitutionalRiskMonitor />;
     } else {
       // Default to Analytics
       return <DirectorsDisclosureAnalytics />;
@@ -97,12 +118,6 @@ const DirectorsDisclosure = () => {
       navigationItems={navigationItems}
     >
       <div className="container mx-auto py-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">Directors' Disclosure</h1>
-            <p className="text-muted-foreground">Track and analyze directors' disclosure reports</p>
-          </div>
-        </div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

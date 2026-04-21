@@ -122,30 +122,29 @@ const DirectorDisclosureChanges = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
             >
-                <Card className="border-0 shadow-lg" style={{ borderTop: '4px solid #75479C' }}>
-                    <CardHeader>
-                        <div className="flex items-center gap-3 mb-4">
-                            <History className="h-8 w-8" style={{ color: "#75479C" }} />
+                <Card className="rounded-[2rem] border border-gray-100/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden bg-white mb-8">
+                    <CardHeader className="p-8 border-b border-gray-50 bg-gray-50/10">
+                        <div className="flex items-center gap-4 mb-8">
+                            <History className="h-9 w-9 text-[#75479C]" />
                             <div>
-                                <CardTitle className="text-2xl font-bold" style={{ color: "#000000" }}>
-                                    Director Disclosure Changes
+                                <CardTitle className="text-3xl font-black text-gray-900 tracking-tight">
+                                    Director disclosure history
                                 </CardTitle>
-                                <CardDescription style={{ color: '#666666' }}>
-                                    Track history of changes related to directors and disclosures
+                                <CardDescription className="text-gray-500 font-medium">
+                                    Track comprehensive audit trail of registry modifications
                                 </CardDescription>
                             </div>
                         </div>
 
                         {/* Search Bar */}
                         <div className="flex items-center gap-4">
-                            <div className="relative flex-1 max-w-md">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" style={{ color: '#666666' }} />
+                            <div className="relative flex-1 w-full max-w-2xl">
+                                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                                 <Input
-                                    placeholder="Search by director name or description..."
+                                    placeholder="Search history by director name or description..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-10"
-                                    style={{ borderColor: '#75479C' }}
+                                    className="pl-12 h-14 rounded-2xl border-gray-100 bg-gray-50 focus:bg-white transition-all text-lg"
                                 />
                             </div>
                         </div>
@@ -154,14 +153,14 @@ const DirectorDisclosureChanges = () => {
                         <div className="mb-4 text-sm" style={{ color: '#666666' }}>
                             Showing {filteredChanges.length} of {changes.length} records
                         </div>
-                        <div className="rounded-lg border">
+                        <div className="rounded-[1.5rem] border border-gray-100 overflow-hidden shadow-sm">
                             <Table>
                                 <TableHeader>
-                                    <TableRow style={{ backgroundColor: '#f5f5f5' }}>
-                                        <TableHead className="font-semibold w-[200px]">Date & Time</TableHead>
-                                        <TableHead className="font-semibold w-[250px]">Director Name</TableHead>
-                                        <TableHead className="font-semibold w-[180px]">Change Type</TableHead>
-                                        <TableHead className="font-semibold">Description</TableHead>
+                                    <TableRow className="bg-gray-50 active:bg-gray-50">
+                                        <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-500 uppercase tracking-widest w-[200px]">Date & time</TableHead>
+                                        <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest w-[250px]">Director name</TableHead>
+                                        <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest w-[180px]">Change type</TableHead>
+                                        <TableHead className="py-5 pr-8 text-[10px] font-black text-gray-500 uppercase tracking-widest">Description</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -196,6 +195,9 @@ const DirectorDisclosureChanges = () => {
                     </CardContent>
                 </Card>
             </motion.div>
+            <footer className="mt-20 pt-10 border-t border-gray-100 text-center opacity-30">
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Aegis Institutional Risk & Compliance Terminal</span>
+            </footer>
         </div>
     );
 };

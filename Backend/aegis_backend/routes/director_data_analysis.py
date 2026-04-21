@@ -103,6 +103,23 @@ def init_database():
                 )
             """)
 
+            # 7. External Board Members — non-Adani directors discovered via company API sync
+            #    Deliberately separate from directors_master.directors to preserve roster integrity
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS directors_master.external_board_members (
+                    id SERIAL PRIMARY KEY,
+                    din TEXT NOT NULL,
+                    name TEXT,
+                    cin TEXT NOT NULL,
+                    company_name TEXT,
+                    designation TEXT,
+                    appointment_date TEXT,
+                    source TEXT DEFAULT 'COMPANY_API',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(din, cin)
+                )
+            """)
+
             # Create family information schema and table
             cursor.execute("CREATE SCHEMA IF NOT EXISTS family_information")
             cursor.execute("""
@@ -383,56 +400,61 @@ def get_all_directors():
     return []
 
 def get_company_count():
-    """Get company count statistics from PostgreSQL."""
+    """Get company count statistics from Enriched External Registry."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute(f"SELECT COUNT(*) AS count FROM {DB_SCHEMA}.companies")
+            # Total unique companies in the registry
+            cursor.execute("SELECT COUNT(DISTINCT cin) AS count FROM directors_master.external_associations")
             total = cursor.fetchone()["count"] or 0
-            cursor.execute(f"SELECT COUNT(*) AS count FROM {DB_SCHEMA}.companies WHERE type = 'Public'")
+            
+            # Listed companies (CIN starts with 'L')
+            cursor.execute("SELECT COUNT(DISTINCT cin) AS count FROM directors_master.external_associations WHERE cin LIKE 'L%'")
             public = cursor.fetchone()["count"] or 0
-            cursor.execute(f"SELECT COUNT(*) AS count FROM {DB_SCHEMA}.companies WHERE type LIKE 'Private%%'")
-            private = cursor.fetchone()["count"] or 0
+            
+            # Unlisted/Private companies (CIN starts with 'U' or other)
+            private = total - public
+            
             return {"total": int(total), "public": int(public), "private": int(private)}
         finally:
             pg_conn.close()
     return {"total": 0, "public": 0, "private": 0}
 
 def get_cross_directorship():
-    """Get cross-directorship information from PostgreSQL."""
+    """Get global cross-directorship information using External Registry associations."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute(f"""
-                SELECT d.name, d.din, COUNT(ds.company_id) AS company_count
-                FROM {DB_SCHEMA}.directors d
-                JOIN {DB_SCHEMA}.directorships ds ON d.din = ds.din
+            cursor.execute("""
+                SELECT d.name, d.din, COUNT(ea.cin) AS company_count
+                FROM directors_master.directors d
+                JOIN directors_master.external_associations ea ON d.din = ea.din
                 GROUP BY d.name, d.din
-                HAVING COUNT(ds.company_id) > 1
                 ORDER BY company_count DESC
+                LIMIT 100
             """)
-            return [dict(r) for r in cursor.fetchall()]
+            return [{"name": r["name"], "din": r["din"], "company_count": r["company_count"]} for r in cursor.fetchall()]
         finally:
             pg_conn.close()
     return []
 
 def get_clustering():
-    """Get director clustering information (shared companies) from PostgreSQL."""
+    """Get director clustering information (shared companies) using global associations."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute(f"""
-                SELECT d1.name AS director1, d2.name AS director2, COUNT(ds1.company_id) AS shared_companies
-                FROM {DB_SCHEMA}.directorships ds1
-                JOIN {DB_SCHEMA}.directorships ds2 ON ds1.company_id = ds2.company_id AND ds1.din < ds2.din
-                JOIN {DB_SCHEMA}.directors d1 ON ds1.din = d1.din
-                JOIN {DB_SCHEMA}.directors d2 ON ds2.din = d2.din
+            cursor.execute("""
+                SELECT d1.name AS director1, d2.name AS director2, COUNT(ea1.cin) AS shared_companies
+                FROM directors_master.external_associations ea1
+                JOIN directors_master.external_associations ea2 ON ea1.cin = ea2.cin AND ea1.din < ea2.din
+                JOIN directors_master.directors d1 ON ea1.din = d1.din
+                JOIN directors_master.directors d2 ON ea2.din = d2.din
                 GROUP BY d1.name, d2.name
                 ORDER BY shared_companies DESC
-                LIMIT 50
+                LIMIT 30
             """)
             return [{"director1": r["director1"], "director2": r["director2"], "sharedCompanies": r["shared_companies"]} for r in cursor.fetchall()]
         finally:
@@ -440,28 +462,36 @@ def get_clustering():
     return []
 
 def get_network():
-    """Get network data (nodes and links) for visualization from PostgreSQL."""
+    """Get global network data for visualization."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            # Fetch some directors and their companies to build a sample network
-            cursor.execute(f"SELECT din, name FROM {DB_SCHEMA}.directors LIMIT 100")
+            # Fetch most connected directors
+            cursor.execute("SELECT din, name FROM directors_master.directors LIMIT 150")
             directors = cursor.fetchall()
             
-            cursor.execute(f"SELECT id, name FROM {DB_SCHEMA}.companies LIMIT 50")
+            # Fetch companies with most directors
+            cursor.execute("""
+                SELECT cin as id, company_name as name 
+                FROM directors_master.external_associations 
+                GROUP BY cin, company_name 
+                ORDER BY COUNT(din) DESC 
+                LIMIT 80
+            """)
             companies = cursor.fetchall()
             
-            cursor.execute(f"SELECT din, company_id FROM {DB_SCHEMA}.directorships LIMIT 300")
+            # Fetch links
+            cursor.execute("SELECT din, cin FROM directors_master.external_associations LIMIT 800")
             links = cursor.fetchall()
             
             nodes = []
             for d in directors: nodes.append({"id": d["din"], "type": "director", "label": d["name"]})
-            for c in companies: nodes.append({"id": str(c["id"]), "type": "company", "label": c["name"]})
+            for c in companies: nodes.append({"id": c["id"], "type": "company", "label": c["name"]})
             
             link_data = []
             for l in links:
-                link_data.append({"source": l["din"], "target": str(l["company_id"])})
+                link_data.append({"source": l["din"], "target": l["cin"]})
                 
             return {"nodes": nodes, "links": link_data}
         finally:
@@ -469,18 +499,18 @@ def get_network():
     return {"nodes": [], "links": []}
 
 def get_wtd_count():
-    """Get whole-time director count from PostgreSQL."""
+    """Get global positions count from External Registry."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute(f"""
-                SELECT d.name, COUNT(di.id) AS positions
-                FROM {DB_SCHEMA}.directors d
-                JOIN {DB_SCHEMA}.directorships di ON d.din = di.din
-                WHERE di.position ILIKE '%Whole-time%' OR di.position ILIKE '%WTD%'
+            cursor.execute("""
+                SELECT d.name, COUNT(ea.id) AS positions
+                FROM directors_master.directors d
+                JOIN directors_master.external_associations ea ON d.din = ea.din
                 GROUP BY d.name
                 ORDER BY positions DESC
+                LIMIT 50
             """)
             return [dict(r) for r in cursor.fetchall()]
         finally:
@@ -488,17 +518,18 @@ def get_wtd_count():
     return []
 
 def get_all_companies_with_director_count():
-    """Get all companies with their director counts and types from PostgreSQL."""
+    """Get all companies with their director counts from External Registry (Largest Boards)."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
     if pg_conn:
         try:
             cursor = get_pg_cursor(pg_conn)
-            cursor.execute(f"""
-                SELECT c.name, c.type, COUNT(di.din) AS director_count
-                FROM {DB_SCHEMA}.companies c
-                LEFT JOIN {DB_SCHEMA}.directorships di ON c.id = di.company_id
-                GROUP BY c.id, c.name, c.type
-                ORDER BY director_count DESC, c.name ASC
+            cursor.execute("""
+                SELECT ea.company_name as name, 
+                       CASE WHEN ea.cin LIKE 'L%' THEN 'Public' ELSE 'Private' END as type, 
+                       COUNT(ea.din) AS director_count
+                FROM directors_master.external_associations ea
+                GROUP BY ea.cin, ea.company_name
+                ORDER BY director_count DESC, ea.company_name ASC
             """)
             return [dict(r) for r in cursor.fetchall()]
         finally:

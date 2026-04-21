@@ -69,7 +69,9 @@ from routes import (
     auth,
     user_management,
     interactive,
-    rbac  # New RBAC module
+    rbac,  # New RBAC module
+    director_intelligence, # Added newly for registry enrichment
+    institutional_risk     # Institutional Risk Monitor
 )
 
 # Include all route modules with /api prefix where needed
@@ -95,6 +97,8 @@ app.include_router(user_management.router, prefix="/api")
 app.include_router(interactive.router) # Already has /api prefix in its definition
 
 app.include_router(rbac.router, prefix="/api")  # Register RBAC routes with /api prefix
+app.include_router(director_intelligence.router, prefix="/api") # Register Director Intelligence Registry routes
+app.include_router(institutional_risk.router, prefix="/api")   # Register Institutional Risk Monitor routes
 
 # Custom thread pool for handling blocking operations
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
