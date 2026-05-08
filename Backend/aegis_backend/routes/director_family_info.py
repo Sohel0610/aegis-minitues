@@ -154,150 +154,189 @@ def get_all_directors_with_family_info():
                 pass
     return []
 
-# Endpoint to get family information for a specific director
-@router.get("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
-async def get_director_family_info(director_name: str):
-    """Get family information for a specific director"""
+# Endpoint to get family information for a specific director (By DIN or Name fallback)
+@router.get("/directors/{identifier}/family-info", response_model=DirectorFamilyInfoResponse)
+async def get_director_family_info(identifier: str):
+    """Get family information for a specific director by DIN or Name"""
     try:
         def fetch_family_info():
-            return get_family_info_for_director(director_name)
-        
-        loop = asyncio.get_event_loop()
-        family_info = await loop.run_in_executor(thread_pool, fetch_family_info)
-        
-        if not family_info:
-            raise HTTPException(status_code=404, detail="No family information found for this director")
-        
-        return DirectorFamilyInfoResponse(**family_info)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching family info for director {director_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch family info: {str(e)}")
-
-# Endpoint to get family information for all directors
-@router.get("/directors/family-info", response_model=FamilyInfoListResponse)
-async def get_all_directors_family_info():
-    """Get family information for all directors"""
-    try:
-        def fetch_all_family_info():
-            return get_all_directors_with_family_info()
-        
-        loop = asyncio.get_event_loop()
-        directors_with_family = await loop.run_in_executor(thread_pool, fetch_all_family_info)
-        
-        return FamilyInfoListResponse(
-            data=[DirectorFamilyInfoResponse(**info) for info in directors_with_family],
-            count=len(directors_with_family)
-        )
-    except Exception as e:
-        logger.error(f"Error fetching family info for all directors: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch family info: {str(e)}")
-
-# Endpoint to update family information for a director
-@router.put("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
-async def update_director_family_info(director_name: str, family_info: Dict[str, Any]):
-    """Update family information for a director exclusively in PostgreSQL."""
-    try:
-        def update_family_info():
             pg_conn = None
             try:
                 pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
                 if pg_conn:
                     cursor = get_pg_cursor(pg_conn)
+                    
+                    target_din = None
+                    target_name = identifier
+                    
+                    # 1. Resolve Identity: If it looks like a DIN, find the name
+                    if identifier.isdigit() and len(identifier) >= 7:
+                        target_din = identifier
+                        cursor.execute("SELECT name FROM directors_master.directors WHERE din = %s", (target_din,))
+                        res = cursor.fetchone()
+                        if res: target_name = res["name"]
+                    
+                    # 2. Try exact DIN match in family table
+                    if target_din:
+                        cursor.execute("SELECT * FROM family_information.director_family WHERE din = %s", (target_din,))
+                        row = cursor.fetchone()
+                        if row: return _format_family_response(row, target_din)
+                    
+                    # 3. Try exact Name match in family table
+                    cursor.execute("SELECT * FROM family_information.director_family WHERE director_name = %s", (target_name,))
+                    row = cursor.fetchone()
+                    if row: return _format_family_response(row, target_din or target_name)
+                    
+                    # 4. Fallback to Fuzzy Name Matching (The platform's smartest logic)
+                    return get_family_info_for_director(target_name)
+                return None
+            finally:
+                if pg_conn: pg_conn.close()
+        
+        loop = asyncio.get_event_loop()
+        family_info = await loop.run_in_executor(thread_pool, fetch_family_info)
+        
+        if not family_info:
+            raise HTTPException(status_code=404, detail="No family information found")
+        
+        return DirectorFamilyInfoResponse(**family_info)
+    except Exception as e:
+        logger.error(f"Error fetching family info for {identifier}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-                    cursor.execute(
-                        "SELECT director_name FROM family_information.director_family WHERE director_name = %s",
-                        (director_name,),
-                    )
-                    exists = cursor.fetchone()
-                    if not exists:
-                        cursor.execute(
-                            "INSERT INTO family_information.director_family (director_name) VALUES (%s)",
-                            (director_name,),
-                        )
+def _format_family_response(row, identifier):
+    # Base response from the master table
+    response = {
+        "director_name": row["director_name"],
+        "matched_family_name": row["director_name"],
+        "match_score": 1.0,
+        "section_2_77_i": row["section_2_77_i"],
+        "section_2_77_ii": row["section_2_77_ii"],
+        "section_2_77_iii": row["section_2_77_iii"],
+        "family_members": [],
+        "is_submitted": bool(row["is_submitted"]),
+    }
 
+    # 1. Fetch individual members from the relational table (Priority)
+    pg_conn = None
+    try:
+        pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+        if pg_conn:
+            cursor = get_pg_cursor(pg_conn)
+            cursor.execute("""
+                SELECT relationship, full_name, pan 
+                FROM family_information.director_family_members 
+                WHERE din = %s OR din = (SELECT din FROM family_information.director_family WHERE director_name = %s LIMIT 1)
+                ORDER BY relationship, pairing_group
+            """, (identifier, identifier))
+            
+            members = cursor.fetchall()
+            for m in members:
+                response["family_members"].append({
+                    "relationship": m["relationship"],
+                    "details": m["full_name"],
+                    "pan": m["pan"]
+                })
+
+            # 2. Fallback/Supplement from Master Row Columns (Legacy)
+            # This ensures Gautam Adani's data shows up!
+            legacy_fields = [
+                ("Father", row.get("father")),
+                ("Mother", row.get("mother")),
+                ("Son", row.get("son")),
+                ("Son's Wife", row.get("sons_wife")),
+                ("Daughter", row.get("daughter")),
+                ("Daughter's Husband", row.get("daughters_husband")),
+                ("Brother", row.get("brother")),
+                ("Sister", row.get("sister"))
+            ]
+            
+            for rel, val in legacy_fields:
+                if val and str(val).lower() not in ["nil", "none", "n/a", ""]:
+                    # Split multi-names (common in legacy data)
+                    names = []
+                    if "," in str(val): names = [n.strip() for n in str(val).split(",")]
+                    elif "  " in str(val): names = [n.strip() for n in str(val).split("  ")]
+                    else: names = [str(val).strip()]
+                    
+                    for name in names:
+                        if name:
+                            # Avoid duplicates if already in relational list
+                            if not any(m["details"].lower() == name.lower() for m in response["family_members"]):
+                                response["family_members"].append({
+                                    "relationship": rel,
+                                    "details": name,
+                                    "pan": row.get(f"{rel.lower().replace(' ', '_')}_pan") # Check for legacy PAN columns
+                                })
+    finally:
+        if pg_conn: pg_conn.close()
+
+    return response
+
+# Endpoint to update family information for a director
+@router.put("/directors/{identifier}/family-info", response_model=DirectorFamilyInfoResponse)
+async def update_director_family_info(identifier: str, family_info: Dict[str, Any]):
+    """Update family information by DIN or Name"""
+    try:
+        def update_logic():
+            pg_conn = None
+            try:
+                pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+                if pg_conn:
+                    cursor = get_pg_cursor(pg_conn)
+                    
+                    # 1. Resolve DIN
+                    is_din = identifier.isdigit() and len(identifier) >= 8
+                    resolved_din = identifier if is_din else None
+                    
+                    if not resolved_din:
+                        cursor.execute("SELECT din FROM family_information.director_family WHERE director_name = %s", (identifier,))
+                        res = cursor.fetchone()
+                        resolved_din = res['din'] if res else None
+
+                    if not resolved_din:
+                        raise Exception(f"Cannot resolve DIN for {identifier}")
+
+                    # 2. Update Master Record
                     update_fields = []
                     params = []
-                    for field in ("section_2_77_i", "section_2_77_ii", "section_2_77_iii"):
-                        if field in family_info:
-                            update_fields.append(f"{field} = %s")
-                            params.append(family_info.get(field))
-                    if "is_submitted" in family_info:
-                        update_fields.append("is_submitted = %s")
-                        params.append(1 if family_info.get("is_submitted") else 0)
+                    for f in ("section_2_77_i", "section_2_77_ii", "section_2_77_iii"):
+                        if f in family_info:
+                            update_fields.append(f"{f} = %s")
+                            params.append(family_info.get(f))
+                    
                     if update_fields:
-                        params.append(director_name)
-                        cursor.execute(
-                            f"UPDATE family_information.director_family SET {', '.join(update_fields)} WHERE director_name = %s",
-                            params,
-                        )
+                        params.append(resolved_din)
+                        cursor.execute(f"UPDATE family_information.director_family SET {', '.join(update_fields)} WHERE din = %s", params)
 
-                    column_map = {
-                        "Father": ("father", "father_pan", "father_pan_file"),
-                        "Mother": ("mother", "mother_pan", "mother_pan_file"),
-                        "Son": ("son", None, None),
-                        "Son's Wife": ("sons_wife", None, None),
-                        "Daughter": ("daughter", None, None),
-                        "Daughter's Husband": ("daughters_husband", None, None),
-                        "Brother": ("brother", None, None),
-                        "Sister": ("sister", None, None),
-                    }
-
-                    for member in family_info.get("family_members", []) or []:
-                        rel = (member or {}).get("relationship")
-                        if not rel or rel not in column_map:
-                            continue
-                        details_col, pan_col, pan_file_col = column_map[rel]
-                        cursor.execute(
-                            f"UPDATE family_information.director_family SET {details_col} = %s WHERE director_name = %s",
-                            ((member or {}).get("details"), director_name),
-                        )
-                        if pan_col:
-                            cursor.execute(
-                                f"UPDATE family_information.director_family SET {pan_col} = %s WHERE director_name = %s",
-                                ((member or {}).get("pan"), director_name),
-                            )
-                        if pan_file_col:
-                            cursor.execute(
-                                f"UPDATE family_information.director_family SET {pan_file_col} = %s WHERE director_name = %s",
-                                ((member or {}).get("pan_file"), director_name),
-                            )
+                    # 3. Update Individual Members (Relational)
+                    # Clear existing and re-insert for consistency
+                    cursor.execute("DELETE FROM family_information.director_family_members WHERE din = %s", (resolved_din,))
+                    
+                    members_list = family_info.get("family_members", []) or []
+                    for i, member in enumerate(members_list):
+                        cursor.execute("""
+                            INSERT INTO family_information.director_family_members 
+                            (din, relationship, full_name, pan, pairing_group)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            resolved_din, 
+                            member.get("relationship"), 
+                            member.get("details"), 
+                            member.get("pan"),
+                            i # Simple pairing group for now
+                        ))
 
                     pg_conn.commit()
-
-                    # Return the updated record (exact match)
-                    updated = get_family_info_for_director(director_name)
-                    return updated
-                else:
-                    raise Exception("No PostgreSQL connection available")
-            except Exception as e:
-                logger.error(f"PostgreSQL family info update failed: {e}")
-                if pg_conn:
-                    pg_conn.rollback()
-                raise
+                    return True
+                return False
             finally:
-                if pg_conn:
-                    try:
-                        pg_conn.close()
-                    except Exception:
-                        pass
+                if pg_conn: pg_conn.close()
 
         loop = asyncio.get_event_loop()
-        updated_info = await loop.run_in_executor(thread_pool, update_family_info)
-
-        if not updated_info:
-            raise HTTPException(status_code=404, detail="Failed to update family information")
-
-        return DirectorFamilyInfoResponse(**updated_info)
-    except HTTPException:
-        raise
+        success = await loop.run_in_executor(thread_pool, update_logic)
+        
+        # Return the updated record
+        return await get_director_family_info(identifier)
     except Exception as e:
-        logger.error(f"Error updating family info for director {director_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update family info: {str(e)}")
-
-
-
-
-
-
+        raise HTTPException(status_code=500, detail=str(e))

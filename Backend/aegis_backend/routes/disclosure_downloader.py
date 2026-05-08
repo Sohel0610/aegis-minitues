@@ -64,24 +64,30 @@ async def list_director_disclosures(din: str):
     return disclosures
 
 @router.get("/download/file")
-async def download_disclosure(path: str = Query(...)):
-    """
-    Downloads a specific disclosure file.
-    """
+async def download_file(path: str):
+    """Download a specific file by its relative path or filename."""
+    # 1. Try Direct Path
     file_path = BASE_DIR / path
+    if file_path.exists() and file_path.is_file():
+        return FileResponse(
+            path=file_path,
+            filename=file_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
     
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+    # 2. Fallback: Recursive search by filename if path is just a name
+    fname = os.path.basename(path)
+    if os.path.exists(BASE_DIR):
+        for root, dirs, files in os.walk(BASE_DIR):
+            if fname in files:
+                target_path = Path(root) / fname
+                return FileResponse(
+                    path=target_path,
+                    filename=fname,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
     
-    # Security check: Ensure the path is within BASE_DIR
-    if not str(file_path.resolve()).startswith(str(BASE_DIR.resolve())):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    return FileResponse(
-        path=file_path,
-        filename=file_path.name,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+    raise HTTPException(status_code=404, detail=f"File {fname} not found in repository")
 
 @router.get("/company/{cin}/status")
 async def get_company_compliance_status(cin: str, year: str = "2024-25"):

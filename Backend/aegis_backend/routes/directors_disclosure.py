@@ -645,12 +645,7 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
         logger.error(f"Error updating profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
-async def get_director_family_info(director_name: str):
-    """Get family information (uses PG-only helper)."""
-    info = get_family_info_for_director(director_name)
-    if not info: raise HTTPException(status_code=404, detail="Family info not found")
-    return DirectorFamilyInfoResponse(**info)
+# Family info is now handled exclusively in director_family_info.py to avoid route conflicts
 
 # ---------------------------------------------------------
 # DOCUMENT PROCESSING & SUMMARY - PG
@@ -716,6 +711,12 @@ async def get_director_image(din: str):
     for ext in ['.jpg', '.jpeg', '.png', '.webp']:
         p = os.path.join(images_dir, f"{din}{ext}")
         if os.path.exists(p): return FileResponse(p)
+    
+    # Silent Fallback to default avatar to clean up terminal logs
+    default_avatar = os.path.join(os.path.dirname(__file__), "..", "..", "..", "Frontend", "public", "avatar.jpg")
+    if os.path.exists(default_avatar):
+        return FileResponse(default_avatar)
+        
     raise HTTPException(status_code=404)
 
 @router.get("/directors-disclosures/templates/{template_name}")

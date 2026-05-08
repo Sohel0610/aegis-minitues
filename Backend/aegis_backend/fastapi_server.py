@@ -132,7 +132,8 @@ from routes import (
     director_intelligence, # Added newly for registry enrichment
     institutional_risk,     # Institutional Risk Monitor
     disclosure_downloader,
-    registry_management
+    registry_management,
+    director_exports
 )
 import chatbot_minutes
 
@@ -163,6 +164,7 @@ app.include_router(director_intelligence.router, prefix="/api") # Register Direc
 app.include_router(institutional_risk.router, prefix="/api")   # Register Institutional Risk Monitor routes
 app.include_router(disclosure_downloader.router, prefix="/api")
 app.include_router(registry_management.router, prefix="/api")
+app.include_router(director_exports.router, prefix="/api")
 app.include_router(chatbot_minutes.router) # Router already has /api/minutes-chatbot prefix
 
 # Print all registered routes for debugging

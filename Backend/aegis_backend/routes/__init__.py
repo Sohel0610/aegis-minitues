@@ -25,7 +25,9 @@ from . import (
     rbac,
     disclosure_downloader,
     director_intelligence,
-    institutional_risk
+    institutional_risk,
+    registry_management,
+    director_exports
 )
 
 # Export all routers
@@ -52,5 +54,7 @@ __all__ = [
     "rbac",
     "disclosure_downloader",
     "director_intelligence",
-    "institutional_risk"
+    "institutional_risk",
+    "registry_management",
+    "director_exports"
 ]
