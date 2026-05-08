@@ -152,6 +152,48 @@ class ImageDeleteResponse(BaseModel):
     success: bool
     message: str
 
+from pathlib import Path
+import re
+
+# Base path for generated documents (sync with disclosure_downloader.py)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent / "Director_Disclosure" / "Output_Disclosures"
+
+def _get_all_physical_files_map() -> dict[str, list[dict]]:
+    """
+    Scans Output_Disclosures ONCE and returns a map of DIN -> [Files].
+    This is much faster than scanning per-director.
+    """
+    din_map = {}
+    if not BASE_DIR.exists():
+        return din_map
+        
+    # Walk the entire directory once
+    for file_path in BASE_DIR.rglob("*.docx"):
+        fname = file_path.name
+        # Only process MBP-1 forms for the repository
+        if "MBP1" not in fname.upper():
+            continue
+            
+        # Extract DIN using regex (looks for 8 digits at the end before .docx)
+        match = re.search(r'_(\d{8})\.docx$', fname)
+        if match:
+            din = match.group(1)
+            rel_path = str(file_path.relative_to(BASE_DIR))
+            mtime = file_path.stat().st_mtime
+            
+            file_info = {
+                "type": "MBP-1",
+                "path": rel_path,
+                "date": datetime.fromtimestamp(mtime).strftime("%d/%m/%Y"),
+                "mtime": mtime # Keep track of modification time for de-duplication
+            }
+            
+            # De-duplication: Only keep the LATEST file for this director
+            if din not in din_map or mtime > din_map[din][0]["mtime"]:
+                din_map[din] = [file_info] # Store as a list with 1 item to keep compatibility
+            
+    return din_map
+
 @router.get("/directors-disclosures", response_model=DisclosuresResponse)
 async def get_directors_disclosures():
     """
@@ -188,31 +230,53 @@ async def get_directors_disclosures():
                 LIMIT 1
             ) ds ON TRUE
             WHERE EXISTS (
-                SELECT 1 FROM directors_master.external_associations ea
+                SELECT 1 FROM directors_master.external_board_members ea
                 WHERE ea.din = d.din
             )
             ORDER BY d.name ASC
         """)
         rows = cursor.fetchall()
 
+        # 1. Build a map of all physical files once
+        physical_files_map = _get_all_physical_files_map()
+
         data = []
         for r in rows:
+            din = r["din"]
+            
+            # 1. Determine base sync date
             sync_date = "N/A"
             if r["last_api_sync"]:
                 sync_date = str(r["last_api_sync"])[:10]
             elif r["created_at"]:
                 sync_date = str(r["created_at"])[:10]
 
+            # 2. Check for physical MBP-1 file
+            rel_path = ""
+            doc_type = "Registry Sync"
+            display_date = sync_date
+
+            if din and din in physical_files_map:
+                # Get the latest MBP-1 file for this director
+                latest_file = physical_files_map[din][0]
+                rel_path = latest_file["path"]
+                doc_type = "MBP-1"
+                display_date = latest_file["date"]
+
+            # 3. Add exactly ONE entry per director
             data.append({
-                "id":               r["doc_id"] or r["id"],
+                "id":               r["id"],
                 "director_name":    r["director_name"],
-                "din":              r["din"] or "Pending Sync",
+                "din":              din or "Pending Sync",
                 "pan":              r["pan"] or "–",
                 "din_status":       r["din_status"],
-                "disclosure_date":  sync_date,
-                "disclosure_type":  "Registry Sync",
-                "file_path":        r["file_path"] or ""
+                "disclosure_date":  display_date,
+                "disclosure_type":  doc_type,
+                "file_path":        rel_path
             })
+        
+        # Sort alphabetically by director name
+        data.sort(key=lambda x: x["director_name"])
 
         return DisclosuresResponse(data=data, count=len(data))
 
@@ -278,17 +342,29 @@ async def download_disclosure_file(id: int):
         if not row: raise HTTPException(status_code=404)
         
         fname = os.path.basename(row["file_path"])
+        
+        # Primary paths
         search_paths = [
             os.path.join(os.path.dirname(__file__), "..", "uploads", fname),
             os.path.join(os.path.dirname(__file__), "..", "public", "Directors Discloser Output", fname),
-            os.path.join(os.path.dirname(__file__), "..", "public", "templates", fname)
+            os.path.join(os.path.dirname(__file__), "..", "public", "templates", fname),
+            os.path.join(os.path.dirname(__file__), "..", "..", "Director_Disclosure", "Output_Disclosures")
         ]
         
+        # Try direct path matches first
         for p in search_paths:
-            if os.path.exists(p):
+            if os.path.exists(p) and os.path.isfile(p):
                 return FileResponse(path=p, filename=fname, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         
-        raise HTTPException(status_code=404, detail="Physical file not found on server")
+        # Recursive search in Output_Disclosures if not found
+        output_root = os.path.join(os.path.dirname(__file__), "..", "..", "Director_Disclosure", "Output_Disclosures")
+        if os.path.exists(output_root):
+            for root, dirs, files in os.walk(output_root):
+                if fname in files:
+                    full_path = os.path.join(root, fname)
+                    return FileResponse(path=full_path, filename=fname, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        
+        raise HTTPException(status_code=404, detail=f"Physical file {fname} not found on server")
     finally:
         cursor.close(); pg_conn.close()
 
@@ -644,8 +720,19 @@ async def get_director_image(din: str):
 
 @router.get("/directors-disclosures/templates/{template_name}")
 async def download_template(template_name: str):
-    p = os.path.join(os.path.dirname(__file__), "..", "public", "templates", template_name)
-    if not os.path.exists(p): raise HTTPException(status_code=404)
+    """Serve the empty templates for DIR-8 and MBP-1."""
+    # Look in the newly created Templates directory
+    template_dir = os.path.join(os.path.dirname(__file__), "..", "..", "Director_Disclosure", "Templates")
+    p = os.path.join(template_dir, template_name)
+    
+    # Try with _Template suffix if direct match fails
+    if not os.path.exists(p):
+        fname = template_name.replace(".docx", "_Template.docx")
+        p = os.path.join(template_dir, fname)
+        
+    if not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="Template not found")
+        
     return FileResponse(p, filename=template_name)
 
 # Ensure legacy naming for Minutes route

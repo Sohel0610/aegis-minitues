@@ -114,11 +114,14 @@ def init_database():
                     company_name TEXT,
                     designation TEXT,
                     appointment_date TEXT,
+                    status TEXT,
                     source TEXT DEFAULT 'COMPANY_API',
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(din, cin)
                 )
             """)
+            # Ensure status column exists for existing tables
+            cursor.execute("ALTER TABLE directors_master.external_board_members ADD COLUMN IF NOT EXISTS status TEXT")
 
             # Create family information schema and table
             cursor.execute("CREATE SCHEMA IF NOT EXISTS family_information")
@@ -406,11 +409,11 @@ def get_company_count():
         try:
             cursor = get_pg_cursor(pg_conn)
             # Total unique companies in the registry
-            cursor.execute("SELECT COUNT(DISTINCT cin) AS count FROM directors_master.external_associations")
+            cursor.execute("SELECT COUNT(DISTINCT cin) AS count FROM directors_master.external_board_members")
             total = cursor.fetchone()["count"] or 0
             
             # Listed companies (CIN starts with 'L')
-            cursor.execute("SELECT COUNT(DISTINCT cin) AS count FROM directors_master.external_associations WHERE cin LIKE 'L%'")
+            cursor.execute("SELECT COUNT(DISTINCT cin) AS count FROM directors_master.external_board_members WHERE cin LIKE 'L%'")
             public = cursor.fetchone()["count"] or 0
             
             # Unlisted/Private companies (CIN starts with 'U' or other)
@@ -430,7 +433,7 @@ def get_cross_directorship():
             cursor.execute("""
                 SELECT d.name, d.din, COUNT(ea.cin) AS company_count
                 FROM directors_master.directors d
-                JOIN directors_master.external_associations ea ON d.din = ea.din
+                JOIN directors_master.external_board_members ea ON d.din = ea.din
                 GROUP BY d.name, d.din
                 ORDER BY company_count DESC
                 LIMIT 100
@@ -448,8 +451,8 @@ def get_clustering():
             cursor = get_pg_cursor(pg_conn)
             cursor.execute("""
                 SELECT d1.name AS director1, d2.name AS director2, COUNT(ea1.cin) AS shared_companies
-                FROM directors_master.external_associations ea1
-                JOIN directors_master.external_associations ea2 ON ea1.cin = ea2.cin AND ea1.din < ea2.din
+                FROM directors_master.external_board_members ea1
+                JOIN directors_master.external_board_members ea2 ON ea1.cin = ea2.cin AND ea1.din < ea2.din
                 JOIN directors_master.directors d1 ON ea1.din = d1.din
                 JOIN directors_master.directors d2 ON ea2.din = d2.din
                 GROUP BY d1.name, d2.name
@@ -474,7 +477,7 @@ def get_network():
             # Fetch companies with most directors
             cursor.execute("""
                 SELECT cin as id, company_name as name 
-                FROM directors_master.external_associations 
+                FROM directors_master.external_board_members 
                 GROUP BY cin, company_name 
                 ORDER BY COUNT(din) DESC 
                 LIMIT 80
@@ -482,7 +485,7 @@ def get_network():
             companies = cursor.fetchall()
             
             # Fetch links
-            cursor.execute("SELECT din, cin FROM directors_master.external_associations LIMIT 800")
+            cursor.execute("SELECT din, cin FROM directors_master.external_board_members LIMIT 800")
             links = cursor.fetchall()
             
             nodes = []
@@ -507,7 +510,7 @@ def get_wtd_count():
             cursor.execute("""
                 SELECT d.name, COUNT(ea.id) AS positions
                 FROM directors_master.directors d
-                JOIN directors_master.external_associations ea ON d.din = ea.din
+                JOIN directors_master.external_board_members ea ON d.din = ea.din
                 GROUP BY d.name
                 ORDER BY positions DESC
                 LIMIT 50
@@ -525,11 +528,15 @@ def get_all_companies_with_director_count():
             cursor = get_pg_cursor(pg_conn)
             cursor.execute("""
                 SELECT ea.company_name as name, 
+                       ea.cin as cin,
                        CASE WHEN ea.cin LIKE 'L%' THEN 'Public' ELSE 'Private' END as type, 
-                       COUNT(ea.din) AS director_count
-                FROM directors_master.external_associations ea
+                       COUNT(ea.din) AS director_count,
+                       EXISTS (
+                           SELECT 1 FROM directors_data.companies c WHERE c.cin = ea.cin
+                       ) as is_group
+                FROM directors_master.external_board_members ea
                 GROUP BY ea.cin, ea.company_name
-                ORDER BY director_count DESC, ea.company_name ASC
+                ORDER BY is_group DESC, director_count DESC, ea.company_name ASC
             """)
             return [dict(r) for r in cursor.fetchall()]
         finally:

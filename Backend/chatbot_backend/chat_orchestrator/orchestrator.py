@@ -69,6 +69,9 @@ class ChatOrchestrator:
         if has_chart_term and q.count(" and ") >= 2:
             return "comparison"
 
+        if re.search(r"\btop\b.*\b(companies|company|comapnies|comapny)\b", q):
+            return "analytics"
+
         analytics_keywords = ["trend", "analysis", "statistics", "month-wise", "year-wise", "chart", "graph"]
         table_keywords = ["list", "show all", "table", "date wise", "company wise", "in table"]
 
@@ -119,7 +122,7 @@ class ChatOrchestrator:
             r"^explain\s+",
             r"^brief me about\s+",
         ]
-        if any(re.search(pattern, q) for pattern in overview_patterns):
+        if strict_entity_canonical and any(re.search(pattern, q) for pattern in overview_patterns):
             return True
 
         overview_cues = [
@@ -166,22 +169,17 @@ class ChatOrchestrator:
 
     def _unrelated_query_response(self, user_query: str) -> Tuple[str, List[str]]:
         sample_questions = [
-            "Show Adani Green Energy notifications for December 2025.",
-            "Count AGEL notifications in December 2025.",
-            "Show the latest BSE updates.",
-            "List SEBI notifications for this month.",
-            "What are the latest RBI circulars?",
-            "Compare Adani Green Energy and Adani Power notifications in December 2025.",
-            "Show AGEL investor meeting notifications in December 2025.",
-            "Give me AGEL disclosures related to ESG rating.",
-            "List notifications on 25 December 2025 for Adani Green Energy.",
-            "Show the top companies by notification count.",
+            "Show AGEL notifications for April 2026.",
+            "Count Adani Green Energy notifications in April 2026.",
+            "Show the latest BSE notifications.",
+            "List SEBI updates for this month.",
+            "Compare Adani Green Energy and Adani Power notifications in April 2026.",
         ]
         canned_replies = [
-            "Sorry, I cannot help with that. I am Aegis Intelligence, so please ask me about BSE, SEBI, RBI, company disclosures, charts, or notification-related questions.",
-            "I am focused on regulatory intelligence and company disclosure data. Please ask me something related to notifications, company updates, SEBI, RBI, or BSE.",
-            "That looks unrelated to my scope. I can help with Aegis Intelligence topics such as company notifications, regulatory updates, trends, comparisons, and disclosure summaries.",
-            "I am designed for Aegis Intelligence use cases. Try asking about a company, a month, a date range, the latest updates, or BSE, SEBI, and RBI data.",
+            "I am Aegis Intelligence, focused on regulatory notifications, BSE disclosures, SEBI updates, RBI updates, trends, and comparisons.",
+            "That looks outside my regulatory intelligence scope. I can help with company notifications, BSE disclosures, SEBI updates, RBI updates, and charts.",
+            "I work best with Aegis Intelligence questions about companies, dates, notifications, regulatory updates, counts, trends, and comparisons.",
+            "I could not map that to the BSE, SEBI, or RBI notification data. Please try one of these reference questions.",
         ]
         reply_index = int(hashlib.md5(user_query.lower().strip().encode()).hexdigest(), 16) % len(canned_replies)
         sample_block = "\n\nSample questions you can ask:\n" + "\n".join(
@@ -222,7 +220,12 @@ class ChatOrchestrator:
         )
 
         try:
-            return chat_completion(prompt, user_query), []
+            user_prompt = (
+                f"The user asked: {user_query}\n"
+                f"Resolved company/topic: {subject}\n\n"
+                f"Answer about the resolved company/topic, not about any unrelated meaning of the acronym."
+            )
+            return chat_completion(prompt, user_prompt), []
         except Exception:
             return (
                 f"{subject} appears to be a general knowledge query rather than a database retrieval query. "
@@ -528,6 +531,12 @@ class ChatOrchestrator:
             notifications = convert_to_common_format(sql_results, database)
             print(f" Retrieved {len(notifications)} via SQL from {database}")
 
+            if entity_aliases:
+                before_count = len(notifications)
+                notifications = self.apply_strict_entity_filter(notifications, entity_aliases)
+                after_count = len(notifications)
+                print(f" [ENTITY_FILTER_SQL] {before_count} → {after_count}")
+
         else:
             notifications = self.semantic_retrieve(
                 user_query,
@@ -589,16 +598,36 @@ class ChatOrchestrator:
                 get_notification_trends,
                 get_company_wise_counts
             )
+            from chatbot_backend.chat_orchestrator.router_logic import extract_month_year
 
             if "company" in q or "entity" in q or "top" in q:
                 labels, values = get_company_wise_counts(limit=10)
                 title = "Top 10 Companies by Notification Count"
                 x_axis = "Company"
             elif "month" in q or "this month" in q:
-                now = datetime.utcnow()
-                labels, values = month_wise_notification_count(now.month, now.year)
-                title = f"Notifications in {now.strftime('%B %Y')}"
-                x_axis = "Day"
+                # Try extracting multiple months for comparison
+                from chatbot_backend.chat_orchestrator.router_logic import extract_all_months_years
+                months, year = extract_all_months_years(user_query)
+                import calendar
+                
+                if not year:
+                    year = datetime.now().year
+                
+                if len(months) > 1:
+                    from chatbot_backend.services.analytics_service import compare_months_notifications
+                    labels, values = compare_months_notifications(months, year)
+                    title = f"Comparison ({year})"
+                    x_axis = "Month"
+                elif len(months) == 1:
+                    m = months[0]
+                    labels, values = month_wise_notification_count(m, year)
+                    title = f"Notifications in {calendar.month_name[m]} {year}"
+                    x_axis = "Day"
+                else:
+                    now = datetime.utcnow()
+                    labels, values = month_wise_notification_count(now.month, now.year)
+                    title = f"Notifications in {now.strftime('%B %Y')}"
+                    x_axis = "Day"
             else:
                 labels, values = get_notification_trends(database="all", days=30)
                 title = "Notification Trends (Last 30 Days)"
@@ -907,7 +936,7 @@ class ChatOrchestrator:
 
     def semantic_retrieve(self, user_query: str, database: str, limit: int = 1000, last_n_days: int = None, strict_entity: str = None) -> List:
         """Semantic retrieval - returns ALL matching data"""
-        generic_latest_terms = ["latest", "recent", "updates", "update", "new notifications"]
+        generic_latest_terms = ["latest", "lates", "recent", "updates", "update", "new notifications", "circular", "circulars"]
         if not strict_entity and any(term in user_query.lower() for term in generic_latest_terms):
             return self._fetch_recent_notifications(database, limit=min(limit, 30))
 

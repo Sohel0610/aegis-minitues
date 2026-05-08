@@ -1,110 +1,144 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as SonnerToaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LandingPage from "./pages/LandingPage";
-import Dashboard from "./pages/Dashboard";
-import TotalNotifications from "./pages/TotalNotifications";
-import EmailData from "./pages/EmailData";
-import WebsiteData from "./pages/WebsiteData";
-import WorkbookData from "./pages/WorkbookData";
-import TotalWorkbookNotifications from "./pages/TotalWorkbookNotifications";
-import WeeklyAnalysis from "./pages/WeeklyAnalysis";
-import NotFound from "./pages/NotFound";
-import ExcelDataPage from "./pages/ExcelDataPage";
+import { useState, useEffect, useMemo } from "react";
+import { motion } from "framer-motion";
+import { FileText, Database, BarChart3, Home, FileSpreadsheet, History, Network, Shield } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
+import DirectorsDisclosureDataSource from "./DirectorsDisclosure/DirectorsDisclosureDataSource";
+import DirectorsDisclosureAnalytics from "./DirectorsDisclosure/DirectorsDisclosureAnalytics";
+import DirectorsDisclosureMasterData from "./DirectorsDisclosure/DirectorsDisclosureMasterData";
+import DirectorsDisclosureCompaniesMasterData from "./DirectorsDisclosure/DirectorsDisclosureCompaniesMasterData";
+import DirectorDisclosureChanges from "./DirectorsDisclosure/DirectorDisclosureChanges";
+import DirectorRegistryIntelligence from "./DirectorsDisclosure/DirectorRegistryIntelligence";
+import InstitutionalRiskMonitor from "./DirectorsDisclosure/InstitutionalRiskMonitor";
+import RegistryManagement from "./DirectorsDisclosure/RegistryManagement";
+import { Settings } from "lucide-react";
 
-// Import financial analysis pages (future products)
-import BSEIndiaAnalysis from "./pages/BSEIndiaAnalysis";
-import RBIAnalysis from "./pages/RBIAnalysis";
-import InsiderTrading from "./pages/InsiderTrading";
-import DirectorsDisclosure from "./pages/DirectorsDisclosure";
-import MinutesPreparation from "./pages/MinutesPreparation";
-import FormBasedGenerator from "./pages/minutes-preparation/FormBasedGenerator";
-import AIAssistant from "./pages/minutes-preparation/AIAssistant";
-// Removed unused imports
+type TabType = 'analytics' | 'datasource' | 'masterdata' | 'companies';
 
-// Import SEBI specific pages
-import SEBIDashboard from "./pages/SEBIDashboard";
-import SEBITotalNotifications from "./pages/SEBITotalNotifications";
-import SEBIEmailData from "./pages/SEBIEmailData";
+const DirectorsDisclosure = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
 
-// Import RBI specific pages
-import RBIDashboard from "./pages/RBIDashboard";
-import RBITotalNotifications from "./pages/RBITotalNotifications";
-import RBIEmailData from "./pages/RBIEmailData";
-// RBIAnalysis already imported above
+  // Define navigation items for this product using useMemo to prevent unnecessary re-renders
+  const navigationItems = useMemo(() => {
+    // Get the current path without query params or hash
+    const currentPath = location.pathname;
 
-// Import product-specific dashboard layouts
-import BSEAlertsDashboardLayout from "@/components/layout/BSEAlertsDashboardLayout";
-import RBIAnalysisDashboardLayout from "@/components/layout/RBIAnalysisDashboardLayout";
-import HierarchyStructure from "./pages/HierarchyStructure";
+    return [
+      {
+        id: 'home',
+        label: 'Home',
+        icon: Home,
+        href: '/',
+        isActive: false
+      },
+      {
+        id: 'analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        href: '/directors-disclosure/analytics',
+        isActive: currentPath === '/directors-disclosure' || currentPath === '/directors-disclosure/' || currentPath.endsWith('/analytics')
+      },
+      {
+        id: 'institutional-risk',
+        label: 'Institutional risk',
+        icon: Shield,
+        href: '/directors-disclosure/institutional-risk',
+        isActive: currentPath.endsWith('/institutional-risk')
+      },
+      {
+        id: 'intelligence',
+        label: 'Registry intelligence',
+        icon: Network,
+        href: '/directors-disclosure/registry-intelligence',
+        isActive: currentPath.endsWith('/registry-intelligence')
+      },
+      {
+        id: 'masterdata',
+        label: 'Directors master data',
+        icon: Database,
+        href: '/directors-disclosure/master-data',
+        isActive: currentPath.endsWith('/master-data')
+      },
+      {
+        id: 'companies',
+        label: 'Companies master list',
+        icon: FileSpreadsheet,
+        href: '/directors-disclosure/companies-master-data',
+        isActive: currentPath.endsWith('/companies-master-data')
+      },
+      {
+        id: 'changes',
+        label: 'Director disclosure history',
+        icon: History,
+        href: '/directors-disclosure/changes',
+        isActive: currentPath.endsWith('/changes')
+      },
+      {
+        id: 'repository',
+        label: 'Disclosure Repository',
+        icon: FileText,
+        href: '/directors-disclosure/repository',
+        isActive: currentPath.endsWith('/repository')
+      },
+      {
+        id: 'registry-management',
+        label: 'Registry control center',
+        icon: Settings,
+        href: '/directors-disclosure/registry-management',
+        isActive: currentPath.endsWith('/registry-management')
+      }
+    ];
+  }, [location.pathname]);
 
-// Import Directors Disclosure sub-pages
-// DirectorsDisclosureMasterData import removed – module not found
-import DirectorsDisclosureAnalytics from "./pages/DirectorsDisclosure/DirectorsDisclosureAnalytics";
-// DirectorsDisclosureDataSource import removed – module not found
-import DirectorsDisclosureCompaniesMasterData from "./pages/DirectorsDisclosure/DirectorsDisclosureCompaniesMasterData";
-import DirectorsDisclosureMasterData from "./pages/DirectorsDisclosure/DirectorsDisclosureMasterData";
-import DirectorsDisclosureDataSource from "./pages/DirectorsDisclosure/DirectorsDisclosureDataSource";
+  const renderContent = () => {
+    // Determine active tab based on current route
+    if (location.pathname.endsWith('/repository')) {
+      return <DirectorsDisclosureDataSource />;
+    } else if (location.pathname.endsWith('/master-data')) {
+      return <DirectorsDisclosureMasterData />;
+    } else if (location.pathname.endsWith('/analytics')) {
+      return <DirectorsDisclosureAnalytics />;
+    } else if (location.pathname.endsWith('/companies-master-data')) {
+      return <DirectorsDisclosureCompaniesMasterData />;
+    } else if (location.pathname.endsWith('/changes')) {
+      return <DirectorDisclosureChanges />;
+    } else if (location.pathname.endsWith('/registry-intelligence')) {
+      return <DirectorRegistryIntelligence />;
+    } else if (location.pathname.endsWith('/institutional-risk')) {
+      return <InstitutionalRiskMonitor />;
+    } else if (location.pathname.endsWith('/registry-management')) {
+      return <RegistryManagement />;
+    } else {
+      // Default to Analytics
+      return <DirectorsDisclosureAnalytics />;
+    }
+  };
 
-const queryClient = new QueryClient();
+  useEffect(() => {
+    // Redirect root to analytics to maintain consistency with sidebar highlighting
+    if (location.pathname === '/directors-disclosure' || location.pathname === '/directors-disclosure/') {
+      navigate('/directors-disclosure/analytics', { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <SonnerToaster />
-      <BrowserRouter>
-        <Routes>
-          {/* Main landing page */}
-          <Route path="/" element={<LandingPage />} />
-          
-          {/* Current BSE India Analysis routes (main product) */}
-          <Route path="/bse-alerts" element={<Dashboard />} />
-          <Route path="/notifications" element={<TotalNotifications />} />
-          <Route path="/emaildata" element={<EmailData />} />
-          <Route path="/websitedata" element={<WebsiteData />} />
-          <Route path="/workbook-data" element={<WorkbookData />} />
-          <Route path="/total-workbook-notifications" element={<TotalWorkbookNotifications />} />
-          <Route path="/weekly-analysis" element={<WeeklyAnalysis />} />
-          
-          {/* SEBI Analysis routes */}
-          <Route path="/sebi-dashboard" element={<SEBIDashboard />} />
-          <Route path="/sebi-notifications" element={<SEBITotalNotifications />} />
-          <Route path="/sebi-emaildata" element={<SEBIEmailData />} />
-          
-          {/* RBI Analysis routes */}
-          <Route path="/rbi-analysis" element={<RBIAnalysis />} />
-          <Route path="/rbi-dashboard" element={<RBIDashboard />} />
-          <Route path="/rbi-notifications" element={<RBITotalNotifications />} />
-          <Route path="/rbi-emaildata" element={<RBIEmailData />} />
-          
-          {/* Excel Data page */}
-          <Route path="/excel-data" element={<ExcelDataPage />} />
-          
-          {/* Future product routes */}
-          <Route path="/insider-trading" element={<InsiderTrading />} />
-          <Route path="/directors-disclosure/*" element={<DirectorsDisclosure />} />
-          {/* Removed individual routes for sub-pages as they should be rendered within the main layout */}
-          <Route path="/minutes-preparation/directors" element={<MinutesPreparation />} />
-          <Route path="/minutes-preparation" element={<MinutesPreparation />} />
-          <Route path="/minutes-preparation/form-generator" element={<FormBasedGenerator />} />
-          <Route path="/minutes-preparation/ai-assistant" element={<AIAssistant />} />
-          {/* Removed unused routes */}
-          <Route path="/hierarchy-structure" element={<HierarchyStructure />} />
-          
-          {/* Legacy product routes - redirect to main product */}
-          <Route path="/ageis-wind" element={<Dashboard />} />
-          <Route path="/ageis-solar" element={<Dashboard />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+  return (
+    <ProductDashboardLayout
+      productName="Directors' Disclosure"
+      productRoute="/directors-disclosure"
+      navigationItems={navigationItems}
+    >
+      <div className="container mx-auto py-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          {renderContent()}
+        </motion.div>
+      </div>
+    </ProductDashboardLayout>
+  );
+};
 
-export default App;
+export default DirectorsDisclosure;

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { useToast } from "@/components/ui/use-toast";
 
 
 interface Director {
@@ -20,6 +22,7 @@ interface Director {
 
 export default function MinutesPreparation() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const location = useLocation();
   const { isAuthenticated, canAdmin } = useAuth();
   const isAdminMode = canAdmin('/minutes-preparation');
@@ -32,69 +35,7 @@ export default function MinutesPreparation() {
   const [formData, setFormData] = useState({ name: '', din: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  // Define navigation items for this product
-  const navigationItems = [
-    {
-      id: 'home',
-      label: 'Home',
-      icon: FileText,
-      href: '/',
-    },
-    {
-      id: 'dashboard',
-      label: 'Generate Minutes',
-      icon: FileText,
-      href: '/minutes-preparation',
-    },
-    {
-      id: 'create-agenda',
-      label: 'Create Agenda',
-      icon: Plus,
-      href: '/minutes-preparation/create-agenda',
-    },
-    {
-      id: 'compliances',
-      label: 'Secretarial Compliances',
-      icon: FileText,
-      href: '/minutes-preparation/compliances',
-    },
-    {
-      id: 'ai-mom',
-      label: 'AI MOM',
-      icon: FileText,
-      href: '/minutes-preparation/ai-assistant',
-    },
-    {
-      id: 'chatbot',
-      label: 'Meeting Assistant',
-      icon: FileText,
-      href: '/minutes-preparation/chatbot',
-    },
-    {
-      id: 'template-resolution',
-      label: 'Template Resolution',
-      icon: FileText,
-      href: '/minutes-preparation/template-resolution',
-    },
-    {
-      id: 'minutes',
-      label: 'Meeting Minutes',
-      icon: FileText,
-      href: '/minutes-preparation/minutes',
-    },
-    {
-      id: 'templates',
-      label: 'Templates',
-      icon: FileText,
-      href: '/minutes-preparation/templates',
-    },
-    {
-      id: 'directors',
-      label: 'Directors',
-      icon: Users,
-      href: '/minutes-preparation/directors',
-    }
-  ];
+  const navigationItems = getMinutesNavItems('dashboard');
 
 
 
@@ -141,7 +82,7 @@ export default function MinutesPreparation() {
 
   const handleAddDirector = async () => {
     if (!formData.name.trim() || !formData.din.trim()) {
-      alert('Please fill in all fields');
+      toast({ title: "Validation Error", description: "Please fill in all fields", variant: "destructive" });
       return;
     }
 
@@ -160,7 +101,7 @@ export default function MinutesPreparation() {
       setFormData({ name: '', din: '' });
     } catch (err) {
       console.error('Error adding director:', err);
-      alert('Failed to add director');
+      toast({ title: "Error", description: "Failed to add director", variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -168,7 +109,7 @@ export default function MinutesPreparation() {
 
   const handleEditDirector = async () => {
     if (!editingDirector || !formData.name.trim() || !formData.din.trim()) {
-      alert('Please fill in all fields');
+      toast({ title: "Validation Error", description: "Please fill in all fields", variant: "destructive" });
       return;
     }
 
@@ -188,7 +129,7 @@ export default function MinutesPreparation() {
       setFormData({ name: '', din: '' });
     } catch (err) {
       console.error('Error updating director:', err);
-      alert('Failed to update director');
+      toast({ title: "Error", description: "Failed to update director", variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -207,7 +148,7 @@ export default function MinutesPreparation() {
       await fetchDirectorsData();
     } catch (err) {
       console.error('Error deleting director:', err);
-      alert('Failed to delete director');
+      toast({ title: "Error", description: "Failed to delete director", variant: "destructive" });
     }
   };
 

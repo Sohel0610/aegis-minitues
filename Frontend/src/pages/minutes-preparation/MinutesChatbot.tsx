@@ -24,6 +24,8 @@ import {
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -33,19 +35,8 @@ interface Message {
 }
 
 const MinutesChatbot = () => {
-    const navigationItems = [
-        { id: 'home', label: 'Home', icon: HomeIcon, href: '/' },
-        { id: 'dashboard', label: 'Generate Minutes', icon: FileTextIcon, href: '/minutes-preparation' },
-        { id: 'create-agenda', label: 'Create Agenda', icon: PlusIcon, href: '/minutes-preparation/create-agenda' },
-        { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheetIcon, href: '/minutes-preparation/compliances' },
-        { id: 'ai-mom', label: 'AI MOM', icon: FileTextIcon, href: '/minutes-preparation/ai-assistant' },
-        { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquareIcon, href: '/minutes-preparation/chatbot', isActive: true },
-        { id: 'template-resolution', label: 'Template Resolution', icon: HistoryIcon, href: '/minutes-preparation/template-resolution' },
-        { id: 'minutes', label: 'Meeting Minutes', icon: FileTextIcon, href: '/minutes-preparation/minutes' },
-        { id: 'templates', label: 'Templates', icon: FileSpreadsheetIcon, href: '/minutes-preparation/templates' },
-        { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-        { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-    ];
+    const navigationItems = getMinutesNavItems('chatbot');
+    const { user } = useAuth();
 
     const [sessions, setSessions] = useState<string[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string>(`session_${Date.now()}`);
@@ -55,8 +46,8 @@ const MinutesChatbot = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Get user email from storage or mock
-    const userEmail = "admin@adani.com";
+    // Use authenticated user email instead of hardcoded value
+    const userEmail = user?.email || 'guest@aegis.local';
 
     useEffect(() => {
         fetchSessions();

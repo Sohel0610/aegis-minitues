@@ -79,8 +79,9 @@ export const AccessRequest: React.FC = () => {
     };
 
     // Filter out routes user already has access to
+    // Use safety check for accessibleRoutes to prevent crash
     const availableRoutes = AVAILABLE_ROUTES.filter(
-        (route) => !accessibleRoutes.includes(route.path)
+        (route) => !(accessibleRoutes || []).includes(route.path)
     );
 
     if (success) {

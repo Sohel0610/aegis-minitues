@@ -52,7 +52,7 @@ async def get_intelligence_summary():
         cur.execute("""
             SELECT d.din_status, COUNT(DISTINCT d.din) as count 
             FROM directors_master.directors d
-            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL 
             GROUP BY d.din_status
         """)
@@ -62,7 +62,7 @@ async def get_intelligence_summary():
         cur.execute("""
             SELECT d.gender, COUNT(DISTINCT d.din) as count 
             FROM directors_master.directors d
-            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL 
             AND UPPER(d.gender) IN ('MALE', 'FEMALE')
             GROUP BY 1
@@ -80,7 +80,7 @@ async def get_intelligence_summary():
         kyc_breakdown = cur.fetchall()
 
         # 5. Total Associations tracked
-        cur.execute("SELECT COUNT(*) as total FROM directors_master.external_associations")
+        cur.execute("SELECT COUNT(*) as total FROM directors_master.external_board_members")
         assoc_count = cur.fetchone()
 
         return {
@@ -113,12 +113,15 @@ async def get_enriched_directors():
                 d.gender, 
                 d.nationality, 
                 d.dir3_kyc,
-                COUNT(ea.id) as external_board_count
+                COUNT(CASE 
+                    WHEN ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None' THEN 1
+                    WHEN ebm.status ILIKE 'Active%' THEN 1
+                    ELSE NULL 
+                END) as external_board_count
             FROM directors_master.directors d
-            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            LEFT JOIN directors_master.external_board_members ebm ON d.din = ebm.din
             WHERE d.last_api_sync IS NOT NULL
             GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc
-            HAVING COUNT(ea.id) > 0
             ORDER BY d.name
         """)
         return cur.fetchall()
@@ -138,10 +141,17 @@ async def get_director_associations(din: str):
     cur = conn.cursor(cursor_factory=extras.RealDictCursor)
     try:
         cur.execute("""
-            SELECT cin, company_name, designation, appointment_date 
-            FROM directors_master.external_associations 
-            WHERE din = %s
-            ORDER BY appointment_date DESC
+            SELECT 
+                ea.cin, 
+                ea.company_name, 
+                ea.designation, 
+                ea.appointment_date, 
+                COALESCE(c.status, ea.status) as status,
+                COALESCE(c.is_adani, FALSE) as is_group
+            FROM directors_master.external_board_members ea
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+            WHERE ea.din = %s
+            ORDER BY ea.appointment_date DESC
         """, (din,))
         return cur.fetchall()
     except Exception as e:

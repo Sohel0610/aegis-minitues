@@ -36,7 +36,6 @@ interface DirectorProfile {
   experience: string | null;
 }
 
-// Add interface for upload status
 interface UploadStatus {
   type: 'loading' | 'success' | 'error';
   message: string;
@@ -124,6 +123,8 @@ const DirectorsDisclosureMasterData = () => {
           director.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           director.din.includes(searchTerm)
       );
+      // Sort alphabetically A-Z
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
       setFilteredDirectors(filtered);
     }
   }, [searchTerm, directors]);
@@ -139,8 +140,11 @@ const DirectorsDisclosureMasterData = () => {
       }
 
       const data = await response.json();
-      setDirectors(data.data || []);
-      setFilteredDirectors(data.data || []);
+      const fetchedDirectors = data.data || [];
+      // Initial sort A-Z
+      fetchedDirectors.sort((a: Director, b: Director) => a.name.localeCompare(b.name));
+      setDirectors(fetchedDirectors);
+      setFilteredDirectors(fetchedDirectors);
     } catch (err) {
       console.error('Error fetching directors:', err);
       setError(err instanceof Error ? err.message : 'Failed to load directors');
@@ -1127,7 +1131,7 @@ const DirectorsDisclosureMasterData = () => {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="mt-4 border-t pt-4">
             <Button
               variant="outline"
               onClick={() => setIsProfileModalOpen(false)}

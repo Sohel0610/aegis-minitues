@@ -108,3 +108,24 @@ def compare_companies_notifications(company_names: list, month: int = None, year
         values.append(len(results))
 
     return labels, values
+
+def compare_months_notifications(months: list, year: int):
+    """Compare notification counts across multiple months"""
+    from chatbot_backend.chat_orchestrator.router_logic import execute_structured_query
+    import calendar
+    
+    labels = []
+    values = []
+    
+    for month in months:
+        results = execute_structured_query(
+            strict_entity=None,
+            dates=None,
+            month_year=(month, year),
+            limit=5000,
+            database="all",
+        )
+        labels.append(calendar.month_abbr[month])
+        values.append(len(results))
+        
+    return labels, values

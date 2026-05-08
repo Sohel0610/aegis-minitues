@@ -367,9 +367,10 @@ const FormBasedGenerator: React.FC = () => {
     if (isQ1) {
       // Q1 has 9 steps (0-8)
       switch (currentStep) {
-        case 0: // Template & Company (Now includes Date & Time)
+        case 0: { // Template & Company (Now includes Date & Time)
           const isTemplateValid = formData.template === 'custom' ? !!formData.customTemplateFilename : !!formData.template;
           return isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced;
+        }
         case 1: // Meeting Details (Now primarily Meeting Place)
           return formData.meetingPlace;
         case 2: // Attendance
@@ -389,7 +390,7 @@ const FormBasedGenerator: React.FC = () => {
             formData.signatory2Name.trim() !== "" &&
             formData.signatory2Role.trim() !== "" &&
             formData.signatory2Din.trim() !== "";
-        case 6: // AGM Details
+        case 6: { // AGM Details
           const isAgmNumberValid = formData.agmNumber && formData.agmNumber.trim() !== "";
           const isAgmDateValid = Number.isFinite(formData.agmYear) &&
             Number.isFinite(formData.agmMonth) &&
@@ -400,6 +401,7 @@ const FormBasedGenerator: React.FC = () => {
           const isAgmTimeValid = formData.agmTime && formData.agmTime.trim() !== "";
           const isRegisteredOfficeValid = formData.registeredOfficeAddress && formData.registeredOfficeAddress.trim() !== "";
           return isAgmNumberValid && isAgmDateValid && isAgmTimeValid && isRegisteredOfficeValid;
+        }
         case 7: // Sign-off Details
           return formData.recordingDate && formData.signingDate && formData.signingPlace;
         case 8: // Resolutions
@@ -410,9 +412,10 @@ const FormBasedGenerator: React.FC = () => {
     } else {
       // Q2/Q3/Q4 have 6 steps (0-5)
       switch (currentStep) {
-        case 0: // Template & Company
+        case 0: { // Template & Company
           const isTemplateValid = formData.template === 'custom' ? !!formData.customTemplateFilename : !!formData.template;
           return isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced;
+        }
         case 1: // Meeting Details
           return formData.meetingPlace;
         case 2: // Attendance

@@ -202,7 +202,7 @@ export const approveAccessRequest = async (
   reviewNotes?: string
 ): Promise<{ success: boolean; message: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/access-requests/${requestId}/approve`, {
+    const response = await fetch(`${API_BASE_URL}/api/access-requests/${requestId}/approve?email=${encodeURIComponent(adminEmail)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -232,7 +232,7 @@ export const rejectAccessRequest = async (
   reviewNotes?: string
 ): Promise<{ success: boolean; message: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/access-requests/${requestId}/reject`, {
+    const response = await fetch(`${API_BASE_URL}/api/access-requests/${requestId}/reject?email=${encodeURIComponent(adminEmail)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -299,7 +299,7 @@ export const revokePermission = async (
   route: string
 ): Promise<{ success: boolean; message: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/permissions/revoke`, {
+    const response = await fetch(`${API_BASE_URL}/api/permissions/revoke?email=${encodeURIComponent(adminEmail)}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

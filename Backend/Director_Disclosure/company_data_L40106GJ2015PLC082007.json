@@ -1,0 +1,172 @@
+{
+  "company_info": {
+    "id": 10524,
+    "name": "ADANI GREEN ENERGY LIMITED",
+    "type": null,
+    "cin": "L40106GJ2015PLC082007",
+    "status": "Active",
+    "incorporation_date": "2015-01-23",
+    "auth_capital": 25000000000.0,
+    "paid_capital": 16471761550.0,
+    "pincode": "382421",
+    "category": "Company limited by Shares",
+    "class": "Public",
+    "roc": "RoC-Ahmedabad",
+    "subcategory": "Non-govt company",
+    "state": "Gujarat",
+    "district": "Gandhinagar",
+    "activity": "(Electricity, gas, steam and hot water supply) Generation of solar energy",
+    "last_agm": "2025-06-25",
+    "last_bal_sheet": "2025-03-31",
+    "email": "pragnesh.darji@adani.com",
+    "address": "Adani Corporate House, Shantigram Near Vaishno Devi Circle, S. G. Highway, Khodiyar, Ahmedabad, Ahmedabad, Gujarat, India, 382421",
+    "list_status": "Listed",
+    "last_sync": "2026-04-30T05:26:16.301969+00:00"
+  },
+  "directors": [
+    {
+      "din": "08858955",
+      "director_name": "Pragnesh Shashikant Darji",
+      "designation": "Company Secretary",
+      "appointment_date": "2026-01-19",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2020-09-02"
+    },
+    {
+      "din": "06699527",
+      "director_name": "Ashish Khanna",
+      "designation": "CEO",
+      "appointment_date": "2025-04-01",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2013-09-25"
+    },
+    {
+      "din": "09756442",
+      "director_name": "Saurabh Nikhil Shah",
+      "designation": "CFO",
+      "appointment_date": "2024-10-01",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2022-10-04"
+    },
+    {
+      "din": "00501029",
+      "director_name": "Neera Saggi",
+      "designation": "Director",
+      "appointment_date": "2023-12-05",
+      "din_status": "Active",
+      "gender": "Female",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2006-08-24"
+    },
+    {
+      "din": "00293207",
+      "director_name": "Anup Pravin Shah",
+      "designation": "Director",
+      "appointment_date": "2023-12-05",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "External",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2006-06-21"
+    },
+    {
+      "din": "10333311",
+      "director_name": "Sangkaran A. Ratnam",
+      "designation": "Nominee Director",
+      "appointment_date": "2023-10-23",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "External",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2023-09-25"
+    },
+    {
+      "din": "00031034",
+      "director_name": "Romesh Sobti",
+      "designation": "Director",
+      "appointment_date": "2022-07-27",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2006-05-02"
+    },
+    {
+      "din": "00003252",
+      "director_name": "Dinesh Hasmukhrai Kanabar",
+      "designation": "Director",
+      "appointment_date": "2021-07-13",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2006-04-05"
+    },
+    {
+      "din": "07175393",
+      "director_name": "Raminder Singh Gujral",
+      "designation": "Director",
+      "appointment_date": "2021-07-13",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2015-05-04"
+    },
+    {
+      "din": "00053906",
+      "director_name": "Vneet S. Jaain",
+      "designation": "Managing Director",
+      "appointment_date": "2020-07-10",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2006-05-27"
+    },
+    {
+      "din": "07626229",
+      "director_name": "Sagar Rajeshbhai Adani",
+      "designation": "Whole-time director",
+      "appointment_date": "2018-10-31",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "Done",
+      "din_approve_date": "2016-09-28"
+    },
+    {
+      "din": "00006273",
+      "director_name": "Gautam Adani",
+      "designation": "Director",
+      "appointment_date": "2015-01-23",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "NA",
+      "din_approve_date": "2006-05-22"
+    },
+    {
+      "din": "00006322",
+      "director_name": "Rajesh Shantilal Adani",
+      "designation": "Director",
+      "appointment_date": "2015-01-23",
+      "din_status": "Active",
+      "gender": "Male",
+      "nationality": "Indian",
+      "dir3_kyc": "NA",
+      "din_approve_date": "2006-04-29"
+    }
+  ],
+  "total_directors": 13
+}

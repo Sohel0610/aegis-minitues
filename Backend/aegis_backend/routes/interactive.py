@@ -12,7 +12,7 @@ sys.path.insert(0, project_root)
 
 from chatbot_backend.services.analytics_service import compare_companies_notifications
 from chatbot_backend.data_layer.models import get_db_session, DailyLog
-from sqlalchemy import func
+from sqlalchemy import extract
 
 router = APIRouter(prefix="/api", tags=["interactive"])
 
@@ -36,9 +36,9 @@ async def get_companies(
         
         # Filter by month/year if provided
         if month:
-            query = query.filter(func.strftime("%m", DailyLog.Date) == f"{month:02d}")
+            query = query.filter(extract("month", DailyLog.Date) == month)
         if year:
-            query = query.filter(func.strftime("%Y", DailyLog.Date) == str(year))
+            query = query.filter(extract("year", DailyLog.Date) == year)
         
         query = query.filter(DailyLog.EntityName.isnot(None))
         query = query.order_by(DailyLog.EntityName)

@@ -113,7 +113,7 @@ export const AccessDenied: React.FC = () => {
                                 ? `You need edit permissions to access ${state.requestedRoute ? getRouteName(state.requestedRoute) : 'this page'}.`
                                 : `You do not have permission to access ${state?.requestedRoute ? getRouteName(state.requestedRoute) : 'this page'}.`}
                     </p>
-                    {state?.requestedRoute && !getRouteName(state.requestedRoute).startsWith('/') && (
+                    {state?.requestedRoute && getRouteName(state.requestedRoute) && !getRouteName(state.requestedRoute).startsWith('/') && (
                         <p className="mt-2 text-sm text-gray-500">
                             Requested Application: <span className="font-semibold text-gray-700">{getRouteName(state.requestedRoute)}</span>
                         </p>

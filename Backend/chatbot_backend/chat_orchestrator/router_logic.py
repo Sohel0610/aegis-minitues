@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Tuple, List, Optional
 from chatbot_backend.data_layer.models import get_db_session, DailyLog
 from chatbot_backend.data_layer.db_models import get_sebi_session, get_rbi_session, SEBINotification, RBINotification
+from chatbot_backend.utils.entity_resolver import get_searchable_aliases
 from sqlalchemy import or_, and_, func, extract
 
 # Month name to number mapping
@@ -68,6 +69,11 @@ def extract_month_year(query: str) -> Optional[Tuple[int, int]]:
     # SMART FIX: Get the most recent year from database
     # This allows: "nov month" → latest year in DB, "jan 2026" → explicit 2026
     current_year = get_most_recent_year_from_db()
+
+    if re.search(r"\b(this|current)\s+month\b", q):
+        now = datetime.now()
+        print(f" [MONTH_PARSE] 'this month' → ({now.month}, {now.year})")
+        return (now.month, now.year)
     
     # Pattern 1: "december month", "dec month summary"
     for month_name, month_num in MONTH_MAP.items():
@@ -104,6 +110,46 @@ def extract_month_year(query: str) -> Optional[Tuple[int, int]]:
             return (month, year)
     
     return None
+
+def extract_all_months_years(query: str) -> Tuple[List[int], Optional[int]]:
+    """
+    Extract all months and the year from the query.
+    E.g. "march and april 2026" -> ([3, 4], 2026)
+    """
+    q = query.lower()
+    months_found = []
+    year_found = None
+    
+    # Try to find year
+    year_match = re.search(r'\b(20\d{2})\b', q)
+    if year_match:
+        year_found = int(year_match.group(1))
+    else:
+        # Fallback year
+        year_found = get_most_recent_year_from_db()
+        
+    for month_name, month_num in MONTH_MAP.items():
+        if len(month_name) > 2: # protect small matches
+            pattern = rf"\b{month_name}\b"
+            if re.search(pattern, q):
+                if month_num not in months_found:
+                    months_found.append(month_num)
+                    
+    # Sort them by appearance in query
+    month_positions = []
+    for m_num in months_found:
+        names = [k for k, v in MONTH_MAP.items() if v == m_num]
+        min_idx = len(q)
+        for n in names:
+            match = re.search(rf"\b{n}\b", q)
+            if match and match.start() < min_idx:
+                min_idx = match.start()
+        month_positions.append((m_num, min_idx))
+        
+    month_positions.sort(key=lambda x: x[1])
+    sorted_months = [m for m, _ in month_positions]
+    
+    return sorted_months, year_found
 
 def extract_dates(query: str) -> List[str]:
     """
@@ -221,6 +267,16 @@ def execute_structured_query(
 ) -> List:
     """Execute structured SQL query"""
     if database == "all":
+        if strict_entity:
+            return execute_structured_query(
+                strict_entity=strict_entity,
+                entity_aliases=entity_aliases,
+                dates=dates,
+                month_year=month_year,
+                limit=limit,
+                database="bse",
+            )
+
         combined = []
         for db_name in ["bse", "sebi", "rbi"]:
             combined.extend(
@@ -246,7 +302,7 @@ def execute_structured_query(
             )
 
             if entity_aliases:
-                alias_filters = [DailyLog.EntityName.ilike(f"%{alias}%") for alias in entity_aliases if alias]
+                alias_filters = [DailyLog.EntityName.ilike(f"%{alias}%") for alias in get_searchable_aliases(entity_aliases)]
                 if alias_filters:
                     q = q.filter(or_(*alias_filters))
                     print(f" [SQL_FILTER] EntityName matched aliases: {entity_aliases}")
@@ -296,7 +352,7 @@ def execute_structured_query(
         try:
             q = session.query(SEBINotification)
             if entity_aliases:
-                alias_filters = [SEBINotification.summary.ilike(f"%{alias}%") for alias in entity_aliases if alias]
+                alias_filters = [SEBINotification.summary.ilike(f"%{alias}%") for alias in get_searchable_aliases(entity_aliases)]
                 if alias_filters:
                     q = q.filter(or_(*alias_filters))
             elif strict_entity:
@@ -314,7 +370,15 @@ def execute_structured_query(
                         continue
                 return filtered
             if dates:
-                date_filters = [SEBINotification.date_key == d for d in dates]
+                date_values = set()
+                for date_str in dates:
+                    date_values.add(date_str)
+                    try:
+                        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+                        date_values.add(parsed.strftime("%d-%m-%Y"))
+                    except ValueError:
+                        pass
+                date_filters = [SEBINotification.date_key == d for d in date_values]
                 q = q.filter(or_(*date_filters))
             results = q.order_by(SEBINotification.inserted_at.desc()).limit(limit).all()
             return results
@@ -326,7 +390,7 @@ def execute_structured_query(
         try:
             q = session.query(RBINotification)
             if entity_aliases:
-                alias_filters = [RBINotification.summary.ilike(f"%{alias}%") for alias in entity_aliases if alias]
+                alias_filters = [RBINotification.summary.ilike(f"%{alias}%") for alias in get_searchable_aliases(entity_aliases)]
                 if alias_filters:
                     q = q.filter(or_(*alias_filters))
             elif strict_entity:
@@ -346,16 +410,19 @@ def execute_structured_query(
                             continue
                 return filtered
             if dates:
-                parsed_dates = []
+                date_values = set()
                 for date_str in dates:
                     for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
                         try:
-                            parsed_dates.append(datetime.strptime(date_str, fmt).date())
+                            parsed = datetime.strptime(date_str, fmt)
+                            date_values.add(parsed.date())
+                            date_values.add(parsed.strftime("%Y-%m-%d"))
+                            date_values.add(parsed.strftime("%d-%m-%Y"))
                             break
                         except ValueError:
                             pass
-                if parsed_dates:
-                    q = q.filter(or_(*[RBINotification.run_date == d for d in parsed_dates]))
+                if date_values:
+                    q = q.filter(or_(*[RBINotification.run_date == d for d in date_values]))
             results = q.order_by(RBINotification.run_date.desc()).limit(limit).all()
             return results
         finally:

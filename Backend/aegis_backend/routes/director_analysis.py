@@ -61,7 +61,8 @@ class WTDCountResponse(BaseModel):
 
 class CompanyWithDirectorCountResponse(BaseModel):
     name: str
-    type: str
+    cin: Optional[str] = "N/A"
+    type: Optional[str] = "Unknown"
     director_count: int
 
 # Endpoint to get all directors

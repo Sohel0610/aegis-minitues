@@ -51,12 +51,12 @@ async def admin_login(credentials: AdminLoginRequest):
     """Authenticate admin user from PostgreSQL."""
     try:
         def verify():
-            conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_EMAIL"))
+            conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_RBAC"))
             if not conn: raise RuntimeError("Database connection failed")
             cursor = get_pg_cursor(conn)
             try:
                 # In production, use hashed passwords!
-                cursor.execute("SELECT id FROM admin_credentials WHERE username = %s AND password = %s",
+                cursor.execute("SELECT id FROM rbac.admin_credentials WHERE username = %s AND password = %s",
                              (credentials.username, credentials.password))
                 res = cursor.fetchone()
                 return res["id"] if res else None

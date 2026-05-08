@@ -206,11 +206,7 @@ const App = () => (
                 <MinutesPreparation />
               </ProtectedRoute>
             } />
-            <Route path="/minutes-preparation/directors" element={
-              <ProtectedRoute requiredRoute="/minutes-preparation">
-                <MinutesPreparation />
-              </ProtectedRoute>
-            } />
+            
             <Route path="/minutes-preparation/form-generator" element={
               <ProtectedRoute requiredRoute="/minutes-preparation">
                 <FormBasedGenerator />

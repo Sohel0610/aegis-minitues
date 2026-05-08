@@ -10,6 +10,8 @@ import DirectorsDisclosureCompaniesMasterData from "./DirectorsDisclosure/Direct
 import DirectorDisclosureChanges from "./DirectorsDisclosure/DirectorDisclosureChanges";
 import DirectorRegistryIntelligence from "./DirectorsDisclosure/DirectorRegistryIntelligence";
 import InstitutionalRiskMonitor from "./DirectorsDisclosure/InstitutionalRiskMonitor";
+import RegistryManagement from "./DirectorsDisclosure/RegistryManagement";
+import { Settings } from "lucide-react";
 
 type TabType = 'analytics' | 'datasource' | 'masterdata' | 'companies';
 
@@ -29,6 +31,13 @@ const DirectorsDisclosure = () => {
         icon: Home,
         href: '/',
         isActive: false
+      },
+      {
+        id: 'registry-management',
+        label: 'Registry control center',
+        icon: Settings,
+        href: '/directors-disclosure/registry-management',
+        isActive: currentPath.endsWith('/registry-management')
       },
       {
         id: 'analytics',
@@ -73,18 +82,18 @@ const DirectorsDisclosure = () => {
         isActive: currentPath.endsWith('/changes')
       },
       {
-        id: 'datasource',
-        label: 'Data source',
+        id: 'repository',
+        label: 'Disclosure Repository',
         icon: FileText,
-        href: '/directors-disclosure/data-source',
-        isActive: currentPath.endsWith('/data-source')
+        href: '/directors-disclosure/repository',
+        isActive: currentPath.endsWith('/repository')
       }
     ];
   }, [location.pathname]);
 
   const renderContent = () => {
     // Determine active tab based on current route
-    if (location.pathname.endsWith('/data-source')) {
+    if (location.pathname.endsWith('/repository')) {
       return <DirectorsDisclosureDataSource />;
     } else if (location.pathname.endsWith('/master-data')) {
       return <DirectorsDisclosureMasterData />;
@@ -98,6 +107,8 @@ const DirectorsDisclosure = () => {
       return <DirectorRegistryIntelligence />;
     } else if (location.pathname.endsWith('/institutional-risk')) {
       return <InstitutionalRiskMonitor />;
+    } else if (location.pathname.endsWith('/registry-management')) {
+      return <RegistryManagement />;
     } else {
       // Default to Analytics
       return <DirectorsDisclosureAnalytics />;

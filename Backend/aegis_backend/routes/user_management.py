@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
+import os
 import asyncio
 import concurrent.futures
 from datetime import datetime
@@ -37,14 +38,14 @@ class UsersListResponse(BaseModel):
 
 def init_rbac_db():
     """Initialize RBAC tables in PostgreSQL."""
-    conn = get_pg_connection()
+    conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
     if conn:
         try:
             cursor = get_pg_cursor(conn)
             
             # Simple user roles table for SSO integration
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_roles (
+                CREATE TABLE IF NOT EXISTS rbac.user_roles (
                     id SERIAL PRIMARY KEY,
                     email TEXT NOT NULL,
                     role TEXT NOT NULL,
@@ -54,9 +55,9 @@ def init_rbac_db():
             """)
             
             # Seed initial admin if empty
-            cursor.execute("SELECT COUNT(*) FROM user_roles WHERE email = %s", ("cogn206112@adani.com",))
+            cursor.execute("SELECT COUNT(*) FROM rbac.user_roles WHERE email = %s", ("cogn206112@adani.com",))
             if cursor.fetchone()["count"] == 0:
-                cursor.execute("INSERT INTO user_roles (email, role) VALUES (%s, %s)", ("cogn206112@adani.com", "admin"))
+                cursor.execute("INSERT INTO rbac.user_roles (email, role) VALUES (%s, %s)", ("cogn206112@adani.com", "admin"))
             
             conn.commit()
             logger.info("RBAC tables initialized in PostgreSQL")
@@ -73,7 +74,7 @@ async def get_all_users_with_roles():
             if not conn: raise RuntimeError("DB connection failed")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("SELECT email, role, assigned_at FROM user_roles ORDER BY email")
+                cursor.execute("SELECT email, role, assigned_at FROM rbac.user_roles ORDER BY email")
                 rows = cursor.fetchall()
                 # Group by email
                 users_map = {}
@@ -102,14 +103,14 @@ async def assign_role_to_user(request: RoleAssignmentRequest):
     
     try:
         def assign():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
             if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("INSERT INTO user_roles (email, role) VALUES (%s, %s) ON CONFLICT (email, role) DO NOTHING", (email, role))
+                cursor.execute("INSERT INTO rbac.user_roles (email, role) VALUES (%s, %s) ON CONFLICT (email, role) DO NOTHING", (email, role))
                 conn.commit()
                 # Fetch all roles
-                cursor.execute("SELECT role FROM user_roles WHERE email = %s", (email,))
+                cursor.execute("SELECT role FROM rbac.user_roles WHERE email = %s", (email,))
                 rows = cursor.fetchall()
                 return [r["role"] for r in rows]
             finally:
@@ -129,14 +130,14 @@ async def remove_role_from_user(request: RoleRemovalRequest):
     
     try:
         def remove():
-            conn = get_pg_connection()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
             if not conn: raise RuntimeError("DB Error")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("DELETE FROM user_roles WHERE email = %s AND role = %s", (email, role))
+                cursor.execute("DELETE FROM rbac.user_roles WHERE email = %s AND role = %s", (email, role))
                 conn.commit()
                 # Fetch remaining roles
-                cursor.execute("SELECT role FROM user_roles WHERE email = %s", (email,))
+                cursor.execute("SELECT role FROM rbac.user_roles WHERE email = %s", (email,))
                 rows = cursor.fetchall()
                 return [r["role"] for r in rows]
             finally:
