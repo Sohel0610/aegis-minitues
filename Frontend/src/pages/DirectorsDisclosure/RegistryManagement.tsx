@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   RefreshCw, 
@@ -13,8 +13,10 @@ import {
   ArrowRight,
   Download,
   Loader2,
-  Table
+  Table,
+  Check
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,7 +38,7 @@ const RegistryManagement = () => {
   const [dinInput, setDinInput] = useState("");
   const [cinInput, setCinInput] = useState("");
   const [selectedDin, setSelectedDin] = useState("");
-  const [selectedCin, setSelectedCin] = useState("");
+  const [selectedCins, setSelectedCins] = useState<string[]>([]);
   const [statusMessages, setStatusMessages] = useState<Record<string, string>>({});
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
 
@@ -52,10 +54,8 @@ const RegistryManagement = () => {
         .then(res => res.json())
         .then(data => {
           setFilteredCompanies(data || []);
-          // Reset selected CIN if it's not in the new filtered list
-          if (selectedCin && !data.find((c: any) => c.cin === selectedCin)) {
-            setSelectedCin("");
-          }
+          // Reset selected CINs
+          setSelectedCins([]);
         })
         .catch(err => console.error("Failed to filter companies", err));
     } else {
@@ -88,65 +88,89 @@ const RegistryManagement = () => {
   };
 
   const [progress, setProgress] = useState<Record<string, { current: number, total: number, status: string, active: boolean }>>({});
+  const prevProgressRef = useRef<Record<string, boolean>>({});
 
   // Polling for progress
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    const activeTasks = Object.keys(loading).filter(key => loading[key]);
     
-    if (activeTasks.length > 0) {
-      interval = setInterval(async () => {
-        try {
-          // Poll for DIN progress
-          const dinRes = await fetch("/api/registry/sync/progress?type=din");
-          const dinData = await dinRes.json();
-          if (dinData.total > 0) {
-            setProgress(prev => ({ ...prev, din: dinData }));
-            // Find active DIN tasks and update their messages
-            Object.keys(loading).forEach(key => {
-              if (key.startsWith("din") && loading[key]) {
-                setStatusMessages(prev => ({ 
-                  ...prev, 
-                  [key]: dinData.active 
-                    ? `Processing: [${dinData.current}/${dinData.total}] - ${dinData.status}`
-                    : `Sync complete [${dinData.total}/${dinData.total}].`
-                }));
-              }
-            });
-          }
+    // We poll regardless of loading state to catch background tasks
+    interval = setInterval(async () => {
+      try {
+        const types = ["din", "cin", "mbp1", "dir8"];
+        const updates: any = {};
+        
+        for (const type of types) {
+          const res = await fetch(`/api/registry/sync/progress?type=${type}`);
+          const data = await res.json();
+          updates[type] = data;
 
-          // Poll for CIN progress
-          const cinRes = await fetch("/api/registry/sync/progress?type=cin");
-          const cinData = await cinRes.json();
-          if (cinData.total > 0) {
-            setProgress(prev => ({ ...prev, cin: cinData }));
-            Object.keys(loading).forEach(key => {
-              if (key.startsWith("cin") && loading[key]) {
-                setStatusMessages(prev => ({ 
-                  ...prev, 
-                  [key]: cinData.active 
-                    ? `Processing: [${cinData.current}/${cinData.total}] - ${cinData.status}`
-                    : `Sync complete [${cinData.total}/${cinData.total}].`
-                }));
-              }
+          const wasActive = prevProgressRef.current[type];
+          const isNowActive = data.active;
+          
+          // Case 1: Just finished (was active, now inactive)
+          // Case 2: Inactive but UI thinks it's loading
+          const needsCleanup = (wasActive && !isNowActive) || (!isNowActive && Object.keys(loading).some(k => k.startsWith(type) && loading[k]));
+
+          if (needsCleanup && data.total > 0) {
+            const label = type.toUpperCase().replace('1', '-1').replace('8', '-8');
+            
+            // Only show toast if it was actually running (wasActive)
+            if (wasActive) {
+              toast.success(`${label} Process Completed Successfully!`, {
+                duration: 3000,
+                description: `Processed ${data.total} items.`
+              });
+            }
+            
+            // Clean up loading states related to this type
+            setLoading(prev => {
+              const next = { ...prev };
+              let changed = false;
+              Object.keys(next).forEach(key => {
+                if (key.startsWith(type) && next[key]) {
+                  next[key] = false;
+                  changed = true;
+                }
+              });
+              return changed ? next : prev;
             });
           }
-        } catch (e) {
-          console.error("Progress polling failed", e);
+          prevProgressRef.current[type] = isNowActive;
         }
-      }, 1500);
-    }
+        
+        setProgress(updates);
+        
+        // Update status messages based on current progress
+        Object.keys(loading).forEach(key => {
+          if (!loading[key]) return;
+          
+          const type = key.split('-')[0];
+          const data = updates[type];
+          if (data && data.total > 0) {
+            setStatusMessages(prev => ({ 
+              ...prev, 
+              [key]: data.active 
+                ? `Processing: [${data.current}/${data.total}] - ${data.status}`
+                : `Task finished [${data.total}/${data.total}].`
+            }));
+          }
+        });
+
+      } catch (e) {
+        console.error("Progress polling failed", e);
+      }
+    }, 2000);
     
     return () => clearInterval(interval);
   }, [loading]);
 
   const handleSync = async (type: "din" | "cin", items: string[]) => {
-    const key = `${type}-${items.join(',')}`;
+    const key = items.length === 1 ? `${type}-${items[0]}` : `${type}-bulk`;
     setLoading(prev => ({ ...prev, [key]: true }));
+    setStatusMessages(prev => ({ ...prev, [key]: "Initializing sync..." }));
     
     try {
-      setStatusMessages(prev => ({ ...prev, [key]: "Preparing registry request..." }));
-      
       const response = await fetch(`/api/registry/sync/${type}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,9 +179,16 @@ const RegistryManagement = () => {
       
       const data = await response.json();
       toast.success(data.message);
+      setStatusMessages(prev => ({ ...prev, [key]: "Task Queued in background..." }));
       
-      // Keep loading true for a bit while polling picks up the background task
-      // or if it's already done, just finish.
+      // If it's a single item, we might not get extensive progress logs, 
+      // so we set a timeout to clear the loading spinner if polling doesn't catch it.
+      if (items.length === 1) {
+        setTimeout(() => {
+          setLoading(prev => ({ ...prev, [key]: false }));
+          setStatusMessages(prev => ({ ...prev, [key]: "Sync task initiated." }));
+        }, 5000);
+      }
     } catch (error) {
       toast.error(`Failed to start ${type.toUpperCase()} sync`);
       setStatusMessages(prev => ({ ...prev, [key]: "Sync failed." }));
@@ -170,7 +201,7 @@ const RegistryManagement = () => {
     setLoading(prev => ({ ...prev, [key]: true }));
     
     try {
-      setStatusMessages(prev => ({ ...prev, [key]: "Initializing full database sync..." }));
+      setStatusMessages(prev => ({ ...prev, [key]: "Starting full database sync..." }));
       
       const response = await fetch(`/api/registry/sync/${type}/all`, {
         method: "POST"
@@ -185,6 +216,39 @@ const RegistryManagement = () => {
     }
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const key = "din-upload";
+    setLoading(prev => ({ ...prev, [key]: true }));
+    setStatusMessages(prev => ({ ...prev, [key]: `Uploading ${file.name}...` }));
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/registry/sync/din/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        toast.success(data.message);
+      } else {
+        toast.error(data.detail || "Upload failed");
+      }
+    } catch (error) {
+      toast.error("Failed to upload file");
+      setStatusMessages(prev => ({ ...prev, [key]: "Upload failed." }));
+    } finally {
+      setLoading(prev => ({ ...prev, [key]: false }));
+      // The progress polling will take over for status messages
+      if (event.target) event.target.value = "";
+    }
+  };
+
   const handleGenerate = async (type: "mbp1" | "dir8", all: boolean = false) => {
     const key = `${type}-${all ? 'all' : 'single'}`;
     setLoading(prev => ({ ...prev, [key]: true }));
@@ -194,9 +258,9 @@ const RegistryManagement = () => {
       const body: any = { all_directors: all, year: "2024-25" }; // Default to current fiscal year
       if (!all) {
         body.din = selectedDin;
-        body.cin = selectedCin;
-        if (!body.din || !body.cin) {
-          toast.error("Please select both Director and Company");
+        body.cins = selectedCins;
+        if (!body.din || !body.cins || body.cins.length === 0) {
+          toast.error("Please select a Director and at least one Company");
           setLoading(prev => ({ ...prev, [key]: false }));
           setStatusMessages(prev => ({ ...prev, [key]: "" }));
           return;
@@ -293,21 +357,54 @@ const RegistryManagement = () => {
                   <CardDescription>Upload an Excel file containing a list of DINs to sync in bulk.</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-lg m-4 mt-0 bg-white">
+                  <input 
+                    type="file" 
+                    id="din-upload-input" 
+                    className="hidden" 
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileUpload}
+                  />
                   <Upload className="h-8 w-8 text-slate-400 mb-2" />
-                  <p className="text-sm text-slate-500 mb-4 text-center">Sync all directors currently in the master database.</p>
-                  <Button 
-                    variant="outline" 
-                    className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                    onClick={() => handleSyncAll("din")}
-                    disabled={loading["din-all"]}
-                  >
-                    {loading["din-all"] ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Sync All Directors
-                  </Button>
-                  {statusMessages["din-all"] && (
-                    <p className="mt-2 text-xs text-indigo-600 font-medium animate-pulse">
-                      {statusMessages["din-all"]}
-                    </p>
+                  <p className="text-sm text-slate-500 mb-4 text-center">Select an Excel file with a 'DIN' column.</p>
+                  
+                  <div className="flex flex-col w-full gap-3">
+                    <Button 
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white w-full"
+                      onClick={() => document.getElementById('din-upload-input')?.click()}
+                      disabled={loading["din-upload"]}
+                    >
+                      {loading["din-upload"] ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                      Upload Excel & Sync
+                    </Button>
+                    
+                    <div className="flex items-center gap-2">
+                      <div className="h-px bg-slate-200 flex-1" />
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">OR</span>
+                      <div className="h-px bg-slate-200 flex-1" />
+                    </div>
+
+                    <Button 
+                      variant="outline" 
+                      className="text-slate-600 border-slate-200 hover:bg-slate-100 w-full"
+                      onClick={() => handleSyncAll("din")}
+                      disabled={loading["din-all"]}
+                    >
+                      {loading["din-all"] ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                      Sync Full Database
+                    </Button>
+                  </div>
+
+                  {(statusMessages["din-upload"] || statusMessages["din-all"] || progress.din?.active) && (
+                    <div className="mt-6 w-full space-y-2">
+                      <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase">
+                        <span>{progress.din?.status || "Syncing..."}</span>
+                        <span>{progress.din ? Math.round((progress.din.current / progress.din.total) * 100) : 0}%</span>
+                      </div>
+                      <Progress value={progress.din ? (progress.din.current / progress.din.total) * 100 : 0} className="h-1.5" />
+                      <p className="text-[10px] text-center text-slate-400">
+                        Processed {progress.din?.current || 0} of {progress.din?.total || 0} directors
+                      </p>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -453,21 +550,58 @@ const RegistryManagement = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Target Company</label>
-                    <Select onValueChange={setSelectedCin} disabled={!selectedDin}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={selectedDin ? "Select Company" : "Select Director first"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredCompanies.map(c => (
-                          <SelectItem key={c.cin} value={c.cin}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedDin && filteredCompanies.length === 0 && (
-                      <p className="text-[10px] text-amber-600 font-medium">No active board seats found for this director.</p>
-                    )}
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-medium text-slate-700 uppercase tracking-wider text-[10px]">Target Companies</label>
+                      {filteredCompanies.length > 0 && (
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                          if (selectedCins.length === filteredCompanies.length) {
+                            setSelectedCins([]);
+                          } else {
+                            setSelectedCins(filteredCompanies.map(c => c.cin));
+                          }
+                        }}>
+                          <span className="text-[10px] font-bold text-indigo-600 uppercase">Select All</span>
+                          <Checkbox 
+                            checked={selectedCins.length === filteredCompanies.length && filteredCompanies.length > 0}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="border border-slate-100 rounded-xl bg-white overflow-hidden">
+                      <ScrollArea className="h-[200px]">
+                        {filteredCompanies.length > 0 ? (
+                          <div className="divide-y divide-slate-50">
+                            {filteredCompanies.map(c => (
+                              <div key={c.cin} className="flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors">
+                                <Checkbox 
+                                  id={`mbp1-${c.cin}`}
+                                  checked={selectedCins.includes(c.cin)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedCins(prev => [...prev, c.cin]);
+                                    } else {
+                                      setSelectedCins(prev => prev.filter(id => id !== c.cin));
+                                    }
+                                  }}
+                                />
+                                <label 
+                                  htmlFor={`mbp1-${c.cin}`}
+                                  className="text-xs font-medium text-slate-700 cursor-pointer flex-1"
+                                >
+                                  {c.name}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="h-full flex items-center justify-center p-8 text-slate-400 text-xs italic">
+                            {selectedDin ? "No active board seats found" : "Select a director first"}
+                          </div>
+                        )}
+                      </ScrollArea>
+                    </div>
                   </div>
 
                   <Button 
@@ -549,21 +683,58 @@ const RegistryManagement = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Target Company</label>
-                    <Select onValueChange={setSelectedCin} disabled={!selectedDin}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={selectedDin ? "Select Company" : "Select Director first"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredCompanies.map(c => (
-                          <SelectItem key={c.cin} value={c.cin}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedDin && filteredCompanies.length === 0 && (
-                      <p className="text-[10px] text-amber-600 font-medium">No active board seats found for this director.</p>
-                    )}
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-medium text-slate-700 uppercase tracking-wider text-[10px]">Target Companies</label>
+                      {filteredCompanies.length > 0 && (
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                          if (selectedCins.length === filteredCompanies.length) {
+                            setSelectedCins([]);
+                          } else {
+                            setSelectedCins(filteredCompanies.map(c => c.cin));
+                          }
+                        }}>
+                          <span className="text-[10px] font-bold text-indigo-600 uppercase">Select All</span>
+                          <Checkbox 
+                            checked={selectedCins.length === filteredCompanies.length && filteredCompanies.length > 0}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="border border-slate-100 rounded-xl bg-white overflow-hidden">
+                      <ScrollArea className="h-[200px]">
+                        {filteredCompanies.length > 0 ? (
+                          <div className="divide-y divide-slate-50">
+                            {filteredCompanies.map(c => (
+                              <div key={c.cin} className="flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors">
+                                <Checkbox 
+                                  id={`dir8-${c.cin}`}
+                                  checked={selectedCins.includes(c.cin)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedCins(prev => [...prev, c.cin]);
+                                    } else {
+                                      setSelectedCins(prev => prev.filter(id => id !== c.cin));
+                                    }
+                                  }}
+                                />
+                                <label 
+                                  htmlFor={`dir8-${c.cin}`}
+                                  className="text-xs font-medium text-slate-700 cursor-pointer flex-1"
+                                >
+                                  {c.name}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="h-full flex items-center justify-center p-8 text-slate-400 text-xs italic">
+                            {selectedDin ? "No active board seats found" : "Select a director first"}
+                          </div>
+                        )}
+                      </ScrollArea>
+                    </div>
                   </div>
 
                   <Button 

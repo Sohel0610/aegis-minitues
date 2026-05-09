@@ -47,6 +47,7 @@ interface Director {
   din: string;
   pan?: string;
   din_status?: string;
+  is_kmp?: boolean;
   created_at: string;
 }
 
@@ -739,7 +740,7 @@ const DirectorsDisclosureMasterData = () => {
                 <TableBody>
                   {filteredDirectors.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8" style={{ color: '#666666' }}>
+                      <TableCell colSpan={7} className="text-center py-8" style={{ color: '#666666' }}>
                         {searchTerm ? 'No directors found matching your search' : 'No directors found'}
                       </TableCell>
                     </TableRow>

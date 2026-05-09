@@ -31,6 +31,7 @@ interface Clustering {
 interface NetworkNode {
   id: string;
   type: string;
+  label: string;
 }
 
 interface NetworkLink {
@@ -170,19 +171,23 @@ const DirectorsDisclosureAnalytics = () => {
       });
 
       // Find company with highest count
-      let maxCompany = "";
+      let maxCompanyId = "";
       let maxCount = 0;
-      companyDirectorCount.forEach((count, company) => {
+      companyDirectorCount.forEach((count, companyId) => {
         if (count > maxCount) {
           maxCount = count;
-          maxCompany = company;
+          maxCompanyId = companyId;
         }
       });
 
-      if (maxCompany) {
+      if (maxCompanyId) {
+        // Find the company name from nodes
+        const companyNode = network.nodes.find(n => n.id === maxCompanyId);
+        const companyName = companyNode?.label || maxCompanyId;
+        
         insights.push({
           title: "Largest Board Size",
-          value: `${maxCompany} has ${maxCount} directors`,
+          value: `${companyName} has ${maxCount} directors`,
           icon: TrendingUp
         });
       }
@@ -491,10 +496,14 @@ const DirectorsDisclosureAnalytics = () => {
               <BarChart
                 data={Array.from(
                   new Map(
-                    (network?.links || []).map(link => [link.target, (network?.links.filter(l => l.target === link.target).length || 0)])
-                  ),
-                  ([name, directors]) => ({ name, directors })
-                ).slice(0, 10)}
+                    (network?.links || []).map(link => {
+                      const companyId = link.target;
+                      const companyNode = network?.nodes.find(n => n.id === companyId);
+                      const companyName = companyNode?.label || companyId;
+                      return [companyId, { name: companyName, directors: (network?.links.filter(l => l.target === companyId).length || 0) }];
+                    })
+                  ).values()
+                ).sort((a, b) => b.directors - a.directors).slice(0, 10)}
                 layout="vertical"
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />

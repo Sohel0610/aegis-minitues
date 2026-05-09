@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, UploadFile, File
 from pydantic import BaseModel
 from typing import List, Optional
 import os
@@ -6,6 +6,8 @@ import sys
 import subprocess
 import psycopg2
 from typing import List, Optional, Union
+import pandas as pd
+import io
 from psycopg2.extras import RealDictCursor
 from pathlib import Path
 
@@ -56,6 +58,7 @@ class SyncRequest(BaseModel):
 class GenerateRequest(BaseModel):
     din: Optional[str] = None
     cin: Optional[str] = None
+    cins: Optional[List[str]] = None
     all_directors: bool = False
     year: str = "2024-25"
 
@@ -138,6 +141,33 @@ async def sync_dins(request: SyncRequest, background_tasks: BackgroundTasks):
         background_tasks.add_task(run_script, SYNC_DIN_SCRIPT, [din])
     return {"message": f"Started sync for {len(request.items)} DINs in background."}
 
+@router.post("/sync/din/upload")
+async def upload_dins_for_sync(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """Upload an Excel/CSV file with DINs and sync them."""
+    try:
+        content = await file.read()
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(io.StringIO(content.decode('utf-8')))
+        else:
+            df = pd.read_excel(io.BytesIO(content))
+        
+        # Look for columns named 'din' or 'DIN'
+        din_col = next((c for c in df.columns if c.lower() == 'din'), None)
+        if not din_col:
+            raise HTTPException(status_code=400, detail="File must contain a column named 'DIN'")
+        
+        dins = [str(d).strip().zfill(8) for d in df[din_col].dropna().unique()]
+        if not dins:
+            raise HTTPException(status_code=400, detail="No DINs found in file")
+            
+        for din in dins:
+            background_tasks.add_task(run_script, SYNC_DIN_SCRIPT, [din])
+            
+        return {"message": f"Started bulk sync for {len(dins)} DINs extracted from {file.filename}."}
+    except Exception as e:
+        logger.error(f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+
 @router.post("/sync/cin")
 async def sync_cins(request: SyncRequest, background_tasks: BackgroundTasks):
     """Sync one or more CINs."""
@@ -160,31 +190,39 @@ async def sync_all_cins(background_tasks: BackgroundTasks):
 @router.post("/generate/mbp1")
 async def generate_mbp1(request: GenerateRequest, background_tasks: BackgroundTasks):
     """Generate MBP-1 forms."""
-    args = []
     if request.all_directors:
-        args.append("--all")
-    elif request.din and request.cin:
-        args.extend(["--din", request.din, "--cin", request.cin])
+        background_tasks.add_task(run_script, MBP1_SCRIPT, ["--all", "--year", request.year])
+    elif request.din:
+        # Support both single 'cin' and multiple 'cins'
+        target_cins = request.cins or ([request.cin] if request.cin else [])
+        if not target_cins:
+            raise HTTPException(status_code=400, detail="Provide either --all or specific din/cin(s)")
+            
+        # Pass all CINs as a single comma-separated string to generate ONE combined document
+        cins_str = ",".join(target_cins)
+        background_tasks.add_task(run_script, MBP1_SCRIPT, ["--din", request.din, "--cin", cins_str, "--year", request.year])
     else:
-        raise HTTPException(status_code=400, detail="Provide either --all or specific din/cin")
+        raise HTTPException(status_code=400, detail="Provide either --all or specific din/cin(s)")
     
-    args.extend(["--year", request.year])
-    background_tasks.add_task(run_script, MBP1_SCRIPT, args)
     return {"message": "Started MBP-1 generation in background."}
 
 @router.post("/generate/dir8")
 async def generate_dir8(request: GenerateRequest, background_tasks: BackgroundTasks):
     """Generate DIR-8 forms."""
-    args = []
     if request.all_directors:
-        args.append("--all")
-    elif request.din and request.cin:
-        args.extend(["--din", request.din, "--cin", request.cin])
+        background_tasks.add_task(run_script, DIR8_SCRIPT, ["--all", "--year", request.year])
+    elif request.din:
+        # Support both single 'cin' and multiple 'cins'
+        target_cins = request.cins or ([request.cin] if request.cin else [])
+        if not target_cins:
+            raise HTTPException(status_code=400, detail="Provide either --all or specific din/cin(s)")
+            
+        # Pass all CINs as a single comma-separated string to generate ONE combined document
+        cins_str = ",".join(target_cins)
+        background_tasks.add_task(run_script, DIR8_SCRIPT, ["--din", request.din, "--cin", cins_str, "--year", request.year])
     else:
-        raise HTTPException(status_code=400, detail="Provide either --all or specific din/cin")
+        raise HTTPException(status_code=400, detail="Provide either --all or specific din/cin(s)")
     
-    args.extend(["--year", request.year])
-    background_tasks.add_task(run_script, DIR8_SCRIPT, args)
     return {"message": "Started DIR-8 generation in background."}
 
 @router.get("/directors")
@@ -238,15 +276,29 @@ async def get_companies_by_director(din: str):
 @router.get("/sync/progress")
 async def get_sync_progress(type: str = "din"):
     """Fetch the latest progress from the sync JSON files."""
-    filename = "sync_progress_din.json" if type == "din" else "sync_progress_cin.json"
-    file_path = SYNC_DIN_SCRIPT.parent / filename if type == "din" else SYNC_CIN_SCRIPT.parent / filename
+    if type == "din":
+        filename = "sync_progress_din.json"
+        script_dir = SYNC_DIN_SCRIPT.parent
+    elif type == "cin":
+        filename = "sync_progress_cin.json"
+        script_dir = SYNC_CIN_SCRIPT.parent
+    elif type == "mbp1":
+        filename = "sync_progress_mbp1.json"
+        script_dir = MBP1_SCRIPT.parent
+    elif type == "dir8":
+        filename = "sync_progress_dir8.json"
+        script_dir = DIR8_SCRIPT.parent
+    else:
+        return {"current": 0, "total": 0, "status": "Invalid type", "active": False}
+        
+    file_path = script_dir / filename
     
     if not file_path.exists():
         return {"current": 0, "total": 0, "status": "No active task", "active": False}
         
     try:
-        # Check file age (if older than 1 minute, consider it stale/inactive)
-        if time.time() - os.path.getmtime(file_path) > 60:
+        # Check file age (if older than 5 minutes, consider it stale/inactive)
+        if time.time() - os.path.getmtime(file_path) > 300:
             return {"current": 0, "total": 0, "status": "Task timed out or inactive", "active": False}
             
         with open(file_path, "r") as f:

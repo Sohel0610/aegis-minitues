@@ -152,7 +152,7 @@ const KPICard = ({ icon: Icon, label, value, sub, accent, tooltip }: any) => (
 );
 
 // ─── Red-Flag Row ──────────────────────────────────────────────
-const RedFlagRow = ({ item, onClick, type }: { item: any; onClick: () => void; type: string }) => {
+const RedFlagRow = ({ item, index, onClick, type }: { item: any; index: number; onClick: () => void; type: string }) => {
   const isNewIncorp = type === "stale" && (!item.last_agm || item.last_agm === "") && (item.cin?.includes("2024") || item.cin?.includes("2025") || item.cin?.includes("2026"));
 
   const badge =
@@ -168,6 +168,9 @@ const RedFlagRow = ({ item, onClick, type }: { item: any; onClick: () => void; t
       className="border-b border-gray-50 hover:bg-gray-50/70 cursor-pointer transition-colors group"
       onClick={onClick}>
       <td className="py-4 pl-6 pr-3 text-left">
+        <span className="text-[10px] font-bold text-gray-400">{index}</span>
+      </td>
+      <td className="py-4 px-3 text-left">
         <p className="font-black text-gray-800 text-sm group-hover:text-[#0B74B0] transition-colors truncate max-w-[220px]">{item.company_name || item.name || "–"}</p>
         <p className="text-[10px] text-gray-400 font-mono mt-0.5">{item.cin}</p>
       </td>
@@ -342,9 +345,13 @@ const InstitutionalRiskMonitor = () => {
     </div>
   );
 
-  const rfData = rfTab === "dormant" ? redFlags?.dormant_with_directors
-    : rfTab === "stale" ? redFlags?.stale_filings
-      : redFlags?.high_leverage;
+  const rfData = [...(rfTab === "dormant" ? (redFlags?.dormant_with_directors || [])
+    : rfTab === "stale" ? (redFlags?.stale_filings || [])
+      : (redFlags?.high_leverage || []))].sort((a, b) => {
+        const nameA = (a.company_name || a.name || "").toUpperCase();
+        const nameB = (b.company_name || b.name || "").toUpperCase();
+        return nameA.localeCompare(nameB);
+      });
 
   return (
     <div className="min-h-screen bg-white p-6">
@@ -471,13 +478,13 @@ const InstitutionalRiskMonitor = () => {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    {["Company", "Flag", "State", rfTab === "leverage" ? "Active charges" : "Directors", ""].map((h, i) => (
-                      <th key={i} className={`py-4 ${i === 0 ? "pl-6 text-left" : i === 4 ? "" : "px-3 text-left"} text-[10px] font-bold text-gray-500`}>{h}</th>
+                    {["S.No", "Company", "Flag", "State", rfTab === "leverage" ? "Active charges" : "Directors", ""].map((h, i) => (
+                      <th key={i} className={`py-4 ${i === 0 ? "pl-6 text-left" : i === 5 ? "" : "px-3 text-left"} text-[10px] font-bold text-gray-500`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {(rfData || []).map((item, idx) => <RedFlagRow key={idx} item={item} type={rfTab} onClick={() => openEntity(item.cin)} />)}
+                  {(rfData || []).map((item, idx) => <RedFlagRow key={idx} index={idx + 1} item={item} type={rfTab} onClick={() => openEntity(item.cin)} />)}
                 </tbody>
               </table>
             </Card>

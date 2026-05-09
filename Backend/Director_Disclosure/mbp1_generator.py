@@ -55,6 +55,7 @@ import json
 import re
 import sys
 import os
+import time
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
@@ -85,6 +86,15 @@ DEFAULT_FONT  = "Adani"
 BODY_SIZE     = Pt(10)
 SMALL_SIZE    = Pt(9)
 TITLE_SIZE    = Pt(12)
+
+PROGRESS_FILE = os.path.join(os.path.dirname(__file__), "sync_progress_mbp1.json")
+
+def report_progress(current, total, status="Generating Documents..."):
+    try:
+        with open(PROGRESS_FILE, "w") as f:
+            json.dump({"current": current, "total": total, "status": status, "timestamp": time.time()}, f)
+    except:
+        pass
 
 # CIN patterns
 _PUB_CIN_RE  = re.compile(r'^[UL]\d{5}[A-Z]{2}\d{4}PLC\d{6}$')
@@ -119,6 +129,7 @@ class DirectorData:
     # relatives
     rel_huf: str = "{{RELATIVE_HUF}}"
     rel_wife: str = "{{RELATIVE_WIFE}}"
+    spouse_pan: str = ""
     rel_father: str = "{{RELATIVE_FATHER}}"
     rel_mother: str = "{{RELATIVE_MOTHER}}"
     rel_son: str = "{{RELATIVE_SON}}"
@@ -137,6 +148,7 @@ class DirectorData:
     private_subsidiary: list[dict] = field(default_factory=list)
     private_non_subsidiary: list[dict] = field(default_factory=list)
     primary_company: str = "{{PRIMARY_COMPANY_NAME}}"
+    target_companies: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -162,40 +174,71 @@ def get_db_connection():
         print(f"[DB_ERROR] Connection failed: {e}")
         return None
 
-def fetch_full_data_from_db(din: str, cin: str, sig_date: Optional[str] = None):
+def fetch_full_data_from_db(din: str, cins: list[str], sig_date: Optional[str] = None):
     conn = get_db_connection()
     if not conn: return None
     
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 1. Fetch Director Info (Master + Profile)
+        # 0. Ensure Schema Integrity (Self-healing migration)
+        cur.execute("ALTER TABLE family_information.director_family ADD COLUMN IF NOT EXISTS spouse_pan TEXT")
+        cur.execute("ALTER TABLE family_information.director_family ADD COLUMN IF NOT EXISTS din TEXT")
+        conn.commit()
+
+        # 1. Fetch Director Info (Master + Profile + Family)
         cur.execute("""
             SELECT 
                 d.name, d.din, d.din_status, d.gender,
-                p.address, p.pan, p.date_of_birth, p.qualification, p.experience
+                p.address, p.pan, p.date_of_birth, p.qualification, p.experience,
+                f.father, f.mother, f.son, f.sons_wife, f.daughter, 
+                f.daughters_husband, f.brother, f.sister,
+                f.section_2_77_i as rel_huf_db,
+                f.section_2_77_ii as rel_wife_db,
+                f.spouse_pan as spouse_pan_db
             FROM directors_master.directors d
-            LEFT JOIN directors_profile.directors_profile p ON d.din = p.din
-            WHERE d.din = %s
+            LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
+            LEFT JOIN family_information.director_family f 
+                ON TRIM(d.din) = TRIM(f.din) OR TRIM(UPPER(d.name)) = TRIM(UPPER(f.director_name))
+            WHERE TRIM(d.din) = TRIM(%s)
         """, (din,))
         d_row = cur.fetchone()
         if not d_row:
             print(f"[WARN] No director found for DIN {din}")
             return None
             
-        # 2. Fetch Family Info
+        # 2. Fetch Relational Family Members (Aggregate multiples with commas)
         cur.execute("""
-            SELECT * FROM family_information.director_family 
-            WHERE director_name = %s
-        """, (d_row['name'],))
-        f_row = cur.fetchone() or {}
+            SELECT relationship, full_name 
+            FROM family_information.director_family_members 
+            WHERE TRIM(din) = TRIM(%s)
+            ORDER BY relationship, pairing_group
+        """, (din,))
+        m_rows = cur.fetchall()
+        
+        relational_map = {}
+        for m in m_rows:
+            rel = m['relationship']
+            name = m['full_name']
+            if rel not in relational_map: relational_map[rel] = []
+            relational_map[rel].append(name)
             
-        # 3. Fetch Target Company Info (for context)
-        cur.execute("""
-            SELECT name FROM directors_data.companies WHERE cin = %s
-        """, (cin,))
-        c_row = cur.fetchone()
-        target_co_name = c_row['name'] if c_row else "{{PRIMARY_COMPANY_NAME}}"
+        def _get_fam(key, legacy_val):
+            names = relational_map.get(key, [])
+            if not names: return legacy_val or "NIL"
+            return ", ".join(names)
+
+        f_row = d_row # Combined row
+            
+        # 3. Fetch Target Company Names
+        target_co_names = []
+        if cins:
+            placeholders = ', '.join(['%s'] * len(cins))
+            cur.execute(f"SELECT name FROM directors_data.companies WHERE cin IN ({placeholders})", tuple(cins))
+            target_co_names = [r['name'] for r in cur.fetchall()]
+        
+        if not target_co_names:
+            target_co_names = ["{{PRIMARY_COMPANY_NAME}}"]
             
         # 4. Fetch Associations (Other Companies) - Filter for Active Only
         cur.execute("""
@@ -216,19 +259,21 @@ def fetch_full_data_from_db(din: str, cin: str, sig_date: Optional[str] = None):
         dd.address = d_row['address'] or "{{DIRECTOR_ADDRESS}}"
         dd.father_name = f_row.get('father') or "{{FATHER_NAME}}"
         dd.signature_date = sig_date if sig_date else f"{date.today().strftime('%d')}th {date.today().strftime('%B, %Y')}"
-        dd.primary_company = target_co_name
+        dd.primary_company = target_co_names[0]
+        dd.target_companies = target_co_names
         
-        # Family Mapping
-        dd.rel_huf = f_row.get('section_2_77_i') or "NIL"
-        dd.rel_wife = f_row.get('section_2_77_ii') or "NIL"
-        dd.rel_father = f_row.get('father') or "NIL"
-        dd.rel_mother = f_row.get('mother') or "NIL"
-        dd.rel_son = f_row.get('son') or "NIL"
-        dd.rel_sons_wife = f_row.get('sons_wife') or "NIL"
-        dd.rel_daughter = f_row.get('daughter') or "NIL"
-        dd.rel_daughters_husband = f_row.get('daughters_husband') or "NIL"
-        dd.rel_brother = f_row.get('brother') or "NIL"
-        dd.rel_sister = f_row.get('sister') or "NIL"
+        # Family Mapping (Prefer Relational, Fallback to Legacy Columns)
+        dd.rel_huf = f_row.get('rel_huf_db') or "NIL"
+        dd.rel_wife = _get_fam('Spouse', f_row.get('rel_wife_db'))
+        dd.spouse_pan = f_row.get('spouse_pan_db') or ""
+        dd.rel_father = _get_fam('Father', f_row.get('father'))
+        dd.rel_mother = _get_fam('Mother', f_row.get('mother'))
+        dd.rel_son = _get_fam('Son', f_row.get('son'))
+        dd.rel_sons_wife = _get_fam("Son's Wife", f_row.get('sons_wife'))
+        dd.rel_daughter = _get_fam('Daughter', f_row.get('daughter'))
+        dd.rel_daughters_husband = _get_fam("Daughter's Husband", f_row.get('daughters_husband'))
+        dd.rel_brother = _get_fam('Brother', f_row.get('brother'))
+        dd.rel_sister = _get_fam('Sister', f_row.get('sister'))
 
         # Associations
         dd.associations = [dict(a) for a in assoc_rows]
@@ -552,21 +597,12 @@ def _section_addressee(doc: Document, dd: DirectorData) -> None:
     _add_para(doc, "To,", size=BODY_SIZE, after=Pt(0))
     _add_para(doc, "The Board of Directors of", size=BODY_SIZE, after=Pt(0))
 
-    # All unique company names, one per line, no serial numbers
-    seen: set[str] = set()
-    companies = []
-    for a in dd.associations:
-        name = a.get("com_name", "")
-        if name and name not in seen:
-            seen.add(name)
-            companies.append(name)
-
-    if companies:
-        for i, company in enumerate(companies):
-            after = Pt(8) if i == len(companies) - 1 else Pt(0)
-            _add_para(doc, company, bold=False, size=BODY_SIZE, after=after)
+    if dd.target_companies:
+        for i, company in enumerate(dd.target_companies):
+            after = Pt(8) if i == len(dd.target_companies) - 1 else Pt(0)
+            _add_para(doc, company.upper(), bold=True, size=BODY_SIZE, after=after)
     else:
-        _add_para(doc, "{{PRIMARY_COMPANY_NAME}}", bold=False, size=BODY_SIZE, after=Pt(8))
+        _add_para(doc, "{{PRIMARY_COMPANY_NAME}}", bold=True, size=BODY_SIZE, after=Pt(8))
 
 
 def _section_opening(doc: Document, dd: DirectorData) -> None:
@@ -651,21 +687,47 @@ def _section_relatives(doc: Document, dd: DirectorData) -> None:
     _add_para(doc, "III)\tSection 2(77)(iii)\t:", bold=False, size=BODY_SIZE, after=Pt(3))
 
     fam = [
-        ("1", "Father",               dd.rel_father),
-        ("2", "Mother",               dd.rel_mother),
-        ("3", "Son",                  dd.rel_son),
-        ("4", "Son's Wife",           dd.rel_sons_wife),
-        ("5", "Daughter",             dd.rel_daughter),
-        ("6", "Daughter's Husband",   dd.rel_daughters_husband),
-        ("7", "Brother",              dd.rel_brother),
-        ("8", "Sister",               dd.rel_sister),
+        ("Father",               dd.rel_father),
+        ("Mother",               dd.rel_mother),
+        ("Son",                  dd.rel_son),
+        ("Son's Wife",           dd.rel_sons_wife),
+        ("Daughter",             dd.rel_daughter),
+        ("Daughter's Husband",   dd.rel_daughters_husband),
+        ("Brother",              dd.rel_brother),
+        ("Sister",               dd.rel_sister),
     ]
-    for num, label, value in fam:
-        para = doc.add_paragraph(style="List Number")
-        _para_spacing(para, after=Pt(2))
-        para.paragraph_format.left_indent = Inches(0.5)
-        run = para.add_run(f"{label}\t\t:\t{value}")
-        _set_font(run, size=BODY_SIZE)
+
+    # Create a borderless table for alignment
+    table = doc.add_table(rows=len(fam), cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    
+    for i, (label, value) in enumerate(fam):
+        row = table.rows[i]
+        
+        # Remove borders for each cell
+        for cell in row.cells:
+            tcPr = cell._tc.get_or_add_tcPr()
+            tcBorders = OxmlElement('w:tcBorders')
+            for side in ['top', 'bottom', 'left', 'right']:
+                border = OxmlElement(f'w:{side}')
+                border.set(qn('w:val'), 'none')
+                tcBorders.append(border)
+            tcPr.append(tcBorders)
+
+        # Set content
+        cell_label = row.cells[0]
+        cell_value = row.cells[1]
+        
+        # Relationship column
+        p_label = cell_label.paragraphs[0]
+        p_label.paragraph_format.left_indent = Inches(0.5)
+        run_l = p_label.add_run(f"{i+1}.\t{label}\t:")
+        _set_font(run_l, size=BODY_SIZE)
+        
+        # Name column
+        p_val = cell_value.paragraphs[0]
+        run_v = p_val.add_run(value)
+        _set_font(run_v, size=BODY_SIZE)
 
     doc.add_paragraph()
 
@@ -934,7 +996,7 @@ def main() -> None:
     )
     # DB Mode
     parser.add_argument("--din",    help="Director DIN")
-    parser.add_argument("--cin",    help="Target Company CIN")
+    parser.add_argument("--cin",    help="Target Company CIN (comma separated for multiple)")
     parser.add_argument("--all",    action="store_true", help="Generate for all directors across all companies")
     parser.add_argument("--year",   default="2024-25",   help="Fiscal year for output folder")
     
@@ -950,7 +1012,10 @@ def main() -> None:
         print("[BATCH] Fetching all Director-Company pairs from DB...")
         pairs = get_all_pairs_from_db()
     elif args.din and args.cin:
-        pairs = [(args.din, args.cin)]
+        # Split CINs if multiple provided
+        cins = [c.strip() for c in args.cin.split(",")]
+        # For multi-company mode, we treat them as one set
+        pairs = [(args.din, cins)]
     elif args.input:
         # Legacy mode
         input_path = Path(args.input)
@@ -968,14 +1033,42 @@ def main() -> None:
 
     print(f"[INFO] Found {len(pairs)} pairs to process.")
     
+    total = len(pairs)
     total_generated = 0
-    for din, cin in pairs:
-        dd = fetch_full_data_from_db(din, cin, args.date)
+    for i, (din, cin_data) in enumerate(pairs, 1):
+        # cin_data can be a single string or a list
+        cins = cin_data if isinstance(cin_data, list) else [cin_data]
+        dd = fetch_full_data_from_db(din, cins, args.date)
         if dd:
+            report_progress(i, total, f"Generating for {dd.name}")
             _process_single(dd, args.year, not args.no_annexure)
             total_generated += 1
+        else:
+            report_progress(i, total, f"Skipping DIN {din} (Not Found)")
 
+    report_progress(total, total, "Complete")
     print(f"\n[FINISH] Total {total_generated} document(s) generated.")
+
+def register_document_in_db(dd: DirectorData, file_path: str):
+    """Registers the generated file in the document_summaries table for the repository."""
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cur = conn.cursor()
+        # Relative path from Output_Disclosures
+        rel_path = str(Path(file_path).relative_to(Path("Output_Disclosures")))
+        
+        cur.execute("""
+            INSERT INTO directors_data.document_summaries 
+            (director_name, din, file_path, created_at)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+        """, (dd.name, dd.din, rel_path))
+        conn.commit()
+        print(f"  [DB] Registered document for {dd.name}")
+    except Exception as e:
+        print(f"  [DB_ERROR] Failed to register document: {e}")
+    finally:
+        conn.close()
 
 def _process_single(dd: DirectorData, year: str, include_annexure: bool):
     base_output = Path("Output_Disclosures") / year
@@ -994,6 +1087,7 @@ def _process_single(dd: DirectorData, year: str, include_annexure: bool):
     out_path = target_dir / file_name
     
     doc.save(str(out_path))
+    register_document_in_db(dd, str(out_path))
     print(f"  [OK] {clean_company} -> {clean_director}")
 
 if __name__ == "__main__":

@@ -29,12 +29,12 @@ async def fetch_consolidated_data(din: str):
         cursor = get_pg_cursor(pg_conn)
         
         # 1. Master Info
-        cursor.execute("SELECT * FROM directors_master.directors WHERE din = %s", (din,))
+        cursor.execute("SELECT * FROM directors_master.directors WHERE TRIM(din) = TRIM(%s)", (din,))
         master = cursor.fetchone()
         if not master: return None
         
         # 2. Profile Details
-        cursor.execute("SELECT * FROM directors_profile.directors_profile WHERE din = %s", (din,))
+        cursor.execute("SELECT * FROM directors_profile.directors_profile WHERE TRIM(din) = TRIM(%s)", (din,))
         profile = cursor.fetchone() or {}
         
         # 3. Associations
@@ -42,15 +42,15 @@ async def fetch_consolidated_data(din: str):
             SELECT a.*, c.status as company_status
             FROM directors_master.external_board_members a
             LEFT JOIN directors_data.companies c ON a.cin = c.cin
-            WHERE a.din = %s ORDER BY a.appointment_date DESC
+            WHERE TRIM(a.din) = TRIM(%s) ORDER BY a.appointment_date DESC
         """, (din,))
         associations = cursor.fetchall() or []
         
         # 4. Family Info (Relational)
-        cursor.execute("SELECT * FROM family_information.director_family WHERE din = %s", (din,))
+        cursor.execute("SELECT * FROM family_information.director_family WHERE TRIM(din) = TRIM(%s)", (din,))
         family_master = cursor.fetchone() or {}
         
-        cursor.execute("SELECT * FROM family_information.director_family_members WHERE din = %s", (din,))
+        cursor.execute("SELECT * FROM family_information.director_family_members WHERE TRIM(din) = TRIM(%s)", (din,))
         family_members = cursor.fetchall() or []
         
         return {

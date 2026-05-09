@@ -16,14 +16,14 @@ import {
 interface FamilyMember {
   relationship: string;
   details: string;
-  pan_number?: string;
+  pan?: string;
 }
 
 interface DirectorFamilyInfo {
   director_name: string;
   section_2_77_i: string | null;
   section_2_77_ii: string | null;
-  section_2_77_ii_pan?: string | null;
+  spouse_pan?: string | null;
   section_2_77_iii: string | null;
   family_members: FamilyMember[];
   is_submitted: boolean;
@@ -197,12 +197,12 @@ const FamilyInfoModal = ({ directorName, din, isOpen, onClose }: FamilyInfoModal
                       {isEditing ? (
                         <div className="space-y-2">
                           <Input value={editedFamilyInfo.section_2_77_ii || ""} onChange={(e) => handleInputChange("section_2_77_ii", e.target.value)} placeholder="Spouse Name" className="bg-gray-50/50 border-gray-100" />
-                          <Input value={editedFamilyInfo.section_2_77_ii_pan || ""} onChange={(e) => handleInputChange("section_2_77_ii_pan", e.target.value)} placeholder="Spouse PAN" className="bg-gray-50/50 border-gray-100 text-xs" />
+                          <Input value={editedFamilyInfo.spouse_pan || ""} onChange={(e) => handleInputChange("spouse_pan", e.target.value)} placeholder="Spouse PAN" className="bg-gray-50/50 border-gray-100 text-xs" />
                         </div>
                       ) : (
                         <div className="p-4 rounded-xl bg-gray-50/50 border border-gray-100 flex flex-col gap-2">
                           <p className="text-sm font-bold text-gray-800">{editedFamilyInfo.section_2_77_ii || "Nil"}</p>
-                          {editedFamilyInfo.section_2_77_ii_pan && <Badge variant="outline" className="w-fit text-[10px] font-mono border-gray-200">PAN: {editedFamilyInfo.section_2_77_ii_pan}</Badge>}
+                          {editedFamilyInfo.spouse_pan && <Badge variant="outline" className="w-fit text-[10px] font-mono border-gray-200">PAN: {editedFamilyInfo.spouse_pan}</Badge>}
                         </div>
                       )}
                     </div>
@@ -229,8 +229,8 @@ const FamilyInfoModal = ({ directorName, din, isOpen, onClose }: FamilyInfoModal
                             </div>
                             {isEditing && (
                               <Button variant="ghost" size="sm" onClick={() => {
-                                const newMember = { relationship, details: "", pan_number: "" };
-                                setEditedFamilyInfo({ ...editedFamilyInfo, family_members: [...editedFamilyInfo.family_members, newMember] });
+                               const newMember = { relationship, details: "", pan: "" };
+                               setEditedFamilyInfo({ ...editedFamilyInfo, family_members: [...editedFamilyInfo.family_members, newMember] });
                               }} className="h-6 text-[9px] uppercase font-black text-purple-600">+ ADD</Button>
                             )}
                           </div>
@@ -256,16 +256,16 @@ const FamilyInfoModal = ({ directorName, din, isOpen, onClose }: FamilyInfoModal
                                         newMembers[absIdx] = { ...member, details: e.target.value };
                                         setEditedFamilyInfo({ ...editedFamilyInfo, family_members: newMembers });
                                       }} placeholder="Full Name" className="text-sm bg-white h-9" />
-                                      <Input value={member.pan_number || ""} onChange={(e) => {
+                                      <Input value={member.pan || ""} onChange={(e) => {
                                         const newMembers = [...editedFamilyInfo.family_members];
-                                        newMembers[absIdx] = { ...member, pan_number: e.target.value };
+                                        newMembers[absIdx] = { ...member, pan: e.target.value };
                                         setEditedFamilyInfo({ ...editedFamilyInfo, family_members: newMembers });
                                       }} placeholder="PAN" className="text-[10px] h-7 bg-white/50 border-dashed" />
                                     </div>
                                   ) : (
                                     <div className="flex flex-col gap-1">
                                       <p className="text-sm font-bold text-gray-800">{member.details || "Not specified"}</p>
-                                      {member.pan_number && <Badge variant="outline" className="w-fit text-[9px] font-mono py-0 h-4 border-blue-50 text-blue-500 bg-blue-50/30">PAN: {member.pan_number}</Badge>}
+                                      {member.pan && <Badge variant="outline" className="w-fit text-[9px] font-mono py-0 h-4 border-blue-50 text-blue-500 bg-blue-50/30">PAN: {member.pan}</Badge>}
                                     </div>
                                   )}
                                 </div>

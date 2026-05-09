@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FileText, Eye, Download, Loader2, AlertCircle, Users, Search } from "lucide-react";
+import { FileText, Eye, Download, Loader2, AlertCircle, Users, Search, Check, ChevronDown, Building } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -30,7 +38,13 @@ interface Disclosure {
   din_status?: string;
   disclosure_date: string;
   disclosure_type: string;
+  is_kmp?: boolean;
   file_path: string;
+  all_files?: {
+    path: string;
+    company_hint: string;
+    date: string;
+  }[];
 }
 
 
@@ -45,6 +59,7 @@ const DirectorsDisclosureDataSource = () => {
   const [selectedDirectorName, setSelectedDirectorName] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState<boolean>(false);
+  const [kmpFilter, setKmpFilter] = useState<'all' | 'yes' | 'no'>('all');
 
   useEffect(() => {
     fetchDisclosures();
@@ -63,12 +78,19 @@ const DirectorsDisclosureDataSource = () => {
           disclosure.disclosure_date.includes(term)
       );
     }
+
+    // Apply KMP filter
+    if (kmpFilter === 'yes') {
+      result = result.filter(d => d.is_kmp);
+    } else if (kmpFilter === 'no') {
+      result = result.filter(d => !d.is_kmp);
+    }
     
     // Default Alphabetical Sort (A-Z)
     result.sort((a, b) => a.director_name.localeCompare(b.director_name));
     
     setFilteredDisclosures(result);
-  }, [searchTerm, disclosures]);
+  }, [searchTerm, disclosures, kmpFilter]);
 
   const fetchDisclosures = async () => {
     try {
@@ -91,14 +113,14 @@ const DirectorsDisclosureDataSource = () => {
     }
   };
 
-  const handleDownloadDisclosure = async (disclosure: Disclosure) => {
+  const handleDownloadDisclosure = async (disclosure: Disclosure, specificPath?: string) => {
     try {
-      if (!disclosure.file_path) {
+      const filePath = specificPath || disclosure.file_path;
+      if (!filePath) {
         throw new Error('No file path associated with this record.');
       }
 
       // Encode the file path for the direct downloader
-      const filePath = disclosure.file_path;
       const downloadUrl = `/api/disclosures/download/file?path=${encodeURIComponent(filePath)}`;
       
       // We use the same fetch/blob method for deployment reliability
@@ -221,6 +243,43 @@ const DirectorsDisclosureDataSource = () => {
                 />
               </div>
             </div>
+
+            {/* KMP Filter Toggles */}
+            <div className="flex items-center gap-2 mt-6">
+              <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest mr-2">Filter by KMP:</span>
+              <div className="flex bg-gray-100/50 p-1 rounded-xl border border-gray-100">
+                <button
+                  onClick={() => setKmpFilter('all')}
+                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all ${
+                    kmpFilter === 'all' 
+                      ? 'bg-white text-[#75479C] shadow-sm' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setKmpFilter('yes')}
+                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all ${
+                    kmpFilter === 'yes' 
+                      ? 'bg-purple-600 text-white shadow-md' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  KMP (Yes)
+                </button>
+                <button
+                  onClick={() => setKmpFilter('no')}
+                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all ${
+                    kmpFilter === 'no' 
+                      ? 'bg-white text-gray-900 shadow-sm border border-gray-200' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Non-KMP (No)
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="mb-4 text-sm" style={{ color: '#666666' }}>
@@ -233,6 +292,7 @@ const DirectorsDisclosureDataSource = () => {
                     <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-900 uppercase tracking-widest w-[60px]">#</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-900 uppercase tracking-widest">Director name</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-900 uppercase tracking-widest">DIN</TableHead>
+                    <TableHead className="py-5 text-[10px] font-black text-gray-900 uppercase tracking-widest text-center">Whether already a KMP?</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-900 uppercase tracking-widest">Document type</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-900 uppercase tracking-widest text-center">Status</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-900 uppercase tracking-widest text-center">Last Updated</TableHead>
@@ -242,7 +302,7 @@ const DirectorsDisclosureDataSource = () => {
                 <TableBody>
                   {filteredDisclosures.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8" style={{ color: '#666666' }}>
+                      <TableCell colSpan={8} className="text-center py-8" style={{ color: '#666666' }}>
                         {searchTerm ? 'No disclosures found matching your search' : 'No disclosures found'}
                       </TableCell>
                     </TableRow>
@@ -252,6 +312,19 @@ const DirectorsDisclosureDataSource = () => {
                         <TableCell className="pl-8 text-xs font-bold text-gray-400">{index + 1}</TableCell>
                         <TableCell className="font-semibold text-gray-900">{disclosure.director_name}</TableCell>
                         <TableCell className="font-mono text-xs text-gray-500">{disclosure.din}</TableCell>
+                        <TableCell className="text-center">
+                          <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase shadow-sm border ${
+                            disclosure.is_kmp
+                              ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                              : 'bg-gray-50 text-gray-500 border-gray-200'
+                          }`}>
+                            {disclosure.is_kmp ? (
+                              <><span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-purple-500"></span>YES</>
+                            ) : (
+                              'Non-KMP'
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider ${
                             disclosure.disclosure_type === 'Registry Sync' 
@@ -277,20 +350,55 @@ const DirectorsDisclosureDataSource = () => {
                         </TableCell>
                         <TableCell className="font-medium text-center text-gray-600">{disclosure.disclosure_date}</TableCell>
                         <TableCell className="text-right pr-8">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDownloadDisclosure(disclosure)}
-                            disabled={!disclosure.file_path}
-                            className={`gap-2 font-bold ${
-                              disclosure.file_path 
-                                ? 'text-[#0B74B0] hover:text-[#0B74B0] hover:bg-blue-50' 
-                                : 'text-gray-300 cursor-not-allowed'
-                            }`}
-                          >
-                            <Download className="h-4 w-4" />
-                            {disclosure.file_path ? 'Download' : 'No File'}
-                          </Button>
+                          {disclosure.all_files && disclosure.all_files.length > 1 ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-2 font-bold text-[#0B74B0] hover:text-[#0B74B0] hover:bg-blue-50"
+                                >
+                                  <Download className="h-4 w-4" />
+                                  Download ({disclosure.all_files.length})
+                                  <ChevronDown className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-100 shadow-xl rounded-xl p-2">
+                                <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-gray-400 font-black px-3 py-2">Select Company Form</DropdownMenuLabel>
+                                <DropdownMenuSeparator className="bg-gray-50" />
+                                {disclosure.all_files.map((file, idx) => (
+                                  <DropdownMenuItem 
+                                    key={idx}
+                                    onClick={() => handleDownloadDisclosure(disclosure, file.path)}
+                                    className="cursor-pointer py-3 rounded-lg hover:bg-blue-50 focus:bg-blue-50 transition-colors"
+                                  >
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-2 text-xs font-bold text-gray-900">
+                                        <Building className="h-3.5 w-3.5 text-blue-500" />
+                                        {file.company_hint}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400 pl-5">Updated: {file.date}</div>
+                                    </div>
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDownloadDisclosure(disclosure)}
+                              disabled={!disclosure.file_path}
+                              className={`gap-2 font-bold ${
+                                disclosure.file_path 
+                                  ? 'text-[#0B74B0] hover:text-[#0B74B0] hover:bg-blue-50' 
+                                  : 'text-gray-300 cursor-not-allowed'
+                              }`}
+                            >
+                              <Download className="h-4 w-4" />
+                              {disclosure.file_path ? 'Download' : 'No File'}
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))

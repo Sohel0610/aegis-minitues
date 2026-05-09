@@ -54,6 +54,7 @@ async def get_intelligence_summary():
             FROM directors_master.directors d
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL 
+            AND (ea.status IS NULL OR UPPER(ea.status) != 'AMALGAMATED')
             GROUP BY d.din_status
         """)
         status_breakdown = cur.fetchall()
@@ -65,6 +66,7 @@ async def get_intelligence_summary():
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL 
             AND UPPER(d.gender) IN ('MALE', 'FEMALE')
+            AND (ea.status IS NULL OR UPPER(ea.status) != 'AMALGAMATED')
             GROUP BY 1
         """)
         gender_breakdown = cur.fetchall()
@@ -73,14 +75,15 @@ async def get_intelligence_summary():
         cur.execute("""
             SELECT COALESCE(d.dir3_kyc, 'Pending') as status, COUNT(DISTINCT d.din) as count 
             FROM directors_master.directors d
-            INNER JOIN directors_master.external_associations ea ON d.din = ea.din
+            INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL
+            AND (ea.status IS NULL OR UPPER(ea.status) != 'AMALGAMATED')
             GROUP BY 1
         """)
         kyc_breakdown = cur.fetchall()
 
-        # 5. Total Associations tracked
-        cur.execute("SELECT COUNT(*) as total FROM directors_master.external_board_members")
+        # 5. Total Associations tracked (Excluding Amalgamated)
+        cur.execute("SELECT COUNT(*) as total FROM directors_master.external_board_members WHERE status IS NULL OR UPPER(status) != 'AMALGAMATED'")
         assoc_count = cur.fetchone()
 
         return {
@@ -114,13 +117,14 @@ async def get_enriched_directors():
                 d.nationality, 
                 d.dir3_kyc,
                 COUNT(CASE 
-                    WHEN ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None' THEN 1
+                    WHEN (ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None') THEN 1
                     WHEN ebm.status ILIKE 'Active%' THEN 1
                     ELSE NULL 
                 END) as external_board_count
             FROM directors_master.directors d
             LEFT JOIN directors_master.external_board_members ebm ON d.din = ebm.din
             WHERE d.last_api_sync IS NOT NULL
+            AND (ebm.status IS NULL OR UPPER(ebm.status) != 'AMALGAMATED')
             GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc
             ORDER BY d.name
         """)
@@ -133,7 +137,7 @@ async def get_enriched_directors():
 
 @router.get("/associations/{din}")
 async def get_director_associations(din: str):
-    """Returns all external board associations for a specific director."""
+    """Returns all external board associations for a specific director, excluding Amalgamated."""
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=500, detail="Database connection failed")
@@ -141,17 +145,20 @@ async def get_director_associations(din: str):
     cur = conn.cursor(cursor_factory=extras.RealDictCursor)
     try:
         cur.execute("""
-            SELECT 
-                ea.cin, 
-                ea.company_name, 
-                ea.designation, 
-                ea.appointment_date, 
-                COALESCE(c.status, ea.status) as status,
-                COALESCE(c.is_adani, FALSE) as is_group
-            FROM directors_master.external_board_members ea
-            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
-            WHERE ea.din = %s
-            ORDER BY ea.appointment_date DESC
+            SELECT * FROM (
+                SELECT 
+                    ea.cin, 
+                    ea.company_name, 
+                    ea.designation, 
+                    ea.appointment_date, 
+                    COALESCE(c.status, ea.status) as status,
+                    COALESCE(c.is_adani, FALSE) as is_group
+                FROM directors_master.external_board_members ea
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE ea.din = %s
+            ) sub
+            WHERE status IS NULL OR UPPER(status) != 'AMALGAMATED'
+            ORDER BY appointment_date DESC
         """, (din,))
         return cur.fetchall()
     except Exception as e:

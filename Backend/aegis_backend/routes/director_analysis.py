@@ -35,7 +35,7 @@ class CompanyCountResponse(BaseModel):
 
 class CrossDirectorshipResponse(BaseModel):
     name: str
-    company_count: int
+    companies: int
 
 class ClusteringResponse(BaseModel):
     director1: str

@@ -41,6 +41,7 @@ import argparse
 import json
 import sys
 import os
+import time
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
@@ -77,6 +78,14 @@ COL_CESS    = Twips(2250)
 TBL_TOTAL   = Twips(9360)
 
 DEFAULT_PLACE = "Ahmedabad"
+PROGRESS_FILE = os.path.join(os.path.dirname(__file__), "sync_progress_dir8.json")
+
+def report_progress(current, total, status="Generating DIR-8..."):
+    try:
+        with open(PROGRESS_FILE, "w") as f:
+            json.dump({"current": current, "total": total, "status": status, "timestamp": time.time()}, f)
+    except:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +118,7 @@ class CompanyInfo:
     paid_capital:  str = "{{PAID_UP_CAPITAL}}"
     signature_date:  str = "{{SIGNATURE_DATE}}"
     signature_place: str = DEFAULT_PLACE
+    target_company_names: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +144,7 @@ def get_db_connection():
         print(f"[DB_ERROR] Connection failed: {e}")
         return None
 
-def fetch_full_data_from_db(din: str, cin: str, sig_date: Optional[str] = None):
+def fetch_full_data_from_db(din: str, cins: list[str], sig_date: Optional[str] = None):
     conn = get_db_connection()
     if not conn: return None, None
     
@@ -158,15 +168,18 @@ def fetch_full_data_from_db(din: str, cin: str, sig_date: Optional[str] = None):
             return None, None
             
         # 2. Fetch Target Company Info
-        cur.execute("""
-            SELECT cin, name, address, auth_capital, paid_capital 
-            FROM directors_data.companies 
-            WHERE cin = %s
-        """, (cin,))
-        c_row = cur.fetchone()
-        if not c_row:
-            print(f"[WARN] No company found for CIN {cin}")
+        target_cos = []
+        if cins:
+            placeholders = ', '.join(['%s'] * len(cins))
+            cur.execute(f"SELECT cin, name, address, auth_capital, paid_capital FROM directors_data.companies WHERE cin IN ({placeholders})", tuple(cins))
+            target_cos = cur.fetchall()
+            
+        if not target_cos:
+            print(f"[WARN] No companies found for CINs {cins}")
             return None, None
+        
+        # Use first company for primary header details
+        primary_co = target_cos[0]
             
         # 3. Fetch Associations (Other Companies) - Filter for Active Only
         cur.execute("""
@@ -180,12 +193,13 @@ def fetch_full_data_from_db(din: str, cin: str, sig_date: Optional[str] = None):
         
         # Map to Objects
         co = CompanyInfo()
-        co.cin = c_row['cin']
-        co.company_name = c_row['name']
-        co.address = c_row['address']
-        co.auth_capital = _fmt_capital(str(c_row['auth_capital'])) if c_row['auth_capital'] else "{{NOMINAL_CAPITAL}}"
-        co.paid_capital = _fmt_capital(str(c_row['paid_capital'])) if c_row['paid_capital'] else "{{PAID_UP_CAPITAL}}"
+        co.cin = primary_co['cin']
+        co.company_name = primary_co['name']
+        co.address = primary_co['address'] or "{{COMPANY_ADDRESS}}"
+        co.auth_capital = _fmt_capital(str(primary_co['auth_capital'])) if primary_co['auth_capital'] else "{{NOMINAL_CAPITAL}}"
+        co.paid_capital = _fmt_capital(str(primary_co['paid_capital'])) if primary_co['paid_capital'] else "{{PAID_UP_CAPITAL}}"
         co.signature_date = sig_date if sig_date else f"{date.today().strftime('%d')}th {date.today().strftime('%B, %Y')}"
+        co.target_company_names = [r['name'] for r in target_cos]
         
         di = DirectorInfo()
         di.name = d_row['name']
@@ -495,18 +509,18 @@ def _address_field(doc: Document, address: str) -> None:
     _add_text(run, address)
 
 
-def _to_block(doc: Document, company_name: str) -> None:
-    """
-    To,
-    The Board of Directors
-    <Company Name>
-    blank
-    """
-    for text, bold in [("To,", False), ("The Board of Directors", False), (company_name, False)]:
+def _to_block(doc: Document, company_names: list[str]) -> None:
+    for text in ["To,", "The Board of Directors"]:
         para = doc.add_paragraph()
         _set_spacing_after(para, 0)
         run = para.add_run(text)
-        _apply_rpr(run, bold=bold)
+        _apply_rpr(run, bold=False)
+        
+    for name in company_names:
+        para = doc.add_paragraph()
+        _set_spacing_after(para, 0)
+        run = para.add_run(name)
+        _apply_rpr(run, bold=False)
 
     # (Removed extra blank line here to save vertical space)
 
@@ -785,10 +799,10 @@ def build_dir8(co: CompanyInfo, di: DirectorInfo) -> Document:
     _header_field(doc, "Registration No: ",    co.cin,          extra_tabs=3)
     _header_field(doc, "Nominal Capital: ",    co.auth_capital, extra_tabs=3)
     _header_field(doc, "Paid-up Capital: ",    co.paid_capital, extra_tabs=3)
-    _header_field(doc, "Name of the Company: ", co.company_name, extra_tabs=2)
+    _header_field(doc, "Name of the Company: ", ", ".join(co.target_company_names), extra_tabs=2)
     _address_field(doc, co.address)
 
-    _to_block(doc, co.company_name)
+    _to_block(doc, co.target_company_names)
     _opening_para(doc, di)
     _companies_table(doc, di)
     _confirmation_para(doc)
@@ -807,7 +821,7 @@ def main() -> None:
     )
     # DB Mode
     parser.add_argument("--din",    help="Director DIN")
-    parser.add_argument("--cin",    help="Target Company CIN")
+    parser.add_argument("--cin",    help="Target Company CIN (comma separated for multiple)")
     parser.add_argument("--all",    action="store_true", help="Generate for all directors across all companies")
     parser.add_argument("--year",   default="2024-25",   help="Fiscal year for output folder")
     
@@ -823,7 +837,10 @@ def main() -> None:
         print("[BATCH] Fetching all Director-Company pairs from DB...")
         pairs = get_all_pairs_from_db()
     elif args.din and args.cin:
-        pairs = [(args.din, args.cin)]
+        # Split CINs if multiple provided
+        cins = [c.strip() for c in args.cin.split(",")]
+        # For multi-company mode, we treat them as one set
+        pairs = [(args.din, cins)]
     elif args.input:
         # Legacy mode
         input_path = Path(args.input)
@@ -842,14 +859,42 @@ def main() -> None:
 
     print(f"[INFO] Found {len(pairs)} pairs to process.")
     
+    total = len(pairs)
     total_generated = 0
-    for din, cin in pairs:
-        co, directors = fetch_full_data_from_db(din, cin, args.date)
+    for i, (din, cin_data) in enumerate(pairs, 1):
+        # cin_data can be a single string or a list
+        cins = cin_data if isinstance(cin_data, list) else [cin_data]
+        co, directors = fetch_full_data_from_db(din, cins, args.date)
         if co and directors:
+            report_progress(i, total, f"Generating for {directors[0].name}")
             _process_list(co, directors, args.year)
             total_generated += 1
+        else:
+            report_progress(i, total, f"Skipping DIN {din}")
 
+    report_progress(total, total, "Complete")
     print(f"\n[FINISH] Total {total_generated} document(s) generated.")
+
+def register_document_in_db(di: DirectorInfo, file_path: str):
+    """Registers the generated file in the document_summaries table for the repository."""
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cur = conn.cursor()
+        # Relative path from Output_Disclosures
+        rel_path = str(Path(file_path).relative_to(Path("Output_Disclosures")))
+        
+        cur.execute("""
+            INSERT INTO directors_data.document_summaries 
+            (director_name, din, file_path, created_at)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+        """, (di.name, di.din, rel_path))
+        conn.commit()
+        print(f"  [DB] Registered document for {di.name}")
+    except Exception as e:
+        print(f"  [DB_ERROR] Failed to register document: {e}")
+    finally:
+        conn.close()
 
 def _process_list(co: CompanyInfo, directors: list[DirectorInfo], year: str):
     base_output = Path("Output_Disclosures") / year
@@ -869,6 +914,7 @@ def _process_list(co: CompanyInfo, directors: list[DirectorInfo], year: str):
         out_path = target_dir / file_name
         
         doc.save(str(out_path))
+        register_document_in_db(di, str(out_path))
         print(f"  [OK] {clean_company} -> {clean_director}")
 
 if __name__ == "__main__":

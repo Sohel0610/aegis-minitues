@@ -65,12 +65,17 @@ def generate_director_excel(data):
 
     # 2. Associations Sheet
     ws_assoc = wb.create_sheet("Associations")
-    ws_assoc.append(["CIN", "Company Name", "Designation", "Appt Date", "Status"])
+    ws_assoc.append(["S.No.", "CIN", "Company Name", "Designation", "Appt Date", "Status"])
     
-    for assoc in data.get('associations', []):
+    # Sort associations alphabetically by company name
+    associations = data.get('associations', [])
+    associations.sort(key=lambda x: (x.get('company_name') or "").lower())
+    
+    for i, assoc in enumerate(associations, 1):
         appt_date = assoc.get('appointment_date')
         status = assoc.get('company_status') or assoc.get('status') or "N/A"
         ws_assoc.append([
+            i,
             assoc.get('cin') or "N/A",
             assoc.get('company_name') or "N/A",
             assoc.get('designation') or "Director",
@@ -78,32 +83,39 @@ def generate_director_excel(data):
             status
         ])
     
-    ws_assoc.column_dimensions['A'].width = 25
-    ws_assoc.column_dimensions['B'].width = 50
-    ws_assoc.column_dimensions['C'].width = 25
-    ws_assoc.column_dimensions['D'].width = 15
+    ws_assoc.column_dimensions['A'].width = 8
+    ws_assoc.column_dimensions['B'].width = 25
+    ws_assoc.column_dimensions['C'].width = 50
+    ws_assoc.column_dimensions['D'].width = 25
     ws_assoc.column_dimensions['E'].width = 15
+    ws_assoc.column_dimensions['F'].width = 15
     format_sheet(ws_assoc)
 
     # 3. Family Sheet
     ws_family = wb.create_sheet("Family Information")
-    ws_family.append(["Relationship", "Name", "PAN"])
+    ws_family.append(["S.No.", "Relationship", "Name", "PAN"])
     
     family_rows = []
-    
-    # A. New Relational Data (Priority)
+    added_names = set() # To track normalized names for deduplication
+
+    # A. New Relational Data (Priority - contains PANs)
     members = data.get('family_members', [])
     for m in members:
-        family_rows.append([
-            m.get('relationship') or "Relative",
-            m.get('full_name') or m.get('details') or "N/A",
-            m.get('pan') or m.get('pan_number') or "N/A"
-        ])
+        name = (m.get('full_name') or m.get('details') or "").strip()
+        if not name or name.lower() in ["nil", "none", "n/a"]:
+            continue
+            
+        norm_name = " ".join(name.lower().split()) # Normalize whitespace
+        if norm_name not in added_names:
+            family_rows.append({
+                "rel": m.get('relationship') or "Relative",
+                "name": name,
+                "pan": m.get('pan') or m.get('pan_number') or "N/A"
+            })
+            added_names.add(norm_name)
     
     # B. Master/Legacy Data (Fallback or Supplement)
     fam = data.get('family') or {}
-    
-    # Professional mapping of all fields seen in the JSON
     field_map = [
         ("Father", fam.get('father')),
         ("Mother", fam.get('mother')),
@@ -119,30 +131,39 @@ def generate_director_excel(data):
     for rel, val in field_map:
         if val and str(val).lower() not in ["nil", "none", "n/a", ""]:
             # Handle multiple names in one string (commas or double spaces)
-            # This makes the Excel look much cleaner
             names = []
             if "," in str(val):
                 names = [n.strip() for n in str(val).split(",")]
-            elif "  " in str(val): # Double space common in Gautam Adani's record
+            elif "  " in str(val): 
                 names = [n.strip() for n in str(val).split("  ")]
             else:
                 names = [str(val).strip()]
             
             for name in names:
-                if name:
-                    # Check if this name is already added via relational data to avoid duplicates
-                    if not any(r[1].lower() == name.lower() for r in family_rows):
-                        family_rows.append([rel, name, "N/A"])
+                if not name: continue
+                norm_name = " ".join(name.lower().split())
+                if norm_name not in added_names:
+                    family_rows.append({
+                        "rel": rel,
+                        "name": name,
+                        "pan": "N/A" # Legacy columns don't have individual PANs in this loop
+                    })
+                    added_names.add(norm_name)
     
     if not family_rows:
-        ws_family.append(["N/A", "No family records found", "N/A"])
+        ws_family.append([1, "N/A", "No family records found", "N/A"])
     else:
-        for row in family_rows:
-            ws_family.append(row)
+        # Sort family members by relationship type for a professional look
+        family_rows.sort(key=lambda x: x['rel'])
+        for i, row in enumerate(family_rows, 1):
+            ws_family.append([i, row['rel'], row['name'], row['pan']])
+    
+    # Done with family section
 
-    ws_family.column_dimensions['A'].width = 25
-    ws_family.column_dimensions['B'].width = 50
-    ws_family.column_dimensions['C'].width = 20
+    ws_family.column_dimensions['A'].width = 8
+    ws_family.column_dimensions['B'].width = 25
+    ws_family.column_dimensions['C'].width = 50
+    ws_family.column_dimensions['D'].width = 20
     format_sheet(ws_family)
 
     # Final touch: Row height for large text

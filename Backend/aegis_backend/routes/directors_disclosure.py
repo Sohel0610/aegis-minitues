@@ -51,6 +51,7 @@ class DirectorMasterResponse(BaseModel):
     pan: Optional[str] = None
     din_status: Optional[str] = None
     gender: Optional[str] = None
+    is_kmp: bool = False
     created_at: str
 
 class DirectorsMasterResponse(BaseModel):
@@ -65,7 +66,9 @@ class DisclosureResponse(BaseModel):
     din_status: Optional[str] = None
     disclosure_date: str
     disclosure_type: str
+    is_kmp: bool = False
     file_path: str
+    all_files: Optional[List[Dict[str, Any]]] = None
 
 class DisclosuresResponse(BaseModel):
     data: List[DisclosureResponse]
@@ -174,23 +177,29 @@ def _get_all_physical_files_map() -> dict[str, list[dict]]:
         if "MBP1" not in fname.upper():
             continue
             
-        # Extract DIN using regex (looks for 8 digits at the end before .docx)
-        match = re.search(r'_(\d{8})\.docx$', fname)
-        if match:
-            din = match.group(1)
-            rel_path = str(file_path.relative_to(BASE_DIR))
-            mtime = file_path.stat().st_mtime
-            
-            file_info = {
-                "type": "MBP-1",
-                "path": rel_path,
-                "date": datetime.fromtimestamp(mtime).strftime("%d/%m/%Y"),
-                "mtime": mtime # Keep track of modification time for de-duplication
-            }
-            
-            # De-duplication: Only keep the LATEST file for this director
-            if din not in din_map or mtime > din_map[din][0]["mtime"]:
-                din_map[din] = [file_info] # Store as a list with 1 item to keep compatibility
+            # Extract DIN using regex (looks for 8 digits in the filename)
+            match = re.search(r'(\d{8})', fname)
+            if match:
+                din = match.group(1)
+                rel_path = str(file_path.relative_to(BASE_DIR))
+                mtime = file_path.stat().st_mtime
+                
+                # Extract company name from filename if possible (e.g. MBP1_Director_CompanyName_DIN.docx)
+                # Filename format is usually: MBP1_[Director]_[Company]_[DIN].docx
+                parts = fname.replace(".docx", "").split("_")
+                company_hint = parts[-2] if len(parts) >= 3 else "Latest"
+                
+                file_info = {
+                    "type": "MBP-1",
+                    "company_hint": company_hint,
+                    "path": rel_path,
+                    "date": datetime.fromtimestamp(mtime).strftime("%d/%m/%Y"),
+                    "mtime": mtime
+                }
+                
+                if din not in din_map:
+                    din_map[din] = []
+                din_map[din].append(file_info)
             
     return din_map
 
@@ -217,21 +226,29 @@ async def get_directors_disclosures():
                 d.last_api_sync,
                 d.created_at,
                 ds.file_path,
-                ds.id                                           AS doc_id
+                ds.id                                           AS doc_id,
+                EXISTS (
+                    SELECT 1 FROM directors_master.external_board_members ea
+                    WHERE TRIM(ea.din) = TRIM(d.din)
+                    AND TRIM(UPPER(ea.designation)) IN (
+                        'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
+                        'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
+                    )
+                ) as is_kmp
             FROM directors_master.directors d
             LEFT JOIN directors_profile.directors_profile p
-                   ON p.din = d.din
+                   ON TRIM(p.din) = TRIM(d.din)
             LEFT JOIN LATERAL (
                 SELECT id, file_path
                 FROM directors_data.document_summaries
                 WHERE TRIM(UPPER(director_name)) = TRIM(UPPER(d.name))
-                   OR din = d.din
+                   OR TRIM(din) = TRIM(d.din)
                 ORDER BY created_at DESC
                 LIMIT 1
             ) ds ON TRUE
             WHERE EXISTS (
                 SELECT 1 FROM directors_master.external_board_members ea
-                WHERE ea.din = d.din
+                WHERE TRIM(ea.din) = TRIM(d.din)
             )
             ORDER BY d.name ASC
         """)
@@ -256,12 +273,16 @@ async def get_directors_disclosures():
             doc_type = "Registry Sync"
             display_date = sync_date
 
+            all_files = []
             if din and din in physical_files_map:
-                # Get the latest MBP-1 file for this director
-                latest_file = physical_files_map[din][0]
+                # Get the latest MBP-1 file for this director for the main download button
+                # Sort by mtime descending to get newest first
+                sorted_files = sorted(physical_files_map[din], key=lambda x: x.get("mtime", 0), reverse=True)
+                latest_file = sorted_files[0]
                 rel_path = latest_file["path"]
                 doc_type = "MBP-1"
                 display_date = latest_file["date"]
+                all_files = sorted_files
 
             # 3. Add exactly ONE entry per director
             data.append({
@@ -272,7 +293,9 @@ async def get_directors_disclosures():
                 "din_status":       r["din_status"],
                 "disclosure_date":  display_date,
                 "disclosure_type":  doc_type,
-                "file_path":        rel_path
+                "is_kmp":           bool(r["is_kmp"]),
+                "file_path":        rel_path,
+                "all_files":        all_files
             })
         
         # Sort alphabetically by director name
@@ -295,9 +318,17 @@ async def get_directors_master():
     cursor = get_pg_cursor(pg_conn)
     try:
         cursor.execute("""
-            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan
+            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan,
+                   EXISTS (
+                       SELECT 1 FROM directors_master.external_board_members ea
+                       WHERE TRIM(ea.din) = TRIM(d.din)
+                       AND TRIM(UPPER(ea.designation)) IN (
+                           'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
+                           'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
+                       )
+                   ) as is_kmp
             FROM directors_master.directors d
-            LEFT JOIN directors_profile.directors_profile p ON d.din = p.din
+            LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
             ORDER BY d.name
         """)
         rows = cursor.fetchall()
@@ -310,6 +341,7 @@ async def get_directors_master():
                 "pan": r["pan"],
                 "din_status": r["din_status"],
                 "gender": r["gender"],
+                "is_kmp": bool(r["is_kmp"]),
                 "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
             })
         return DirectorsMasterResponse(data=data, count=len(data))
@@ -500,7 +532,7 @@ async def update_director_pan(director_id: int, request: DirectorPanUpdateReques
 
                 cursor.execute("""
                     INSERT INTO directors_profile.directors_profile (din, pan)
-                    VALUES (%s, %s)
+                    VALUES (TRIM(%s), TRIM(%s))
                     ON CONFLICT (din) DO UPDATE SET pan = EXCLUDED.pan
                 """, (din, request.pan.strip()))
                 pg_conn.commit()

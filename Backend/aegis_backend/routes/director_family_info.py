@@ -42,6 +42,7 @@ class DirectorFamilyInfoResponse(BaseModel):
     match_score: float
     section_2_77_i: Optional[str] = None
     section_2_77_ii: Optional[str] = None
+    spouse_pan: Optional[str] = None # Added for spouse PAN
     section_2_77_iii: Optional[str] = None
     family_members: List[FamilyMemberInfo]
     is_submitted: bool = False
@@ -76,7 +77,8 @@ def get_family_info_for_director(director_name: str):
                     SELECT 
                         director_name, section_2_77_i, section_2_77_ii, section_2_77_iii, 
                         father, mother, son, sons_wife, daughter, daughters_husband, brother, sister,
-                        father_pan, mother_pan, father_pan_file, mother_pan_file, is_submitted
+                        father_pan, mother_pan, father_pan_file, mother_pan_file, is_submitted,
+                        spouse_pan
                     FROM family_information.director_family 
                     WHERE director_name = %s
                 """, (best_match,))
@@ -113,6 +115,7 @@ def get_family_info_for_director(director_name: str):
                         "section_2_77_iii": row["section_2_77_iii"],
                         "family_members": family_members,
                         "is_submitted": bool(row["is_submitted"]),
+                        "spouse_pan": row.get("spouse_pan") or ""
                     }
 
             return None
@@ -172,18 +175,18 @@ async def get_director_family_info(identifier: str):
                     # 1. Resolve Identity: If it looks like a DIN, find the name
                     if identifier.isdigit() and len(identifier) >= 7:
                         target_din = identifier
-                        cursor.execute("SELECT name FROM directors_master.directors WHERE din = %s", (target_din,))
+                        cursor.execute("SELECT name FROM directors_master.directors WHERE TRIM(din) = TRIM(%s)", (target_din,))
                         res = cursor.fetchone()
                         if res: target_name = res["name"]
                     
                     # 2. Try exact DIN match in family table
                     if target_din:
-                        cursor.execute("SELECT * FROM family_information.director_family WHERE din = %s", (target_din,))
+                        cursor.execute("SELECT * FROM family_information.director_family WHERE TRIM(din) = TRIM(%s)", (target_din,))
                         row = cursor.fetchone()
                         if row: return _format_family_response(row, target_din)
                     
                     # 3. Try exact Name match in family table
-                    cursor.execute("SELECT * FROM family_information.director_family WHERE director_name = %s", (target_name,))
+                    cursor.execute("SELECT * FROM family_information.director_family WHERE TRIM(director_name) = TRIM(%s)", (target_name,))
                     row = cursor.fetchone()
                     if row: return _format_family_response(row, target_din or target_name)
                     
@@ -197,7 +200,18 @@ async def get_director_family_info(identifier: str):
         family_info = await loop.run_in_executor(thread_pool, fetch_family_info)
         
         if not family_info:
-            raise HTTPException(status_code=404, detail="No family information found")
+            # Return a default empty structure instead of 404 so frontend can show the empty form
+            return {
+                "director_name": identifier,
+                "matched_family_name": identifier,
+                "match_score": 0.0,
+                "section_2_77_i": "",
+                "section_2_77_ii": "",
+                "spouse_pan": "",
+                "section_2_77_iii": "",
+                "family_members": [],
+                "is_submitted": False
+            }
         
         return DirectorFamilyInfoResponse(**family_info)
     except Exception as e:
@@ -212,6 +226,7 @@ def _format_family_response(row, identifier):
         "match_score": 1.0,
         "section_2_77_i": row["section_2_77_i"],
         "section_2_77_ii": row["section_2_77_ii"],
+        "spouse_pan": row.get("spouse_pan") or row.get("section_2_77_ii_pan"), # Handle both naming conventions
         "section_2_77_iii": row["section_2_77_iii"],
         "family_members": [],
         "is_submitted": bool(row["is_submitted"]),
@@ -226,7 +241,7 @@ def _format_family_response(row, identifier):
             cursor.execute("""
                 SELECT relationship, full_name, pan 
                 FROM family_information.director_family_members 
-                WHERE din = %s OR din = (SELECT din FROM family_information.director_family WHERE director_name = %s LIMIT 1)
+                WHERE TRIM(din) = TRIM(%s) OR TRIM(din) = (SELECT TRIM(din) FROM family_information.director_family WHERE TRIM(director_name) = TRIM(%s) LIMIT 1)
                 ORDER BY relationship, pairing_group
             """, (identifier, identifier))
             
@@ -285,12 +300,17 @@ async def update_director_family_info(identifier: str, family_info: Dict[str, An
                 if pg_conn:
                     cursor = get_pg_cursor(pg_conn)
                     
+                    # 0. Schema Migration (Ensure spouse_pan exists)
+                    cursor.execute("ALTER TABLE family_information.director_family ADD COLUMN IF NOT EXISTS spouse_pan TEXT")
+                    cursor.execute("ALTER TABLE family_information.director_family ADD COLUMN IF NOT EXISTS din TEXT")
+                    pg_conn.commit()
+
                     # 1. Resolve DIN
                     is_din = identifier.isdigit() and len(identifier) >= 8
                     resolved_din = identifier if is_din else None
                     
                     if not resolved_din:
-                        cursor.execute("SELECT din FROM family_information.director_family WHERE director_name = %s", (identifier,))
+                        cursor.execute("SELECT din FROM family_information.director_family WHERE TRIM(director_name) = TRIM(%s)", (identifier,))
                         res = cursor.fetchone()
                         resolved_din = res['din'] if res else None
 
@@ -300,25 +320,27 @@ async def update_director_family_info(identifier: str, family_info: Dict[str, An
                     # 2. Update Master Record
                     update_fields = []
                     params = []
-                    for f in ("section_2_77_i", "section_2_77_ii", "section_2_77_iii"):
-                        if f in family_info:
+                    for f in ("section_2_77_i", "section_2_77_ii", "section_2_77_iii", "spouse_pan"):
+                        # Accept both spouse_pan and section_2_77_ii_pan from frontend
+                        val = family_info.get(f) or (family_info.get("section_2_77_ii_pan") if f == "spouse_pan" else None)
+                        if val is not None:
                             update_fields.append(f"{f} = %s")
-                            params.append(family_info.get(f))
+                            params.append(val)
                     
                     if update_fields:
                         params.append(resolved_din)
-                        cursor.execute(f"UPDATE family_information.director_family SET {', '.join(update_fields)} WHERE din = %s", params)
+                        cursor.execute(f"UPDATE family_information.director_family SET {', '.join(update_fields)} WHERE TRIM(din) = TRIM(%s)", params)
 
                     # 3. Update Individual Members (Relational)
                     # Clear existing and re-insert for consistency
-                    cursor.execute("DELETE FROM family_information.director_family_members WHERE din = %s", (resolved_din,))
+                    cursor.execute("DELETE FROM family_information.director_family_members WHERE TRIM(din) = TRIM(%s)", (resolved_din,))
                     
                     members_list = family_info.get("family_members", []) or []
                     for i, member in enumerate(members_list):
                         cursor.execute("""
                             INSERT INTO family_information.director_family_members 
                             (din, relationship, full_name, pan, pairing_group)
-                            VALUES (%s, %s, %s, %s, %s)
+                            VALUES (TRIM(%s), TRIM(%s), TRIM(%s), TRIM(%s), %s)
                         """, (
                             resolved_din, 
                             member.get("relationship"), 
