@@ -139,7 +139,7 @@ const ProductDashboardLayout = ({
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-2">
             {navigationItems.map((item) => {
               const IconComponent = item.icon;
@@ -159,11 +159,13 @@ const ProductDashboardLayout = ({
                         : '1px solid transparent'
                     }}
                   >
-                    <IconComponent
-                      size={20}
-                      className={`flex-shrink-0 transition-colors ${item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
-                        }`}
-                    />
+                    {IconComponent && (
+                      <IconComponent
+                        size={20}
+                        className={`flex-shrink-0 transition-colors ${item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
+                          }`}
+                      />
+                    )}
                     <AnimatePresence>
                       {!isCollapsed && (
                         <motion.span
@@ -257,7 +259,7 @@ const ProductDashboardLayout = ({
                               : '1px solid transparent'
                           }}
                         >
-                          <IconComponent size={20} className="flex-shrink-0" />
+                          {IconComponent && <IconComponent size={20} className="flex-shrink-0" />}
                           <span className="font-medium">{item.label}</span>
                         </button>
                       </li>

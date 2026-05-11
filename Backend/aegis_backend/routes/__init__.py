@@ -22,7 +22,12 @@ from . import (
     insider_trading,
     director_family_info,
     director_changes,
-    rbac
+    rbac,
+    disclosure_downloader,
+    director_intelligence,
+    institutional_risk,
+    registry_management,
+    director_exports
 )
 
 # Export all routers
@@ -46,5 +51,10 @@ __all__ = [
     "insider_trading",
     "director_family_info",
     "director_changes",
-    "rbac"
+    "rbac",
+    "disclosure_downloader",
+    "director_intelligence",
+    "institutional_risk",
+    "registry_management",
+    "director_exports"
 ]

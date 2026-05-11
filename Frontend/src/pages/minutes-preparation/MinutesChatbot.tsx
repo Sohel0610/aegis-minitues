@@ -24,6 +24,8 @@ import {
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -32,22 +34,16 @@ interface Message {
     sources?: { document: string; chunk: string }[];
 }
 
-const MinutesChatbot = () => {
-    const navigationItems = [
-        { id: 'home', label: 'Home', icon: HomeIcon, href: '/' },
-        { id: 'dashboard', label: 'Generate Minutes', icon: FileTextIcon, href: '/minutes-preparation' },
-        { id: 'create-agenda', label: 'Create Agenda', icon: PlusIcon, href: '/minutes-preparation/create-agenda' },
-        { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheetIcon, href: '/minutes-preparation/compliances' },
-        { id: 'ai-mom', label: 'AI MOM', icon: FileTextIcon, href: '/minutes-preparation/ai-assistant' },
-        { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquareIcon, href: '/minutes-preparation/chatbot', isActive: true },
-        { id: 'template-resolution', label: 'Template Resolution', icon: HistoryIcon, href: '/minutes-preparation/template-resolution' },
-        { id: 'minutes', label: 'Meeting Minutes', icon: FileTextIcon, href: '/minutes-preparation/minutes' },
-        { id: 'templates', label: 'Templates', icon: FileSpreadsheetIcon, href: '/minutes-preparation/templates' },
-        { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-        { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-    ];
+interface SessionInfo {
+    id: string;
+    title: string;
+}
 
-    const [sessions, setSessions] = useState<string[]>([]);
+const MinutesChatbot = () => {
+    const navigationItems = getMinutesNavItems('chatbot');
+    const { user } = useAuth();
+
+    const [sessions, setSessions] = useState<SessionInfo[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string>(`session_${Date.now()}`);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
@@ -55,8 +51,8 @@ const MinutesChatbot = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Get user email from storage or mock
-    const userEmail = "admin@adani.com";
+    // Use authenticated user email instead of hardcoded value
+    const userEmail = user?.email || 'guest@aegis.local';
 
     useEffect(() => {
         fetchSessions();
@@ -146,8 +142,11 @@ const MinutesChatbot = () => {
             setMessages(prev => [...prev, assistMsg]);
 
             // Refresh sessions list if new
-            if (!sessions.includes(activeSessionId)) {
-                setSessions(prev => [activeSessionId, ...prev]);
+            if (!sessions.find(s => s.id === activeSessionId)) {
+                setSessions(prev => [{
+                    id: activeSessionId, 
+                    title: input.substring(0, 30) + (input.length > 30 ? "..." : "")
+                }, ...prev]);
             }
 
         } catch (err) {
@@ -220,19 +219,19 @@ const MinutesChatbot = () => {
                                 {sessions.length === 0 ? (
                                     <p className="text-xs text-center text-muted-foreground py-10">No chat history yet</p>
                                 ) : (
-                                    sessions.map(sid => (
+                                    sessions.map(s => (
                                         <button
-                                            key={sid}
-                                            onClick={() => setActiveSessionId(sid)}
+                                            key={s.id}
+                                            onClick={() => setActiveSessionId(s.id)}
                                             className={cn(
                                                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left truncate group",
-                                                activeSessionId === sid
+                                                activeSessionId === s.id
                                                     ? "bg-blue-50 text-blue-700 font-medium border border-blue-100 shadow-sm"
                                                     : "hover:bg-gray-50 text-gray-600"
                                             )}
                                         >
-                                            <MessageSquareIcon className={cn("h-4 w-4 shrink-0", activeSessionId === sid ? "text-blue-500" : "text-gray-400")} />
-                                            <span className="truncate">{sid.replace('session_', '')}</span>
+                                            <MessageSquareIcon className={cn("h-4 w-4 shrink-0", activeSessionId === s.id ? "text-blue-500" : "text-gray-400")} />
+                                            <span className="truncate">{s.title || s.id.replace('session_', '')}</span>
                                         </button>
                                     ))
                                 )}

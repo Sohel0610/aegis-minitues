@@ -17,7 +17,8 @@ import {
     Activity,
     ChevronRight,
     Info,
-    HelpCircle
+    HelpCircle,
+    MessageSquareIcon
 } from "lucide-react";
 
 interface UserManualModalProps {
@@ -29,18 +30,18 @@ interface UserManualModalProps {
 
 const UserManualModal = ({ isOpen, onClose, initialAgent }: UserManualModalProps) => {
     const allAgents = [
-
         {
             title: "BSE Analysis Agent",
             icon: <Activity className="h-5 w-5 text-honolulu-blue" />,
             description: "Standard Operating Procedure for monitoring BSE historical data and notifications.",
             steps: [
-                "Login to AEGIS platform and navigate to 'BSE Analysis'.",
-                "View real-time notifications fetched daily from public records.",
-                "Use the 'Total Notifications' tab to browse the complete history.",
-                "Apply date range filters to isolate specific corporate actions.",
-                "Export datasets to Excel for offline analysis and reporting.",
-                "Monitor upcoming events and alerts automatically tracked by the system."
+                "Login to AEGIS platform and navigate to 'BSE Analysis' from the main dashboard.",
+                "View real-time notifications fetched daily from public BSE records via automated pipelines.",
+                "Use the 'Total Notifications' tab to browse the complete chronological history of disclosures.",
+                "Apply the custom date range filters to isolate specific corporate actions within a given quarter.",
+                "Search for specific keywords (e.g., 'Board Meeting', 'Dividend') using the global search bar.",
+                "Export filtered datasets to Excel/CSV for offline analysis and reporting to stakeholders.",
+                "Monitor upcoming events and alerts automatically tracked by the system's heuristic engine."
             ]
         },
         {
@@ -48,49 +49,68 @@ const UserManualModal = ({ isOpen, onClose, initialAgent }: UserManualModalProps
             icon: <Shield className="h-5 w-5 text-dark-lavender" />,
             description: "SOP for monitoring and analyzing RBI notifications and guidelines.",
             steps: [
-                "Select 'RBI Analysis' from the dashboard to view live monitoring.",
-                "The dashboard displays daily, weekly, and monthly notification trends.",
-                "Access the summary of each notification by clicking 'View' on the record.",
-                "Download original PDF circulars directly through the provided links.",
-                "Use the date range filter to track regulatory changes over time.",
-                "The system highlights urgent notifications according to internal priority rules."
+                "Select 'RBI Analysis' from the dashboard to view live regulatory monitoring.",
+                "The dashboard displays daily, weekly, and monthly notification trends using interactive charts.",
+                "Access the summary of each notification by clicking 'View' on the specific record.",
+                "Download original PDF circulars directly through the provided hyperlinked source files.",
+                "Use the date range filter to track historical regulatory changes over time.",
+                "Review the AI-generated sentiment and compliance impact score for major circulars.",
+                "The system highlights urgent notifications according to internal Adani priority rules."
             ]
         },
         {
-            title: "Generate Minutes Agent",
-            icon: <FileText className="h-5 w-5 text-x11-maroon" />,
-            description: "SOP for automated meeting documentation and compliance management.",
+            title: "AI Meeting Assistant",
+            icon: <MessageSquareIcon className="h-5 w-5 text-indigo-500" />,
+            description: "SOP for querying meeting context and transcripts using the RAG-powered AI Chatbot.",
             steps: [
-                "Navigate to 'Generate Minutes' >> 'Minutes Generator'.",
-                "Upload a meeting transcript (.docx or .txt) or enter notes manually.",
-                "Use the 'AI MOM' feature to automatically extract points of discussion.",
-                "Select a template (e.g., Board Meeting, AGM) for standardized formatting.",
-                "Review and edit the generated draft before finalization.",
-                "The system automatically tracks action items and compliance statuses.",
-                "Access 'Meeting History' to download or delete previously generated records."
+                "Navigate to 'Generate Minutes' and click on 'Meeting Assistant' in the left sidebar.",
+                "Upload a meeting transcript (.txt or .docx) or PDF agenda using the 'Train AI' button.",
+                "Wait for the system to index the document and generate vector embeddings.",
+                "Ask natural language questions like 'What were the decisions made about the Q2 budget?'.",
+                "Review the AI's response, which includes precise source citations and similarity scores.",
+                "Access previous chat sessions from the 'Recent Sessions' history in the sidebar.",
+                "Start a 'New Chat' to clear the context window for a completely new topic."
+            ]
+        },
+        {
+            title: "Generate Minutes Workflow",
+            icon: <FileText className="h-5 w-5 text-x11-maroon" />,
+            description: "SOP for automated meeting documentation, agenda creation, and compliance management.",
+            steps: [
+                "Navigate to 'Generate Minutes' >> 'Minutes Generator' to start the workflow.",
+                "Step 1: Fill in basic meeting details (Company Name, Date, Time, Quorum status).",
+                "Step 2: Select the Meeting Place. If a place isn't listed, use the 'Add Place' button.",
+                "Step 3: Select participating Directors from the centralized multi-select dropdown.",
+                "Step 4: Draft resolutions. You can load pre-saved templates from the 'Template Resolution' tab.",
+                "Step 5: Choose a master DOCX template (e.g., Q1, Q2, AGM) or upload a custom formatting template.",
+                "Step 6: Click 'Generate'. The system maps all data to placeholders and creates the finalized Word document.",
+                "Access the 'Meeting Minutes' tab to download, review, or delete generated files."
             ]
         },
         {
             title: "Secretarial Compliances",
             icon: <Settings className="h-5 w-5 text-honolulu-blue" />,
-            description: "SOP for managing statutory compliance timelines.",
+            description: "SOP for managing and tracking statutory compliance timelines.",
             steps: [
-                "Open 'Secretarial Compliances' to view the compliance calendar.",
-                "Track upcoming filings (MGT-7, AOC-4, etc.) with real-time countdowns.",
-                "Update the status of tasks to 'Completed' to maintain accurate tracking.",
-                "The dashboard visualizes Completed, Upcoming, and Overdue counts.",
-                "Add new compliance tasks through the 'Add Task' form if manual entry is needed."
+                "Open 'Secretarial Compliances' to view the master compliance calendar.",
+                "Track upcoming statutory filings (e.g., MGT-7, AOC-4) with real-time countdowns.",
+                "Click 'Add Task' to manually input new regulatory obligations or internal deadlines.",
+                "Fill in the Form Name, Description, Due Date, Status, and Priority level.",
+                "Update the status of ongoing tasks from 'Pending' to 'Completed' once filed.",
+                "Use the interactive dashboard to visualize Completed, Upcoming, and Overdue metrics."
             ]
         },
         {
             title: "Directors' Disclosure Agent",
             icon: <Database className="h-5 w-5 text-dark-lavender" />,
-            description: "SOP for tracking director interests and mandatory disclosures.",
+            description: "SOP for tracking director interests and mandatory disclosures (MBP-1/DIR-8).",
             steps: [
-                "Navigate to 'Directors\\' Disclosure' to view the master database.",
-                "Search by Director Name or DIN to find specific disclosures.",
-                "The agent tracks changes in directorships and shareholding across group companies.",
-                "Download generated MBP-1 and DIR-8 forms automatically pre-filled with system data.",
+                "Navigate to 'Directors\\' Disclosure' to view the centralized master database.",
+                "Search by Director Name or DIN to isolate specific individual disclosures.",
+                "Track changes in directorships and shareholding across various group companies.",
+                "Select a specific director and click 'Generate MBP-1' or 'Generate DIR-8'.",
+                "The system automatically pre-fills the statutory forms with the latest database records.",
+                "Download the generated Word documents for final physical signature.",
                 "Verify disclosure history through the 'Analytics' tab for trend tracking."
             ]
         },
@@ -99,12 +119,12 @@ const UserManualModal = ({ isOpen, onClose, initialAgent }: UserManualModalProps
             icon: <Activity className="h-5 w-5 text-x11-maroon" />,
             description: "SOP for monitoring SEBI regulations and compliance updates.",
             steps: [
-                "Access 'SEBI Dashboard' for a high-level overview of regulatory updates.",
-                "Navigate to 'SEBI Notifications' to view detailed circulars and orders.",
-                "Use 'Email Data' to track communications and alerts.",
-                "Filter notifications by date, type, or keyword for targeted analysis.",
-                "Download relevant documents for offline compliance checks.",
-                "Monitor real-time alerts for critical SEBI announcements."
+                "Access 'SEBI Dashboard' for a high-level overview of recent regulatory updates.",
+                "Navigate to 'SEBI Notifications' to view detailed circulars, orders, and master directions.",
+                "Use the 'Email Data' integration to track regulatory communications and system alerts.",
+                "Filter notifications by date, regulatory type, or keyword for targeted analysis.",
+                "Download relevant PDF documents directly for offline compliance checks.",
+                "Monitor real-time alerts for critical SEBI announcements that require immediate action."
             ]
         }
     ];

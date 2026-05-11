@@ -11,6 +11,7 @@ import Stepper from '@/components/Stepper';
 import PlaceSelector from '@/components/PlaceSelector';
 import MultiDirectorSelector from '@/components/MultiDirectorSelector';
 import { isAdmin } from '@/utils/adminAuth';
+import { toast } from '@/components/ui/use-toast';
 
 // Helper function to convert numbers to ordinals (1st, 2nd, 3rd, etc.)
 const numberToOrdinal = (num: number): string => {
@@ -225,7 +226,7 @@ const FormBasedGenerator: React.FC = () => {
     if (!file) return;
 
     if (!file.name.endsWith('.docx')) {
-      alert("Please upload a .docx file");
+      toast({ title: "Invalid File", description: "Please upload a .docx file", variant: "destructive" });
       return;
     }
 
@@ -246,14 +247,14 @@ const FormBasedGenerator: React.FC = () => {
           template: 'custom',
           customTemplateFilename: data.filename
         }));
-        alert("Template uploaded successfully!");
+        toast({ title: "Success", description: "Template uploaded successfully!" });
       } else {
         const err = await res.json();
-        alert(`Upload failed: ${err.detail || 'Unknown error'}`);
+        toast({ title: "Upload Failed", description: err.detail || 'Unknown error', variant: "destructive" });
       }
     } catch (err) {
       console.error("Template upload error:", err);
-      alert("Failed to upload template");
+      toast({ title: "Upload Error", description: "Failed to upload template", variant: "destructive" });
     } finally {
       setIsUploadingTemplate(false);
     }
@@ -367,9 +368,10 @@ const FormBasedGenerator: React.FC = () => {
     if (isQ1) {
       // Q1 has 9 steps (0-8)
       switch (currentStep) {
-        case 0: // Template & Company (Now includes Date & Time)
+        case 0: { // Template & Company (Now includes Date & Time)
           const isTemplateValid = formData.template === 'custom' ? !!formData.customTemplateFilename : !!formData.template;
           return isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced;
+        }
         case 1: // Meeting Details (Now primarily Meeting Place)
           return formData.meetingPlace;
         case 2: // Attendance
@@ -389,7 +391,7 @@ const FormBasedGenerator: React.FC = () => {
             formData.signatory2Name.trim() !== "" &&
             formData.signatory2Role.trim() !== "" &&
             formData.signatory2Din.trim() !== "";
-        case 6: // AGM Details
+        case 6: { // AGM Details
           const isAgmNumberValid = formData.agmNumber && formData.agmNumber.trim() !== "";
           const isAgmDateValid = Number.isFinite(formData.agmYear) &&
             Number.isFinite(formData.agmMonth) &&
@@ -400,6 +402,7 @@ const FormBasedGenerator: React.FC = () => {
           const isAgmTimeValid = formData.agmTime && formData.agmTime.trim() !== "";
           const isRegisteredOfficeValid = formData.registeredOfficeAddress && formData.registeredOfficeAddress.trim() !== "";
           return isAgmNumberValid && isAgmDateValid && isAgmTimeValid && isRegisteredOfficeValid;
+        }
         case 7: // Sign-off Details
           return formData.recordingDate && formData.signingDate && formData.signingPlace;
         case 8: // Resolutions
@@ -410,9 +413,10 @@ const FormBasedGenerator: React.FC = () => {
     } else {
       // Q2/Q3/Q4 have 6 steps (0-5)
       switch (currentStep) {
-        case 0: // Template & Company
+        case 0: { // Template & Company
           const isTemplateValid = formData.template === 'custom' ? !!formData.customTemplateFilename : !!formData.template;
           return isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced;
+        }
         case 1: // Meeting Details
           return formData.meetingPlace;
         case 2: // Attendance
@@ -499,14 +503,14 @@ const FormBasedGenerator: React.FC = () => {
             document.body.removeChild(link);
           }
 
-          alert(result.message || 'Document generated successfully!');
+          toast({ title: "Success", description: result.message || 'Document generated successfully!' });
         } else {
           const error = await response.json();
           throw new Error(error.detail || 'Failed to generate document');
         }
       } catch (error) {
         console.error('Error generating document:', error);
-        alert(`Error generating document: ${error.message || 'Please try again.'}`);
+        toast({ title: "Generation Error", description: error.message || 'Please try again.', variant: "destructive" });
       } finally {
         setIsSubmitting(false);
       }
@@ -1446,10 +1450,10 @@ const FormBasedGenerator: React.FC = () => {
                               const data = await res.json();
                               setResolutionTemplates(prev => [...prev, data]);
                               setResTemplateName('');
-                              alert('Resolution template saved successfully!');
+                              toast({ title: "Success", description: 'Resolution template saved successfully!' });
                             }
                           } catch (err) {
-                            alert('Failed to save resolution template');
+                            toast({ title: "Error", description: 'Failed to save resolution template', variant: "destructive" });
                           }
                         }}
                       >

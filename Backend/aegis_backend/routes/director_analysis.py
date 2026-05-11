@@ -35,7 +35,7 @@ class CompanyCountResponse(BaseModel):
 
 class CrossDirectorshipResponse(BaseModel):
     name: str
-    company_count: int
+    companies: int
 
 class ClusteringResponse(BaseModel):
     director1: str
@@ -61,7 +61,8 @@ class WTDCountResponse(BaseModel):
 
 class CompanyWithDirectorCountResponse(BaseModel):
     name: str
-    type: str
+    cin: Optional[str] = "N/A"
+    type: Optional[str] = "Unknown"
     director_count: int
 
 # Endpoint to get all directors

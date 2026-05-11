@@ -55,12 +55,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const isInitialized = React.useRef(false);
 
-    useEffect(() => {
-        // Prevent multiple initializations
-        if (isInitialized.current) return;
-
-        const initAuth = async () => {
-            // Fetch auth configuration from backend
+    const initAuth = React.useCallback(async () => {
+        setIsLoading(true);
+        // Fetch auth configuration from backend
+        try {
             const config = await authService.getAuthConfig();
             setSsoEnabled(config.sso_enabled);
 
@@ -73,71 +71,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     roles: ["admin"]
                 };
                 setUser(guestUser);
-                // Grant full admin access to all routes when SSO is disabled
                 isInitialized.current = true;
                 setIsLoading(false);
                 return;
             }
 
-            // SSO is enabled — existing SSO flow below (unchanged)
+            // SSO is enabled — handle tokens
             const searchParams = new URLSearchParams(window.location.search);
             const tokenParams = searchParams.get("token");
 
-            try {
-                if (tokenParams) {
-                    // Handle SSO Callback
-                    const email = searchParams.get("email");
-                    const name = searchParams.get("name");
-                    const hasAccessFlag = searchParams.get("has_access") === "true";
-
-                    if (email) {
-                        const newUser: User = { id: email, email, name: name || email, roles: [] };
-                        localStorage.setItem("aegis_auth_token", tokenParams);
-                        localStorage.setItem("aegis_user", JSON.stringify(newUser));
-                        setUser(newUser);
-
-                        await loadPermissions(email);
-
-                        // Mark as initialized and clear loading BEFORE navigation
-                        isInitialized.current = true;
-                        setIsLoading(false);
-                        navigate("/", { replace: true });
-                        return;
-                    }
-                } else {
-                    // Handle Existing Session
-                    const storedToken = localStorage.getItem("aegis_auth_token");
-                    const storedUser = localStorage.getItem("aegis_user");
-
-                    if (storedToken && storedUser) {
-                        const parsedUser = JSON.parse(storedUser);
-                        setUser(parsedUser);
-
-                        // Load cache for better initial UX
-                        const storedPerms = localStorage.getItem("aegis_permissions");
-                        const storedRoutes = localStorage.getItem("aegis_accessible_routes");
-                        if (storedPerms && storedRoutes) {
-                            setPermissions(JSON.parse(storedPerms));
-                            setAccessibleRoutes(JSON.parse(storedRoutes));
-                        }
-
-                        // Always refresh permissions to ensure they are up to date
-                        await loadPermissions(parsedUser.email);
-                    }
-                }
-            } catch (error) {
-                console.error("Auth initialization error:", error);
-            } finally {
-                // Ensure loading is cleared ONLY once
-                if (!isInitialized.current) {
+            if (tokenParams) {
+                const email = searchParams.get("email");
+                const name = searchParams.get("name");
+                if (email) {
+                    const newUser: User = { id: email, email, name: name || email, roles: [] };
+                    localStorage.setItem("aegis_auth_token", tokenParams);
+                    localStorage.setItem("aegis_user", JSON.stringify(newUser));
+                    setUser(newUser);
+                    await loadPermissions(email);
                     isInitialized.current = true;
                     setIsLoading(false);
+                    navigate("/", { replace: true });
+                    return;
                 }
+            } else {
+                const storedToken = localStorage.getItem("aegis_auth_token");
+                const storedUser = localStorage.getItem("aegis_user");
+                if (storedToken && storedUser) {
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                    const storedPerms = localStorage.getItem("aegis_permissions");
+                    const storedRoutes = localStorage.getItem("aegis_accessible_routes");
+                    if (storedPerms && storedRoutes) {
+                        setPermissions(JSON.parse(storedPerms));
+                        setAccessibleRoutes(JSON.parse(storedRoutes));
+                    }
+                    await loadPermissions(parsedUser.email);
+                }
+            }
+        } catch (error) {
+            console.error("Auth initialization error:", error);
+        } finally {
+            isInitialized.current = true;
+            setIsLoading(false);
+        }
+    }, [navigate]);
+
+    useEffect(() => {
+        const handlePageShow = (event: PageTransitionEvent) => {
+            if (event.persisted) {
+                isInitialized.current = false;
+                initAuth();
             }
         };
 
-        initAuth();
-    }, [navigate]);
+        window.addEventListener('pageshow', handlePageShow);
+
+        if (!isInitialized.current) {
+            initAuth();
+        }
+
+        return () => window.removeEventListener('pageshow', handlePageShow);
+    }, [initAuth]);
+
 
     const login = async () => {
         await authService.login();

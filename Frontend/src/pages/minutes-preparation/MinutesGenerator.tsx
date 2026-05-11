@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,8 @@ import { useNavigate } from 'react-router-dom';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FileText as FileTextIcon } from 'lucide-react';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { companyPresets } from '@/constants/companyPresets';
 
 const MinutesGenerator = () => {
   const navigate = useNavigate();
@@ -41,27 +44,7 @@ const MinutesGenerator = () => {
     fetchHistory();
   }, []);
 
-  // Presets
-  const companyPresets = [
-    {
-      name: "Adani Enterprises Limited",
-      address: "World Trade Centre, Tower 14, 17th Floor, Cuffe Parade, Mumbai - 400005",
-      directors: [
-        { name: "Gautam Adani", din: "00222019" },
-        { name: "Vinod Adani", din: "00222020" },
-        { name: "Ashish Kundra", din: "00222021" }
-      ]
-    },
-    {
-      name: "Adani Green Energy Limited",
-      address: "World Trade Centre, Tower 14, 17th Floor, Cuffe Parade, Mumbai - 400005",
-      directors: [
-        { name: "Gautam Adani", din: "00222019" },
-        { name: "Vinod Adani", din: "00222020" },
-        { name: "Ashish Kundra", din: "00222021" }
-      ]
-    }
-  ];
+  // Presets (shared)
 
   const meetingTypes = [
     { value: "Board Meeting", label: "Board Meeting" },
@@ -90,18 +73,7 @@ const MinutesGenerator = () => {
   };
 
   // Define navigation items for this product
-  const navigationItems = [
-    { id: 'home', label: 'Home', icon: FileText, href: '/' },
-    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
-    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
-    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-    { id: 'template-resolution', label: 'Template Resolution', icon: FileText, href: '/minutes-preparation/template-resolution' },
-    { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileText, href: '/minutes-preparation/templates' },
-    { id: 'directors', label: 'Directors', icon: FileText, href: '/minutes-preparation/directors' },
-    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-  ];
+  const navigationItems = getMinutesNavItems();
 
   return (
     <ProductDashboardLayout productName="Generate Minutes" productRoute="/minutes-preparation" navigationItems={navigationItems}>

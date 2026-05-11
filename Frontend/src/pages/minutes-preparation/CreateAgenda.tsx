@@ -12,6 +12,8 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 const CreateAgenda = () => {
     const [files, setFiles] = useState<File[]>([]);
@@ -21,6 +23,7 @@ const CreateAgenda = () => {
     const [meetingType, setMeetingType] = useState('Board Meeting');
     const [generatedAgenda, setGeneratedAgenda] = useState<string | null>(null);
     const { toast } = useToast();
+    const { user } = useAuth();
 
     // Chatbot state
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', text: string }[]>([]);
@@ -28,6 +31,11 @@ const CreateAgenda = () => {
     const [isAsking, setIsAsking] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Use authenticated user email instead of hardcoded value
+    const userEmail = user?.email || 'guest@aegis.local';
+
+    const navigationItems = getMinutesNavItems('create-agenda');
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -64,21 +72,6 @@ const CreateAgenda = () => {
         }
     };
 
-
-    const navigationItems = [
-        { id: 'home', label: 'Home', icon: Home, href: '/' },
-        { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-        { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda', isActive: true },
-        { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
-        { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-        { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
-        { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
-        { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-        { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
-        { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-        { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-    ];
-
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const newFiles = Array.from(e.target.files);
@@ -114,41 +107,45 @@ const CreateAgenda = () => {
             });
         }, 500);
 
+        // Create a unique session for this agenda generation
+        const sessionId = `agenda_${Date.now()}`;
+
         try {
             // Index files for the chatbot
             for (const file of files) {
                 const formData = new FormData();
                 formData.append('file', file);
+                formData.append('session_id', sessionId); // Attach to session
+                
                 await fetch('/api/minutes-chatbot/upload', {
                     method: 'POST',
-                    headers: { 'X-User-Email': 'admin@adani.com' }, // Default for now
+                    headers: { 'X-User-Email': userEmail },
                     body: formData
                 });
             }
 
-            // Logic for AI generation
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Logic for AI generation using the chatbot backend
+            const prompt = `Generate a formal meeting agenda for a ${meetingType} regarding "${agendaName}". 
+Base the agenda on the uploaded documents. Ensure the agenda includes standard corporate items (e.g., Leave of Absence, Confirmation of Previous Minutes, Any Other Business) as well as specific discussion points extracted from the documents. Format the output cleanly.`;
 
-            setGeneratedAgenda(`
-AGENDA FOR THE ${meetingType.toUpperCase()}
-Subject: ${agendaName}
+            const queryRes = await fetch('/api/minutes-chatbot/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Email': userEmail
+                },
+                body: JSON.stringify({
+                    query: prompt,
+                    session_id: sessionId
+                })
+            });
 
-1. LEAVE OF ABSENCE
-To grant leave of absence to directors who have expressed their inability to attend.
+            if (!queryRes.ok) {
+                throw new Error("Failed to generate agenda from AI backend");
+            }
 
-2. CONFIRMATION OF PREVIOUS MINUTES
-To confirm the minutes of the previous meeting.
-
-3. REVIEW OF SUPPORTING DOCUMENTS
-${files.map(f => `- Analysis of ${f.name}`).join('\n')}
-
-4. KEY PROPOSALS
-- Proposal A based on uploaded data
-- Budget allocation review
-
-5. ANY OTHER BUSINESS
-With the permission of the Chair.
-      `);
+            const queryData = await queryRes.json();
+            setGeneratedAgenda(queryData.answer);
 
             setProgress(100);
             toast({

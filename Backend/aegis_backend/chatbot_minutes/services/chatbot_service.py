@@ -14,19 +14,23 @@ class ChatbotService:
         self.embedding_service = EmbeddingService()
         self.chat_history_service = ChatHistoryService()
         
-        # Initialize LLM client
-        self.use_groq = settings.GROQ_API_KEY is not None
-        if self.use_groq:
+        # Initialize LLM clients
+        self.groq_client = None
+        self.azure_client = None
+        
+        if settings.GROQ_API_KEY and settings.GROQ_API_KEY != "your-groq-api-key":
             self.groq_client = groq.Groq(api_key=settings.GROQ_API_KEY)
-            logger.info(f"Using Groq LLM: {settings.GROQ_MODEL}")
-        elif settings.AZURE_OPENAI_API_KEY:
+            logger.info(f"Groq LLM initialized: {settings.GROQ_MODEL}")
+            
+        if settings.AZURE_OPENAI_API_KEY:
             self.azure_client = AzureOpenAI(
                 azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
                 api_key=settings.AZURE_OPENAI_API_KEY,
                 api_version=settings.AZURE_OPENAI_API_VERSION
             )
-            logger.info("Using Azure OpenAI LLM")
-        else:
+            logger.info("Azure OpenAI LLM initialized")
+            
+        if not self.groq_client and not self.azure_client:
             logger.warning("No LLM API key configured for ChatbotService")
 
     def process_query(
@@ -113,7 +117,29 @@ Always cite source filenames."""
         messages.append({"role": "user", "content": user_payload})
 
         try:
-            if self.use_groq:
+            # Logic: Try Azure first, fallback to Groq if Azure fails or is unavailable
+            if self.azure_client:
+                try:
+                    response = self.azure_client.chat.completions.create(
+                        model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+                        messages=messages,
+                        temperature=0.4,
+                        max_tokens=2048
+                    )
+                    return response.choices[0].message.content
+                except Exception as azure_err:
+                    logger.warning(f"Azure OpenAI call failed: {azure_err}. Attempting Groq fallback...")
+                    if self.groq_client:
+                        response = self.groq_client.chat.completions.create(
+                            model=settings.GROQ_MODEL,
+                            messages=messages,
+                            temperature=0.4,
+                            max_tokens=2048
+                        )
+                        return response.choices[0].message.content
+                    else:
+                        raise azure_err
+            elif self.groq_client:
                 response = self.groq_client.chat.completions.create(
                     model=settings.GROQ_MODEL,
                     messages=messages,
@@ -121,14 +147,8 @@ Always cite source filenames."""
                     max_tokens=2048
                 )
                 return response.choices[0].message.content
-            elif hasattr(self, 'azure_client'):
-                # Basic fallback for Azure
-                return "Azure LLM history support coming soon."
             else:
-                return "LLM service is not configured."
+                return "LLM service is not configured. Please check your API keys."
         except Exception as e:
             logger.error(f"Error generating answer: {str(e)}")
-            return f"Error: {str(e)}"
-        except Exception as e:
-            logger.error(f"Error generating answer: {str(e)}")
-            return "I apologize, but I encountered an error while generating the answer."
+            return f"I apologize, but I encountered an error while generating the answer: {str(e)}"

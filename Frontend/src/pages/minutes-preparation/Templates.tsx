@@ -1,24 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload, Download, Plus, Edit, Trash, Eye, Home, FileSpreadsheet, History, BookOpen, Users, MessageSquare } from 'lucide-react';
+import { FileText, Upload, Download, Plus, Trash, Eye, FileSpreadsheet, History } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Link } from 'react-router-dom';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { useToast } from "@/components/ui/use-toast";
 
 const Templates = () => {
-  const navigationItems = [
-    { id: 'home', label: 'Home', icon: Home, href: '/' },
-    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
-    { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
-    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-    { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
-    { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
-    { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates', isActive: true },
-    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-  ];
+  const navigationItems = getMinutesNavItems('templates');
+  const { toast } = useToast();
 
   const [templates, setTemplates] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -190,7 +182,7 @@ const Templates = () => {
                     if (res.ok) {
                       fetchTemplates();
                     } else {
-                      alert('Upload failed');
+                      toast({ title: "Error", description: "Upload failed", variant: "destructive" });
                     }
                   } catch (err) {
                     console.error('Upload error', err);

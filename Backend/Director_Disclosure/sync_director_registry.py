@@ -6,6 +6,8 @@ from psycopg2 import extras
 from dotenv import load_dotenv
 import time
 import urllib3
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # Suppress SSL warnings due to corporate proxy SSL interception
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -27,6 +29,14 @@ DB_CONFIG = {
 # API Configuration
 API_KEY = "tgNuM80eYUxtV0TX!Aa3furfuUcg"
 API_URL = "https://www.falconebiz.com/api/director_details"
+PROGRESS_FILE = os.path.join(os.path.dirname(__file__), "sync_progress_din.json")
+
+def report_progress(current, total, status="Syncing..."):
+    try:
+        with open(PROGRESS_FILE, "w") as f:
+            json.dump({"current": current, "total": total, "status": status, "timestamp": time.time()}, f)
+    except:
+        pass
 
 def get_connection():
     return psycopg2.connect(**DB_CONFIG)
@@ -62,22 +72,39 @@ def initialize_schema():
                 END $$;
             """)
         
-        # 2. Create external associations table
+        # 2. Create external associations table (Standardized to external_board_members for UI)
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS directors_master.external_associations (
+            CREATE TABLE IF NOT EXISTS directors_master.external_board_members (
                 id SERIAL PRIMARY KEY,
                 din VARCHAR(20) REFERENCES directors_master.directors(din) ON DELETE CASCADE,
                 cin VARCHAR(30),
                 company_name TEXT,
                 designation VARCHAR(100),
                 appointment_date DATE,
+                status VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(din, cin)
             );
         """)
         
+        # 3. Migrate legacy data if exists
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'directors_master' AND TABLE_NAME = 'external_associations') THEN
+                    INSERT INTO directors_master.external_board_members (din, cin, company_name, designation, appointment_date)
+                    SELECT din, cin, company_name, designation, appointment_date 
+                    FROM directors_master.external_associations
+                    ON CONFLICT (din, cin) DO NOTHING;
+                    
+                    -- Optional: Drop the old table after migration
+                    -- DROP TABLE directors_master.external_associations;
+                END IF;
+            END $$;
+        """)
+        
         conn.commit()
-        print("Schema update complete.")
+        print("Schema update and data migration complete.")
     except Exception as e:
         conn.rollback()
         print(f"Error during schema update: {e}")
@@ -118,110 +145,218 @@ def fetch_director_registry(din):
         print(f"Exception for DIN {din}: {e}")
         return None
 
-def sync_all_directors():
-    """Main loop to sync all directors from DB with the API."""
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats):
+    """Worker function for threading: Syncs a single director."""
+    din = director['din']
+    name = director['name']
     
+    api_data = fetch_director_registry(din)
+    if not api_data:
+        return False
+        
+    # Safety Check: Ensure api_data is a dictionary
+    if isinstance(api_data, list):
+        if len(api_data) > 0:
+            api_data = api_data[0]
+        else:
+            return False
+            
+    if not isinstance(api_data, dict):
+        return False
+            
+    conn = get_connection()
+    cur = conn.cursor()
     try:
-        # ─── 0. Fetch the Adani Universe (Only sync associations for these CINs) ───
-        cur.execute("SELECT cin FROM directors_data.companies")
-        adani_universe = {r['cin'] for r in cur.fetchall()}
-        print(f"  [UNIVERSE] Tracking associations for {len(adani_universe)} Adani companies.\n")
-
-        # Get all directors who need sync
-        cur.execute("SELECT din, name FROM directors_master.directors ORDER BY din")
-        directors = cur.fetchall()
+        # 1. Upsert Master Record
+        indian_raw = (api_data.get('indian') or "").upper()
+        nationality = 'Indian' if indian_raw in ['Y', 'YES'] else 'External'
         
-        total = len(directors)
-        print(f"Found {total} directors to sync.")
+        cur.execute("""
+            INSERT INTO directors_master.directors 
+            (din, name, din_status, gender, nationality, dir3_kyc, approve_date, last_api_sync)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (din) DO UPDATE SET
+                name = EXCLUDED.name,
+                din_status = EXCLUDED.din_status,
+                gender = EXCLUDED.gender,
+                nationality = EXCLUDED.nationality,
+                dir3_kyc = EXCLUDED.dir3_kyc,
+                approve_date = EXCLUDED.approve_date,
+                last_api_sync = CURRENT_TIMESTAMP
+        """, (
+            din,
+            api_data.get('name') or name,
+            api_data.get('din_status'),
+            api_data.get('gender'),
+            nationality,
+            api_data.get('dir3_kyc'),
+            api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None
+        ))
         
-        for i, director in enumerate(directors, 1):
-            din = director['din']
-            name = director['name']
-            
-            print(f"[{i}/{total}] Syncing: {name} (DIN: {din})...", end="\r")
-            
-            api_data = fetch_director_registry(din)
-            if not api_data:
-                continue
-            
-            # Safety Check: Ensure api_data is a dictionary
-            if isinstance(api_data, list):
-                if len(api_data) > 0:
-                    api_data = api_data[0] # Grab first object if it's a list
-                else:
-                    continue
-            
-            if not isinstance(api_data, dict):
-                print(f"Unexpected data format for DIN {din}: {type(api_data)}")
-                continue
-                
-            # 1. Update Master Record
-            indian_raw = (api_data.get('indian') or "").upper()
-            nationality = 'Indian' if indian_raw in ['Y', 'YES'] else 'External'
+        # 2. Sync Associations
+        associations = api_data.get('association', [])
+        for assoc in associations:
+            cin = assoc.get('cin')
+            com_name = assoc.get('com_name', 'Unknown')
+            if not cin or cin == 'N/A': continue
             
             cur.execute("""
-                UPDATE directors_master.directors
-                SET din_status = %s,
-                    gender = %s,
-                    nationality = %s,
-                    dir3_kyc = %s,
-                    approve_date = %s,
-                    last_api_sync = CURRENT_TIMESTAMP
-                WHERE din = %s
+                INSERT INTO directors_master.external_board_members 
+                (din, cin, company_name, designation, appointment_date, status)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (din, cin) DO UPDATE SET
+                    company_name = EXCLUDED.company_name,
+                    designation = EXCLUDED.designation,
+                    appointment_date = EXCLUDED.appointment_date,
+                    status = EXCLUDED.status
             """, (
-                api_data.get('din_status'),
-                api_data.get('gender'),
-                nationality,
-                api_data.get('dir3_kyc'),
-                api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None,
-                din
+                din, cin, com_name, assoc.get('designation'),
+                assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
+                assoc.get('status', 'Active')
             ))
-            
-            # 2. Sync Associations
-            associations = api_data.get('association', [])
-            for assoc in associations:
-                cin = assoc.get('cin')
-                if not cin or cin == 'N/A': continue
-                
-                # Filter: Only allow companies from our Adani universe
-                if cin not in adani_universe:
-                    continue
-                
-                cur.execute("""
-                    INSERT INTO directors_master.external_associations 
-                    (din, cin, company_name, designation, appointment_date)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (din, cin) DO UPDATE SET
-                        company_name = EXCLUDED.company_name,
-                        designation = EXCLUDED.designation,
-                        appointment_date = EXCLUDED.appointment_date
-                """, (
-                    din,
-                    cin,
-                    assoc.get('com_name'),
-                    assoc.get('designation'),
-                    assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None
-                ))
-            
-            # Commit every 10 records to avoid long-running transaction loss
-            if i % 10 == 0:
-                conn.commit()
-                
-        conn.commit()
-        print(f"\nSuccessfully synced {total} directors with Registry data.")
         
+        conn.commit()
+        with stats_lock:
+            stats['count'] += 1
+            report_progress(stats['count'], total, f"Syncing {name}")
+            print(f"  [{stats['count']}/{total}] Synced: {name} (DIN: {din})", end="\r")
+        return True
     except Exception as e:
         conn.rollback()
-        print(f"\nCritical error during sync: {e}")
+        print(f"\nError syncing DIN {din}: {e}")
+        return False
     finally:
         cur.close()
         conn.close()
 
+def sync_all_directors(max_workers=15):
+    """Multi-threaded sync for all directors."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+    
+    try:
+        # 0. Fetch the Adani Universe
+        cur.execute("SELECT cin FROM directors_data.companies")
+        adani_universe = {r['cin'] for r in cur.fetchall()}
+        
+        # Get all directors
+        cur.execute("SELECT din, name FROM directors_master.directors ORDER BY din")
+        directors = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        total = len(directors)
+        print(f"\n[START] Starting Multi-threaded Sync for {total} directors (Workers: {max_workers})...\n")
+        
+        stats = {'count': 0}
+        stats_lock = threading.Lock()
+        
+        # Use a single session with proxy pre-configured
+        session = requests.Session()
+        session.proxies = {
+            "http": "http://cloudproxy.adani.com:8080",
+            "https": "http://cloudproxy.adani.com:8080"
+        }
+        session.verify = False
+        
+        start_time = time.time()
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(sync_worker, d, adani_universe, session, i, total, stats_lock, stats)
+                for i, d in enumerate(directors, 1)
+            ]
+            for future in as_completed(futures):
+                future.result() # Wait for all to complete
+                
+        elapsed = time.time() - start_time
+        report_progress(total, total, "Complete")
+        print(f"\n\n[SUCCESS] Successfully synced {total} directors in {elapsed:.1f} seconds.")
+        
+    except Exception as e:
+        print(f"\nCritical error during batch sync: {e}")
+
 if __name__ == "__main__":
+    import sys
     # Ensure tables are ready
     initialize_schema()
     
-    # Run the sync
-    sync_all_directors()
+    if len(sys.argv) > 1:
+        din = sys.argv[1]
+        if din == "--all":
+            sync_all_directors()
+        else:
+            # Sync single director
+            # Need a single-director sync wrapper or just call the logic for one
+            # Refactoring slightly for single sync
+            print(f"Syncing single director: {din}")
+            conn = get_connection()
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            try:
+                # Get the director name first
+                cur.execute("SELECT name FROM directors_master.directors WHERE din = %s", (din,))
+                res = cur.fetchone()
+                name = res['name'] if res else "Unknown"
+                
+                # Use existing logic flow
+                cur.execute("SELECT cin FROM directors_data.companies")
+                adani_universe = {r['cin'] for r in cur.fetchall()}
+                
+                api_data = fetch_director_registry(din)
+                if api_data:
+                    if isinstance(api_data, list) and len(api_data) > 0: api_data = api_data[0]
+                    if isinstance(api_data, dict):
+                        # 1. Update Master
+                        indian_raw = (api_data.get('indian') or "").upper()
+                        nationality = 'Indian' if indian_raw in ['Y', 'YES'] else 'External'
+                        # 1. Upsert Master
+                        cur.execute("""
+                            INSERT INTO directors_master.directors 
+                            (din, name, din_status, gender, nationality, dir3_kyc, approve_date, last_api_sync)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                            ON CONFLICT (din) DO UPDATE SET
+                                name = EXCLUDED.name,
+                                din_status = EXCLUDED.din_status,
+                                gender = EXCLUDED.gender,
+                                nationality = EXCLUDED.nationality,
+                                dir3_kyc = EXCLUDED.dir3_kyc,
+                                approve_date = EXCLUDED.approve_date,
+                                last_api_sync = CURRENT_TIMESTAMP
+                        """, (
+                            din,
+                            api_data.get('name') or name,
+                            api_data.get('din_status'),
+                            api_data.get('gender'),
+                            nationality,
+                            api_data.get('dir3_kyc'),
+                            api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None
+                        ))
+                        
+                        # 2. Sync Associations
+                        associations = api_data.get('association', [])
+                        for assoc in associations:
+                            cin = assoc.get('cin')
+                            com_name = assoc.get('com_name', 'Unknown')
+                            if not cin or cin == 'N/A': continue
+                            is_adani = "ADANI" in com_name.upper()
+                            
+                            cur.execute("""
+                                INSERT INTO directors_master.external_board_members 
+                                (din, cin, company_name, designation, appointment_date, status)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (din, cin) DO UPDATE SET
+                                    company_name = EXCLUDED.company_name,
+                                    designation = EXCLUDED.designation,
+                                    appointment_date = EXCLUDED.appointment_date,
+                                    status = EXCLUDED.status
+                            """, (din, cin, com_name, assoc.get('designation'),
+                                assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
+                                assoc.get('status', 'Active')))
+                        conn.commit()
+                        print(f"Successfully synced DIN {din}")
+            finally:
+                cur.close()
+                conn.close()
+    else:
+        # Default behavior: sync all
+        sync_all_directors()

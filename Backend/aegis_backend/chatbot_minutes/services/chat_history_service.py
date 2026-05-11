@@ -38,8 +38,26 @@ class ChatHistoryService:
         ).order_by(ChatHistory.timestamp.asc()).limit(limit).all()
 
     @staticmethod
-    def get_user_sessions(db: Session, user_id: int) -> List[str]:
+    def get_user_sessions(db: Session, user_id: int) -> List[dict]:
         sessions = db.query(ChatHistory.session_id).filter(
             ChatHistory.user_id == user_id
         ).distinct().all()
-        return [session[0] for session in sessions]
+        
+        results = []
+        for (session_id,) in sessions:
+            first_msg = db.query(ChatHistory).filter(
+                ChatHistory.user_id == user_id,
+                ChatHistory.session_id == session_id,
+                ChatHistory.role == 'user'
+            ).order_by(ChatHistory.timestamp.asc()).first()
+            
+            title = session_id
+            if first_msg and first_msg.message:
+                title = first_msg.message[:30] + ("..." if len(first_msg.message) > 30 else "")
+                
+            results.append({
+                "id": session_id,
+                "title": title
+            })
+            
+        return results

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,22 +11,12 @@ import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { Home, FileSpreadsheet, History } from 'lucide-react';
 // Import template structures
 import templateStructures from '@/template_structures.json';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { useToast } from "@/components/ui/use-toast";
 
 const TemplateRenderer = () => {
-  // Define navigation items for this product
-  const navigationItems = [
-    { id: 'home', label: 'Home', icon: Home, href: '/' },
-    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: FileText, href: '/minutes-preparation/create-agenda' },
-    { id: 'compliances', label: 'Secretarial Compliances', icon: FileText, href: '/minutes-preparation/compliances' },
-    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-    { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
-    { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
-    { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer', isActive: true },
-    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-  ];
+  const navigationItems = getMinutesNavItems('renderer');
+  const { toast } = useToast();
 
 
   // State for form data
@@ -256,14 +247,14 @@ const TemplateRenderer = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        alert('Minutes document generated successfully!');
+        toast({ title: "Success", description: "Minutes document generated successfully!" });
       } else {
         const error = await response.json();
-        alert(`Error generating minutes document: ${error.detail}`);
+        toast({ title: "Error", description: `Error generating minutes document: ${error.detail}`, variant: "destructive" });
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error generating minutes document.');
+      toast({ title: "Error", description: "Error generating minutes document.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -281,10 +272,10 @@ const TemplateRenderer = () => {
     }
   };
 
-  // Load template content when component mounts or template/form data changes
+  // Load template content when template selection changes
   useEffect(() => {
     loadTemplateContent();
-  }, [formData.template, formData]);
+  }, [formData.template]);
 
   // Get form value with proper typing
   const getFormValue = (fieldName: string): string => {
@@ -335,7 +326,7 @@ const TemplateRenderer = () => {
               <p key={index} className="mb-2">
                 {element.segments.map((segment: any, segIndex: number) => {
                   if (segment.is_placeholder) {
-                    const fieldName = placeholderToFieldMap[segment.text] || segment.text.replace(/[\[\]]/g, '');
+                    const fieldName = placeholderToFieldMap[segment.text] || segment.text.replace(/[[\]]/g, '');
 
                     // Special handling for different types of placeholders
                     if (segment.text === '[from MCA]') {

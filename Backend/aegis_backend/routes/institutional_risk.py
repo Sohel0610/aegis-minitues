@@ -41,7 +41,7 @@ def get_risk_summary():
         try:
             cur.execute("""
                 SELECT COUNT(DISTINCT cin) AS total
-                FROM directors_master.external_associations
+                FROM directors_master.external_board_members
                 WHERE cin IS NOT NULL AND cin != ''
             """)
             total = cur.fetchone()["total"]
@@ -178,7 +178,7 @@ def get_red_flags():
             SELECT c.cin, c.name, c.name as company_name, c.status, c.state, c.last_agm, c.last_bal_sheet,
                    COUNT(ea.din) AS director_count
             FROM directors_data.companies c
-            JOIN directors_master.external_associations ea ON c.cin = ea.cin
+            JOIN directors_master.external_board_members ea ON c.cin = ea.cin
             WHERE UPPER(COALESCE(c.status, '')) NOT IN ('ACTIVE', '')
             GROUP BY c.cin, c.name, c.status, c.state, c.last_agm, c.last_bal_sheet
             ORDER BY director_count DESC
@@ -192,7 +192,7 @@ def get_red_flags():
                    COUNT(ea.din) AS director_count,
                    c.last_agm, c.last_bal_sheet
             FROM directors_data.companies c
-            LEFT JOIN directors_master.external_associations ea ON c.cin = ea.cin
+            LEFT JOIN directors_master.external_board_members ea ON c.cin = ea.cin
             WHERE c.last_agm IS NULL OR c.last_agm = '' OR c.last_agm = 'Not Available'
             GROUP BY c.cin, c.name, c.status, c.state, c.last_agm, c.last_bal_sheet
             ORDER BY director_count DESC
@@ -300,7 +300,7 @@ def get_entity_pedigree(cin: str):
             SELECT ea.din, ea.designation, ea.appointment_date, 
                    COALESCE(d.name, ea.company_name) AS director_name,
                    d.din_status, d.gender
-            FROM directors_master.external_associations ea
+            FROM directors_master.external_board_members ea
             LEFT JOIN directors_master.directors d ON ea.din = d.din
             WHERE ea.cin = %s
             ORDER BY ea.appointment_date
@@ -352,7 +352,7 @@ def get_board_interlock():
             WHERE
                 -- Only on CINs where at least one Adani group director also sits
                 EXISTS (
-                    SELECT 1 FROM directors_master.external_associations ea
+                    SELECT 1 FROM directors_master.external_board_members ea
                     WHERE ea.cin = ebm.cin
                 )
                 -- Exclude people who ARE Adani group directors

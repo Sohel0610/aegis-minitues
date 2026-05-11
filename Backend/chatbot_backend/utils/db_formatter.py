@@ -5,11 +5,18 @@ Utilities to convert database-specific results to a common format for LLM proces
 from typing import List, Dict, Any
 from datetime import datetime
 
+def _date_to_string(value) -> str:
+    if not value:
+        return "Unknown"
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
+
 def format_daily_log(notification) -> Dict[str, Any]:
     """Format DailyLog notification to common format"""
     return {
         "entity_name": notification.EntityName or "Unknown",
-        "notice_date": notification.Date.strftime("%Y-%m-%d") if notification.Date else "Unknown",
+        "notice_date": _date_to_string(notification.Date),
         "notice_type": notification.Nature or "General Notification",
         "title": f"{notification.EntityName} - {notification.Nature}" if notification.EntityName and notification.Nature else "Notification",
         "summary": notification.Summary or "No summary available",
@@ -22,7 +29,7 @@ def format_bse_notification(notification) -> Dict[str, Any]:
     """Format BSE notification to common format"""
     return {
         "entity_name": notification.EntityName or "Unknown",
-        "notice_date": notification.Date.strftime("%Y-%m-%d") if notification.Date else "Unknown",
+        "notice_date": _date_to_string(notification.Date),
         "notice_type": notification.Nature or "General Notification",
         "title": f"{notification.EntityName} - {notification.Nature}" if notification.EntityName and notification.Nature else "Notification",
         "summary": notification.Summary or "No summary available",
@@ -48,7 +55,7 @@ def format_rbi_notification(notification) -> Dict[str, Any]:
     """Format RBI notification to common format"""
     return {
         "entity_name": "RBI Monetary Policy Update",
-        "notice_date": notification.run_date.strftime("%Y-%m-%d") if notification.run_date else "Unknown",
+        "notice_date": _date_to_string(notification.run_date),
         "notice_type": "Monetary Policy Update",
         "title": f"RBI Update - {notification.run_date}" if notification.run_date else "RBI Monetary Policy Update",
         "summary": notification.summary or "No summary available",
@@ -71,9 +78,9 @@ def convert_to_common_format(results: List[Any], database: str) -> List[Dict[str
         for notification in results:
             formatted_results.append(format_rbi_notification(notification))
     else:
-        # For unified database, format DailyLog entries
+        # For unified database, format each row by its actual source model.
         for notification in results:
-            formatted_results.append(format_daily_log(notification))
+            formatted_results.append(format_mixed_notification(notification))
     
     return formatted_results
 

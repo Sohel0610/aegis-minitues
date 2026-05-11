@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Users, Search, Loader2, AlertCircle, Plus, Edit, Trash2, Eye } from "lucide-react";
+import { Users, Search, Loader2, AlertCircle, Plus, Edit, Trash2, Eye, Download, FileArchive, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,6 @@ interface DirectorProfile {
   experience: string | null;
 }
 
-// Add interface for upload status
 interface UploadStatus {
   type: 'loading' | 'success' | 'error';
   message: string;
@@ -48,6 +47,7 @@ interface Director {
   din: string;
   pan?: string;
   din_status?: string;
+  is_kmp?: boolean;
   created_at: string;
 }
 
@@ -81,6 +81,7 @@ const DirectorsDisclosureMasterData = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [isFamilyInfoModalOpen, setIsFamilyInfoModalOpen] = useState<boolean>(false);
   const [selectedDirectorName, setSelectedDirectorName] = useState<string>("");
+  const [selectedDirectorDin, setSelectedDirectorDin] = useState<string>("");
 
   // Add state for director profile modal
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
@@ -110,6 +111,8 @@ const DirectorsDisclosureMasterData = () => {
     experience: ''
   });
   const [profileSaveLoading, setProfileSaveLoading] = useState<boolean>(false);
+  const [exportLoading, setExportLoading] = useState<string | null>(null); // 'bulk' or DIN
+  const [selectedDins, setSelectedDins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchDirectors();
@@ -124,6 +127,8 @@ const DirectorsDisclosureMasterData = () => {
           director.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           director.din.includes(searchTerm)
       );
+      // Sort alphabetically A-Z
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
       setFilteredDirectors(filtered);
     }
   }, [searchTerm, directors]);
@@ -139,8 +144,11 @@ const DirectorsDisclosureMasterData = () => {
       }
 
       const data = await response.json();
-      setDirectors(data.data || []);
-      setFilteredDirectors(data.data || []);
+      const fetchedDirectors = data.data || [];
+      // Initial sort A-Z
+      fetchedDirectors.sort((a: Director, b: Director) => a.name.localeCompare(b.name));
+      setDirectors(fetchedDirectors);
+      setFilteredDirectors(fetchedDirectors);
     } catch (err) {
       console.error('Error fetching directors:', err);
       setError(err instanceof Error ? err.message : 'Failed to load directors');
@@ -235,8 +243,9 @@ const DirectorsDisclosureMasterData = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleViewFamilyInfo = (directorName: string) => {
-    setSelectedDirectorName(directorName);
+  const handleViewFamilyInfo = (director: Director) => {
+    setSelectedDirectorName(director.name);
+    setSelectedDirectorDin(director.din);
     setIsFamilyInfoModalOpen(true);
   };
 
@@ -356,7 +365,102 @@ const DirectorsDisclosureMasterData = () => {
         experience: selectedDirectorProfile.experience || ''
       });
     }
-    setIsEditingProfile(false);
+  setIsEditingProfile(false);
+  };
+  
+  // Add function to handle single director Excel export
+  const handleExportSingle = async (din: string, name: string) => {
+    try {
+      setExportLoading(din);
+      const response = await fetch(`/api/export/director/${din}`);
+      if (!response.ok) throw new Error('Export failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Director_Disclosure_${din}_${name.replace(/\s+/g, '_')}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to generate Excel report');
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  // Add function to handle bulk ZIP export
+  const handleExportBulk = async () => {
+    try {
+      setExportLoading('bulk');
+      const response = await fetch('/api/export/bulk-zip');
+      if (!response.ok) throw new Error('Bulk export failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().split('T')[0];
+      a.download = `Aegis_Directors_Registry_${timestamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Bulk export error:', err);
+      alert('Failed to generate ZIP archive');
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedDins.size === 0) return;
+    try {
+      setExportLoading('selected');
+      const response = await fetch('/api/export/bulk-zip-selected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dins: Array.from(selectedDins) })
+      });
+      if (!response.ok) throw new Error('Bulk export failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().split('T')[0];
+      a.download = `Aegis_Selected_Registry_${timestamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Selected export error:', err);
+      alert('Failed to generate ZIP archive for selection');
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  const toggleSelect = (din: string) => {
+    const newSelected = new Set(selectedDins);
+    if (newSelected.has(din)) {
+      newSelected.delete(din);
+    } else {
+      newSelected.add(din);
+    }
+    setSelectedDins(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDins.size === filteredDirectors.length && filteredDirectors.length > 0) {
+      setSelectedDins(new Set());
+    } else {
+      setSelectedDins(new Set(filteredDirectors.map(d => d.din)));
+    }
   };
 
   // Add function to load director image from server
@@ -614,6 +718,34 @@ const DirectorsDisclosureMasterData = () => {
                 />
               </div>
               <Button
+                onClick={handleExportBulk}
+                disabled={exportLoading === 'bulk'}
+                variant="outline"
+                className="h-14 px-8 rounded-2xl border-[#75479C] text-[#75479C] hover:bg-purple-50 font-bold flex gap-3 shadow-md transition-all whitespace-nowrap"
+                title="Download All 194 Directors"
+              >
+                {exportLoading === 'bulk' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <FileArchive size={20} />
+                )}
+                Export All (ZIP)
+              </Button>
+              {selectedDins.size > 0 && (
+                <Button
+                  onClick={handleExportSelected}
+                  disabled={exportLoading === 'selected'}
+                  className="h-14 px-8 rounded-2xl bg-white border-2 border-[#75479C] text-[#75479C] hover:bg-purple-50 font-black flex gap-3 shadow-lg shadow-purple-100 transition-all whitespace-nowrap animate-in fade-in zoom-in duration-300"
+                >
+                  {exportLoading === 'selected' ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Download size={20} />
+                  )}
+                  Export Selected ({selectedDins.size})
+                </Button>
+              )}
+              <Button
                 onClick={() => {
                   setFormData({ name: "", din: "", pan: "" });
                   setIsAddDialogOpen(true);
@@ -660,7 +792,15 @@ const DirectorsDisclosureMasterData = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50 active:bg-gray-50">
-                    <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-500 uppercase tracking-widest w-12">#</TableHead>
+                    <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-500 uppercase tracking-widest w-12">
+                      <input 
+                        type="checkbox" 
+                        className="h-4 w-4 rounded border-gray-300 text-[#75479C] focus:ring-[#75479C] cursor-pointer"
+                        checked={selectedDins.size === filteredDirectors.length && filteredDirectors.length > 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                    <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest w-12">#</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest">Director name</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">DIN</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">PAN</TableHead>
@@ -672,13 +812,21 @@ const DirectorsDisclosureMasterData = () => {
                 <TableBody>
                   {filteredDirectors.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8" style={{ color: '#666666' }}>
+                      <TableCell colSpan={8} className="text-center py-8" style={{ color: '#666666' }}>
                         {searchTerm ? 'No directors found matching your search' : 'No directors found'}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredDirectors.map((director, index) => (
                       <TableRow key={director.id} className="hover:bg-gray-50">
+                        <TableCell className="pl-8">
+                          <input 
+                            type="checkbox" 
+                            className="h-4 w-4 rounded border-gray-300 text-[#75479C] focus:ring-[#75479C] cursor-pointer"
+                            checked={selectedDins.has(director.din)}
+                            onChange={() => toggleSelect(director.din)}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium" style={{ color: '#666666' }}>
                           {index + 1}
                         </TableCell>
@@ -735,6 +883,21 @@ const DirectorsDisclosureMasterData = () => {
                             <Button
                               size="sm"
                               variant="outline"
+                              onClick={() => handleExportSingle(director.din, director.name)}
+                              className="gap-1"
+                              style={{ borderColor: '#0B74B0', color: '#0B74B0' }}
+                              disabled={exportLoading === director.din}
+                            >
+                              {exportLoading === director.din ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <FileText className="h-3 w-3" />
+                              )}
+                              Excel
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => handleViewProfile(director.din)}
                               className="gap-1"
                               style={{ borderColor: '#75479C', color: '#75479C' }}
@@ -746,7 +909,7 @@ const DirectorsDisclosureMasterData = () => {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleViewFamilyInfo(director.name)}
+                              onClick={() => handleViewFamilyInfo(director)}
                               className="gap-1"
                               style={{ borderColor: '#75479C', color: '#75479C' }}
                             >
@@ -1127,7 +1290,7 @@ const DirectorsDisclosureMasterData = () => {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="mt-4 border-t pt-4">
             <Button
               variant="outline"
               onClick={() => setIsProfileModalOpen(false)}
@@ -1208,10 +1371,11 @@ const DirectorsDisclosureMasterData = () => {
       </Dialog>
 
       {/* Family Info Modal */}
-      <FamilyInfoModal
-        directorName={selectedDirectorName}
-        isOpen={isFamilyInfoModalOpen}
-        onClose={() => setIsFamilyInfoModalOpen(false)}
+      <FamilyInfoModal 
+        directorName={selectedDirectorName} 
+        din={selectedDirectorDin}
+        isOpen={isFamilyInfoModalOpen} 
+        onClose={() => setIsFamilyInfoModalOpen(false)} 
       />
       <footer className="mt-20 pt-10 border-t border-gray-100 text-center opacity-30">
         <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Aegis Institutional Risk & Compliance Terminal</span>

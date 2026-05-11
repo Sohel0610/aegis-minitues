@@ -26,6 +26,8 @@ interface Association {
   company_name: string;
   designation: string;
   appointment_date: string;
+  is_group: boolean;
+  status?: string;
 }
 
 interface Director {
@@ -263,7 +265,27 @@ const DirectorRegistryIntelligence = () => {
                       <div key={a.cin} className="p-6 hover:bg-gray-50/80 transition-colors group relative overflow-hidden">
                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-transparent group-hover:bg-[#0B74B0] transition-all" />
                          <div className="flex justify-between items-start mb-2">
-                            <h5 className="font-bold text-gray-900 text-sm group-hover:text-[#0B74B0] transition-colors">{a.company_name}</h5>
+                            <div className="flex flex-col">
+                               <h5 className="font-bold text-gray-900 text-sm group-hover:text-[#0B74B0] transition-colors">
+                                  {a.company_name}
+                               </h5>
+                               <div className="flex flex-wrap gap-2 mt-1.5">
+                                 {a.is_group && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 border border-amber-200 w-fit">
+                                       Group Entity
+                                    </span>
+                                 )}
+                                 {a.status && !['active', 'active (for e-filing)'].includes(a.status.toLowerCase().trim()) && (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border w-fit ${
+                                       a.status.toLowerCase().trim() === 'amalgamated' ? 'bg-blue-100 text-blue-700 border-blue-200' : 
+                                       a.status.toLowerCase().includes('strike') || a.status.toLowerCase().includes('struck') ? 'bg-red-100 text-red-700 border-red-200' :
+                                       'bg-gray-100 text-gray-600 border-gray-200'
+                                    }`}>
+                                       {a.status}
+                                    </span>
+                                 )}
+                               </div>
+                            </div>
                             <span className="text-[10px] font-bold text-gray-400">Est. {a.appointment_date}</span>
                          </div>
                          <div className="flex items-center justify-between">

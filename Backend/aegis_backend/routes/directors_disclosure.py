@@ -51,6 +51,7 @@ class DirectorMasterResponse(BaseModel):
     pan: Optional[str] = None
     din_status: Optional[str] = None
     gender: Optional[str] = None
+    is_kmp: bool = False
     created_at: str
 
 class DirectorsMasterResponse(BaseModel):
@@ -65,7 +66,9 @@ class DisclosureResponse(BaseModel):
     din_status: Optional[str] = None
     disclosure_date: str
     disclosure_type: str
+    is_kmp: bool = False
     file_path: str
+    all_files: Optional[List[Dict[str, Any]]] = None
 
 class DisclosuresResponse(BaseModel):
     data: List[DisclosureResponse]
@@ -152,6 +155,64 @@ class ImageDeleteResponse(BaseModel):
     success: bool
     message: str
 
+from pathlib import Path
+import re
+
+# Base path for generated documents (sync with disclosure_downloader.py)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent / "Director_Disclosure" / "Output_Disclosures"
+
+def _get_all_physical_files_map() -> dict[str, list[dict]]:
+    """
+    Scans Output_Disclosures ONCE and returns a map of DIN -> [Files].
+    This is much faster than scanning per-director.
+    """
+    din_map = {}
+    if not BASE_DIR.exists():
+        return din_map
+        
+    # Walk the current year's directory only to prevent duplicates from older years
+    current_year_dir = BASE_DIR / "2024-25"
+    if not current_year_dir.exists():
+        return din_map
+
+    for file_path in current_year_dir.rglob("*.docx"):
+        fname = file_path.name
+        # Process both MBP-1 and DIR-8 forms for the repository
+        is_mbp1 = "MBP1" in fname.upper()
+        is_dir8 = "DIR8" in fname.upper()
+        if not (is_mbp1 or is_dir8):
+            continue
+            
+        # Extract DIN using regex (looks for 8 digits in the filename)
+        match = re.search(r'(\d{8})', fname)
+        if match:
+            din = match.group(1)
+            rel_path = str(file_path.relative_to(BASE_DIR))
+            mtime = file_path.stat().st_mtime
+            
+            # Extract company name from folder structure
+            # Path is: 2024-25/Company/Type/File.docx (since we start from current_year_dir)
+            # file_path.parent is Type (MBP-1/DIR-8), file_path.parent.parent is Company
+            folder_name = file_path.parent.parent.name
+            
+            parts = fname.replace(".docx", "").split("_")
+            company_hint = parts[-2] if len(parts) >= 3 else folder_name
+            
+            file_info = {
+                "type": "MBP-1" if is_mbp1 else "DIR-8",
+                "company_hint": company_hint,
+                "folder_name": folder_name.replace("_", " "),
+                "path": rel_path,
+                "date": datetime.fromtimestamp(mtime).strftime("%d/%m/%Y"),
+                "mtime": mtime
+            }
+            
+            if din not in din_map:
+                din_map[din] = []
+            din_map[din].append(file_info)
+            
+    return din_map
+
 @router.get("/directors-disclosures", response_model=DisclosuresResponse)
 async def get_directors_disclosures():
     """
@@ -175,44 +236,80 @@ async def get_directors_disclosures():
                 d.last_api_sync,
                 d.created_at,
                 ds.file_path,
-                ds.id                                           AS doc_id
+                ds.id                                           AS doc_id,
+                EXISTS (
+                    SELECT 1 FROM directors_master.external_board_members ea
+                    WHERE TRIM(ea.din) = TRIM(d.din)
+                    AND TRIM(UPPER(ea.designation)) IN (
+                        'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
+                        'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
+                    )
+                ) as is_kmp
             FROM directors_master.directors d
             LEFT JOIN directors_profile.directors_profile p
-                   ON p.din = d.din
+                   ON TRIM(p.din) = TRIM(d.din)
             LEFT JOIN LATERAL (
                 SELECT id, file_path
                 FROM directors_data.document_summaries
                 WHERE TRIM(UPPER(director_name)) = TRIM(UPPER(d.name))
-                   OR din = d.din
+                   OR TRIM(din) = TRIM(d.din)
                 ORDER BY created_at DESC
                 LIMIT 1
             ) ds ON TRUE
             WHERE EXISTS (
-                SELECT 1 FROM directors_master.external_associations ea
-                WHERE ea.din = d.din
+                SELECT 1 FROM directors_master.external_board_members ea
+                WHERE TRIM(ea.din) = TRIM(d.din)
             )
             ORDER BY d.name ASC
         """)
         rows = cursor.fetchall()
 
+        # 1. Build a map of all physical files once
+        physical_files_map = _get_all_physical_files_map()
+
         data = []
         for r in rows:
+            din = r["din"]
+            
+            # 1. Determine base sync date
             sync_date = "N/A"
             if r["last_api_sync"]:
                 sync_date = str(r["last_api_sync"])[:10]
             elif r["created_at"]:
                 sync_date = str(r["created_at"])[:10]
 
+            # 2. Check for physical MBP-1 file
+            rel_path = ""
+            doc_type = "Registry Sync"
+            display_date = sync_date
+
+            all_files = []
+            if din and din in physical_files_map:
+                # Get the latest MBP-1 file for this director for the main download button
+                # Sort by mtime descending to get newest first
+                sorted_files = sorted(physical_files_map[din], key=lambda x: x.get("mtime", 0), reverse=True)
+                latest_file = sorted_files[0]
+                rel_path = latest_file["path"]
+                doc_type = "MBP-1"
+                display_date = latest_file["date"]
+                all_files = sorted_files
+
+            # 3. Add exactly ONE entry per director
             data.append({
-                "id":               r["doc_id"] or r["id"],
+                "id":               r["id"],
                 "director_name":    r["director_name"],
-                "din":              r["din"] or "Pending Sync",
+                "din":              din or "Pending Sync",
                 "pan":              r["pan"] or "–",
                 "din_status":       r["din_status"],
-                "disclosure_date":  sync_date,
-                "disclosure_type":  "Registry Sync",
-                "file_path":        r["file_path"] or ""
+                "disclosure_date":  display_date,
+                "disclosure_type":  doc_type,
+                "is_kmp":           bool(r["is_kmp"]),
+                "file_path":        rel_path,
+                "all_files":        all_files
             })
+        
+        # Sort alphabetically by director name
+        data.sort(key=lambda x: x["director_name"])
 
         return DisclosuresResponse(data=data, count=len(data))
 
@@ -231,9 +328,17 @@ async def get_directors_master():
     cursor = get_pg_cursor(pg_conn)
     try:
         cursor.execute("""
-            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan
+            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan,
+                   EXISTS (
+                       SELECT 1 FROM directors_master.external_board_members ea
+                       WHERE TRIM(ea.din) = TRIM(d.din)
+                       AND TRIM(UPPER(ea.designation)) IN (
+                           'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
+                           'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
+                       )
+                   ) as is_kmp
             FROM directors_master.directors d
-            LEFT JOIN directors_profile.directors_profile p ON d.din = p.din
+            LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
             ORDER BY d.name
         """)
         rows = cursor.fetchall()
@@ -246,6 +351,7 @@ async def get_directors_master():
                 "pan": r["pan"],
                 "din_status": r["din_status"],
                 "gender": r["gender"],
+                "is_kmp": bool(r["is_kmp"]),
                 "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
             })
         return DirectorsMasterResponse(data=data, count=len(data))
@@ -278,17 +384,29 @@ async def download_disclosure_file(id: int):
         if not row: raise HTTPException(status_code=404)
         
         fname = os.path.basename(row["file_path"])
+        
+        # Primary paths
         search_paths = [
             os.path.join(os.path.dirname(__file__), "..", "uploads", fname),
             os.path.join(os.path.dirname(__file__), "..", "public", "Directors Discloser Output", fname),
-            os.path.join(os.path.dirname(__file__), "..", "public", "templates", fname)
+            os.path.join(os.path.dirname(__file__), "..", "public", "templates", fname),
+            os.path.join(os.path.dirname(__file__), "..", "..", "Director_Disclosure", "Output_Disclosures")
         ]
         
+        # Try direct path matches first
         for p in search_paths:
-            if os.path.exists(p):
+            if os.path.exists(p) and os.path.isfile(p):
                 return FileResponse(path=p, filename=fname, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         
-        raise HTTPException(status_code=404, detail="Physical file not found on server")
+        # Recursive search in Output_Disclosures if not found
+        output_root = os.path.join(os.path.dirname(__file__), "..", "..", "Director_Disclosure", "Output_Disclosures")
+        if os.path.exists(output_root):
+            for root, dirs, files in os.walk(output_root):
+                if fname in files:
+                    full_path = os.path.join(root, fname)
+                    return FileResponse(path=full_path, filename=fname, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        
+        raise HTTPException(status_code=404, detail=f"Physical file {fname} not found on server")
     finally:
         cursor.close(); pg_conn.close()
 
@@ -424,7 +542,7 @@ async def update_director_pan(director_id: int, request: DirectorPanUpdateReques
 
                 cursor.execute("""
                     INSERT INTO directors_profile.directors_profile (din, pan)
-                    VALUES (%s, %s)
+                    VALUES (TRIM(%s), TRIM(%s))
                     ON CONFLICT (din) DO UPDATE SET pan = EXCLUDED.pan
                 """, (din, request.pan.strip()))
                 pg_conn.commit()
@@ -569,12 +687,7 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
         logger.error(f"Error updating profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/directors/{director_name}/family-info", response_model=DirectorFamilyInfoResponse)
-async def get_director_family_info(director_name: str):
-    """Get family information (uses PG-only helper)."""
-    info = get_family_info_for_director(director_name)
-    if not info: raise HTTPException(status_code=404, detail="Family info not found")
-    return DirectorFamilyInfoResponse(**info)
+# Family info is now handled exclusively in director_family_info.py to avoid route conflicts
 
 # ---------------------------------------------------------
 # DOCUMENT PROCESSING & SUMMARY - PG
@@ -640,12 +753,29 @@ async def get_director_image(din: str):
     for ext in ['.jpg', '.jpeg', '.png', '.webp']:
         p = os.path.join(images_dir, f"{din}{ext}")
         if os.path.exists(p): return FileResponse(p)
+    
+    # Silent Fallback to default avatar to clean up terminal logs
+    default_avatar = os.path.join(os.path.dirname(__file__), "..", "..", "..", "Frontend", "public", "avatar.jpg")
+    if os.path.exists(default_avatar):
+        return FileResponse(default_avatar)
+        
     raise HTTPException(status_code=404)
 
 @router.get("/directors-disclosures/templates/{template_name}")
 async def download_template(template_name: str):
-    p = os.path.join(os.path.dirname(__file__), "..", "public", "templates", template_name)
-    if not os.path.exists(p): raise HTTPException(status_code=404)
+    """Serve the empty templates for DIR-8 and MBP-1."""
+    # Look in the newly created Templates directory
+    template_dir = os.path.join(os.path.dirname(__file__), "..", "..", "Director_Disclosure", "Templates")
+    p = os.path.join(template_dir, template_name)
+    
+    # Try with _Template suffix if direct match fails
+    if not os.path.exists(p):
+        fname = template_name.replace(".docx", "_Template.docx")
+        p = os.path.join(template_dir, fname)
+        
+    if not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="Template not found")
+        
     return FileResponse(p, filename=template_name)
 
 # Ensure legacy naming for Minutes route

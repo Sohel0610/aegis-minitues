@@ -112,6 +112,8 @@ def _rebuild_detailed_response(cb_module, resolved_query: str, database_to_use: 
 
         if retrieval_method in ["structured", "date_only"]:
             notifications = cb_module.convert_to_common_format(sql_results, database_to_use)
+            if entity_aliases:
+                notifications = cb_module.chat_orchestrator.apply_strict_entity_filter(notifications, entity_aliases)
         else:
             notifications = cb_module.chat_orchestrator.semantic_retrieve(
                 resolved_query,

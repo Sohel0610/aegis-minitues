@@ -19,14 +19,27 @@ ADMIN_EMAILS = [
 ]
 BASE_URL = "https://aegis.adani.com"
 
-def send_email(subject, body, to_email, is_html=True):
+def send_email(subject, body, to_email=None, to_emails=None, is_html=True):
     """
     Sends an email using the configured SMTP settings.
+    Handles both to_email (string) or to_emails (list/string).
     """
+    # Normalize recipients
+    recipients = to_emails if to_emails else to_email
+    if isinstance(recipients, list):
+        recipients = ", ".join(recipients)
+    
+    if not recipients:
+        logger.error("send_email called without any recipients")
+        return False
+
+    logger.info(f"📧 [EMAIL SERVICE] Starting email process to: {recipients}")
+    logger.info(f"📧 [EMAIL SERVICE] Subject: {subject}")
+
     try:
         msg = MIMEMultipart()
         msg['From'] = f"Aegis Platform <{SMTP_USER}>"
-        msg['To'] = to_email
+        msg['To'] = recipients
         msg['Subject'] = subject
 
         if is_html:
@@ -34,16 +47,23 @@ def send_email(subject, body, to_email, is_html=True):
         else:
             msg.attach(MIMEText(body, 'plain'))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            # server.starttls() # Uncomment if TLS is required
-            # if SMTP_PASS:
-            #     server.login(SMTP_USER, SMTP_PASS)
+        logger.info(f"📧 [EMAIL SERVICE] Connecting to SMTP Server: {SMTP_SERVER}:{SMTP_PORT}...")
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
+            # server.set_debuglevel(1) # Enable for extremely detailed SMTP logs
+            
+            logger.info("📧 [EMAIL SERVICE] Connection established. Sending message...")
             server.send_message(msg)
             
-        logger.info(f"Email sent successfully to {to_email}: {subject}")
+        logger.info(f"✅ [EMAIL SERVICE] SUCCESS: Email sent to {recipients}")
         return True
+    except smtplib.SMTPConnectError:
+        logger.error(f"❌ [EMAIL SERVICE] CONNECTION ERROR: Could not connect to {SMTP_SERVER}")
+        return False
+    except smtplib.SMTPAuthenticationError:
+        logger.error(f"❌ [EMAIL SERVICE] AUTH ERROR: SMTP credentials rejected")
+        return False
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {str(e)}")
+        logger.error(f"❌ [EMAIL SERVICE] UNEXPECTED ERROR: {str(e)}")
         return False
 
 def format_request_id(request_id):

@@ -13,11 +13,28 @@ from config.llm_config import LLMConfig
  
 # Load environment variables
 load_dotenv()
- 
-# Initialize Groq client
+
+def _ignore_missing_ssl_cert_file():
+    ssl_cert_file = os.environ.get("SSL_CERT_FILE")
+    if ssl_cert_file and not os.path.exists(ssl_cert_file):
+        os.environ.pop("SSL_CERT_FILE", None)
+
+
+# Initialize Groq client lazily so imports do not fail when Groq is not used.
 groq_client = None
-if LLMConfig.is_groq_enabled():
-    groq_client = Groq(api_key=LLMConfig.GROQ_API_KEY)
+
+
+def _get_groq_client():
+    global groq_client
+
+    if groq_client is None:
+        if not LLMConfig.GROQ_API_KEY:
+            raise Exception("GROQ_API_KEY is not configured")
+
+        _ignore_missing_ssl_cert_file()
+        groq_client = Groq(api_key=LLMConfig.GROQ_API_KEY)
+
+    return groq_client
  
 def embed_text(text: str) -> List[float]:
     """
@@ -39,7 +56,7 @@ def chat_completion(system_prompt: str, user_prompt: str, model: str = None) -> 
             model = LLMConfig.GROQ_MODEL
        
         try:
-            response = groq_client.chat.completions.create(
+            response = _get_groq_client().chat.completions.create(
                 messages=[
                     {
                         "role": "system",
