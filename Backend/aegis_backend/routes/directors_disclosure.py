@@ -170,36 +170,46 @@ def _get_all_physical_files_map() -> dict[str, list[dict]]:
     if not BASE_DIR.exists():
         return din_map
         
-    # Walk the entire directory once
-    for file_path in BASE_DIR.rglob("*.docx"):
+    # Walk the current year's directory only to prevent duplicates from older years
+    current_year_dir = BASE_DIR / "2024-25"
+    if not current_year_dir.exists():
+        return din_map
+
+    for file_path in current_year_dir.rglob("*.docx"):
         fname = file_path.name
-        # Only process MBP-1 forms for the repository
-        if "MBP1" not in fname.upper():
+        # Process both MBP-1 and DIR-8 forms for the repository
+        is_mbp1 = "MBP1" in fname.upper()
+        is_dir8 = "DIR8" in fname.upper()
+        if not (is_mbp1 or is_dir8):
             continue
             
-            # Extract DIN using regex (looks for 8 digits in the filename)
-            match = re.search(r'(\d{8})', fname)
-            if match:
-                din = match.group(1)
-                rel_path = str(file_path.relative_to(BASE_DIR))
-                mtime = file_path.stat().st_mtime
-                
-                # Extract company name from filename if possible (e.g. MBP1_Director_CompanyName_DIN.docx)
-                # Filename format is usually: MBP1_[Director]_[Company]_[DIN].docx
-                parts = fname.replace(".docx", "").split("_")
-                company_hint = parts[-2] if len(parts) >= 3 else "Latest"
-                
-                file_info = {
-                    "type": "MBP-1",
-                    "company_hint": company_hint,
-                    "path": rel_path,
-                    "date": datetime.fromtimestamp(mtime).strftime("%d/%m/%Y"),
-                    "mtime": mtime
-                }
-                
-                if din not in din_map:
-                    din_map[din] = []
-                din_map[din].append(file_info)
+        # Extract DIN using regex (looks for 8 digits in the filename)
+        match = re.search(r'(\d{8})', fname)
+        if match:
+            din = match.group(1)
+            rel_path = str(file_path.relative_to(BASE_DIR))
+            mtime = file_path.stat().st_mtime
+            
+            # Extract company name from folder structure
+            # Path is: 2024-25/Company/Type/File.docx (since we start from current_year_dir)
+            # file_path.parent is Type (MBP-1/DIR-8), file_path.parent.parent is Company
+            folder_name = file_path.parent.parent.name
+            
+            parts = fname.replace(".docx", "").split("_")
+            company_hint = parts[-2] if len(parts) >= 3 else folder_name
+            
+            file_info = {
+                "type": "MBP-1" if is_mbp1 else "DIR-8",
+                "company_hint": company_hint,
+                "folder_name": folder_name.replace("_", " "),
+                "path": rel_path,
+                "date": datetime.fromtimestamp(mtime).strftime("%d/%m/%Y"),
+                "mtime": mtime
+            }
+            
+            if din not in din_map:
+                din_map[din] = []
+            din_map[din].append(file_info)
             
     return din_map
 

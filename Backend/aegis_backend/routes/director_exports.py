@@ -1,7 +1,8 @@
 import os
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any
+from typing import Dict, Any, List
+from pydantic import BaseModel
 import asyncio
 import logging
 import traceback
@@ -19,6 +20,9 @@ from utils.pgsql_service import get_pg_connection, get_pg_cursor
 router = APIRouter(prefix="/export", tags=["Director Exports"])
 thread_pool = ThreadPoolExecutor(max_workers=5)
 export_semaphore = asyncio.Semaphore(10) # Limit concurrent DB connections to protect the pool
+
+class BulkExportRequest(BaseModel):
+    dins: List[str]
 
 async def fetch_consolidated_data(din: str):
     """Internal helper to get the full profile same as director_full.py"""
@@ -121,5 +125,40 @@ async def export_all_directors():
         )
     except Exception as e:
         logger.error(f"Bulk export error: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/bulk-zip-selected")
+async def export_selected_directors(request: BulkExportRequest):
+    """Download selected directors as a ZIP of Excels"""
+    try:
+        if not request.dins:
+            raise HTTPException(status_code=400, detail="No DINs provided")
+
+        # 1. Fetch data with concurrency limit
+        async def fetch_with_semaphore(din):
+            async with export_semaphore:
+                return await fetch_consolidated_data(din)
+
+        tasks = [fetch_with_semaphore(din) for din in request.dins]
+        all_data = await asyncio.gather(*tasks)
+        all_data = [d for d in all_data if d is not None]
+
+        if not all_data:
+            raise HTTPException(status_code=404, detail="No data found for selected DINs")
+
+        # 2. Generate ZIP
+        loop = asyncio.get_event_loop()
+        zip_buffer = await loop.run_in_executor(thread_pool, create_bulk_zip, all_data)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"Aegis_Selected_Disclosures_{timestamp}.zip"
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Selected bulk export error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

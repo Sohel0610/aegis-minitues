@@ -96,6 +96,29 @@ def report_progress(current, total, status="Generating Documents..."):
     except:
         pass
 
+# ---------------------------------------------------------------------------
+# XML Cleanup Utility
+# ---------------------------------------------------------------------------
+def clean_xml_string(s: Any) -> str:
+    """Removes control characters that are illegal in XML."""
+    if s is None:
+        return ""
+    s = str(s)
+    # Remove NULL bytes and other common illegal XML control chars
+    # XML 1.0 allows: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    return "".join(c for c in s if _is_valid_xml_char(c))
+
+def _is_valid_xml_char(c: str) -> bool:
+    codepoint = ord(c)
+    return (
+        codepoint == 0x9 or
+        codepoint == 0xA or
+        codepoint == 0xD or
+        (codepoint >= 0x20 and codepoint <= 0xD7FF) or
+        (codepoint >= 0xE000 and codepoint <= 0xFFFD) or
+        (codepoint >= 0x10000 and codepoint <= 0x10FFFF)
+    )
+
 # CIN patterns
 _PUB_CIN_RE  = re.compile(r'^[UL]\d{5}[A-Z]{2}\d{4}PLC\d{6}$')
 _PRIV_CIN_RE = re.compile(r'^[UL]\d{5}[A-Z]{2}\d{4}PTC\d{6}$')
@@ -443,7 +466,7 @@ def _add_para(doc: Document, text: str = "", bold: bool = False,
     para.alignment = align
     _para_spacing(para, before=before, after=after)
     if text:
-        run = para.add_run(text)
+        run = para.add_run(clean_xml_string(text))
         _set_font(run, bold=bold, size=size, font=font)
     return para
 
@@ -457,7 +480,7 @@ def _add_mixed_para(doc: Document, parts: list[tuple[str, bool]],
     para.alignment = align
     _para_spacing(para, before=before, after=after)
     for text, bold in parts:
-        run = para.add_run(text)
+        run = para.add_run(clean_xml_string(text))
         _set_font(run, bold=bold, size=size)
     return para
 
@@ -494,7 +517,7 @@ def _cell_text(cell, text: str, bold: bool = False,
     para = cell.paragraphs[0]
     para.alignment = align
     _para_spacing(para, before=Pt(2), after=Pt(2))
-    run = para.add_run(text)
+    run = para.add_run(clean_xml_string(text))
     _set_font(run, bold=bold, size=size, color=color)
 
 
@@ -1062,6 +1085,10 @@ def register_document_in_db(dd: DirectorData, file_path: str):
             INSERT INTO directors_data.document_summaries 
             (director_name, din, file_path, created_at)
             VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (file_path) DO UPDATE 
+            SET created_at = EXCLUDED.created_at,
+                director_name = EXCLUDED.director_name,
+                din = EXCLUDED.din
         """, (dd.name, dd.din, rel_path))
         conn.commit()
         print(f"  [DB] Registered document for {dd.name}")

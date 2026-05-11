@@ -112,6 +112,7 @@ const DirectorsDisclosureMasterData = () => {
   });
   const [profileSaveLoading, setProfileSaveLoading] = useState<boolean>(false);
   const [exportLoading, setExportLoading] = useState<string | null>(null); // 'bulk' or DIN
+  const [selectedDins, setSelectedDins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchDirectors();
@@ -405,12 +406,60 @@ const DirectorsDisclosureMasterData = () => {
       a.download = `Aegis_Directors_Registry_${timestamp}.zip`;
       document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Bulk export error:', err);
       alert('Failed to generate ZIP archive');
     } finally {
       setExportLoading(null);
+    }
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedDins.size === 0) return;
+    try {
+      setExportLoading('selected');
+      const response = await fetch('/api/export/bulk-zip-selected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dins: Array.from(selectedDins) })
+      });
+      if (!response.ok) throw new Error('Bulk export failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().split('T')[0];
+      a.download = `Aegis_Selected_Registry_${timestamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Selected export error:', err);
+      alert('Failed to generate ZIP archive for selection');
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  const toggleSelect = (din: string) => {
+    const newSelected = new Set(selectedDins);
+    if (newSelected.has(din)) {
+      newSelected.delete(din);
+    } else {
+      newSelected.add(din);
+    }
+    setSelectedDins(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDins.size === filteredDirectors.length && filteredDirectors.length > 0) {
+      setSelectedDins(new Set());
+    } else {
+      setSelectedDins(new Set(filteredDirectors.map(d => d.din)));
     }
   };
 
@@ -673,6 +722,7 @@ const DirectorsDisclosureMasterData = () => {
                 disabled={exportLoading === 'bulk'}
                 variant="outline"
                 className="h-14 px-8 rounded-2xl border-[#75479C] text-[#75479C] hover:bg-purple-50 font-bold flex gap-3 shadow-md transition-all whitespace-nowrap"
+                title="Download All 194 Directors"
               >
                 {exportLoading === 'bulk' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -681,6 +731,20 @@ const DirectorsDisclosureMasterData = () => {
                 )}
                 Export All (ZIP)
               </Button>
+              {selectedDins.size > 0 && (
+                <Button
+                  onClick={handleExportSelected}
+                  disabled={exportLoading === 'selected'}
+                  className="h-14 px-8 rounded-2xl bg-white border-2 border-[#75479C] text-[#75479C] hover:bg-purple-50 font-black flex gap-3 shadow-lg shadow-purple-100 transition-all whitespace-nowrap animate-in fade-in zoom-in duration-300"
+                >
+                  {exportLoading === 'selected' ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Download size={20} />
+                  )}
+                  Export Selected ({selectedDins.size})
+                </Button>
+              )}
               <Button
                 onClick={() => {
                   setFormData({ name: "", din: "", pan: "" });
@@ -728,7 +792,15 @@ const DirectorsDisclosureMasterData = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50 active:bg-gray-50">
-                    <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-500 uppercase tracking-widest w-12">#</TableHead>
+                    <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-500 uppercase tracking-widest w-12">
+                      <input 
+                        type="checkbox" 
+                        className="h-4 w-4 rounded border-gray-300 text-[#75479C] focus:ring-[#75479C] cursor-pointer"
+                        checked={selectedDins.size === filteredDirectors.length && filteredDirectors.length > 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                    <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest w-12">#</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest">Director name</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">DIN</TableHead>
                     <TableHead className="py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">PAN</TableHead>
@@ -740,13 +812,21 @@ const DirectorsDisclosureMasterData = () => {
                 <TableBody>
                   {filteredDirectors.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8" style={{ color: '#666666' }}>
+                      <TableCell colSpan={8} className="text-center py-8" style={{ color: '#666666' }}>
                         {searchTerm ? 'No directors found matching your search' : 'No directors found'}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredDirectors.map((director, index) => (
                       <TableRow key={director.id} className="hover:bg-gray-50">
+                        <TableCell className="pl-8">
+                          <input 
+                            type="checkbox" 
+                            className="h-4 w-4 rounded border-gray-300 text-[#75479C] focus:ring-[#75479C] cursor-pointer"
+                            checked={selectedDins.has(director.din)}
+                            onChange={() => toggleSelect(director.din)}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium" style={{ color: '#666666' }}>
                           {index + 1}
                         </TableCell>

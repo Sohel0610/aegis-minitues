@@ -59,6 +59,29 @@ from docx.shared import Cm, Pt, Inches, Twips
 
 
 # ---------------------------------------------------------------------------
+# XML Cleanup Utility
+# ---------------------------------------------------------------------------
+def clean_xml_string(s: Any) -> str:
+    """Removes control characters that are illegal in XML."""
+    if s is None:
+        return ""
+    s = str(s)
+    # Remove NULL bytes and other common illegal XML control chars
+    # XML 1.0 allows: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    return "".join(c for c in s if _is_valid_xml_char(c))
+
+def _is_valid_xml_char(c: str) -> bool:
+    codepoint = ord(c)
+    return (
+        codepoint == 0x9 or
+        codepoint == 0xA or
+        codepoint == 0xD or
+        (codepoint >= 0x20 and codepoint <= 0xD7FF) or
+        (codepoint >= 0xE000 and codepoint <= 0xFFFD) or
+        (codepoint >= 0x10000 and codepoint <= 0x10FFFF)
+    )
+
+# ---------------------------------------------------------------------------
 # Exact measurements extracted from the template XML
 # ---------------------------------------------------------------------------
 
@@ -438,7 +461,7 @@ def _add_text(run, text: str) -> None:
     """Append a <w:t> with xml:space=preserve."""
     t = OxmlElement("w:t")
     t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-    t.text = text
+    t.text = clean_xml_string(text)
     run._r.append(t)
 
 
@@ -888,6 +911,10 @@ def register_document_in_db(di: DirectorInfo, file_path: str):
             INSERT INTO directors_data.document_summaries 
             (director_name, din, file_path, created_at)
             VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (file_path) DO UPDATE 
+            SET created_at = EXCLUDED.created_at,
+                director_name = EXCLUDED.director_name,
+                din = EXCLUDED.din
         """, (di.name, di.din, rel_path))
         conn.commit()
         print(f"  [DB] Registered document for {di.name}")
