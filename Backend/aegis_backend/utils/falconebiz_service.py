@@ -33,7 +33,8 @@ def trigger_mca_refresh(din=None, cin=None):
         headers["Company"] = str(cin)
 
     try:
-        response = requests.post(
+        # Use GET as per standard Falconebiz API patterns in this project
+        response = requests.get(
             UPDATE_URL, 
             headers=headers, 
             proxies=PROXIES, 
@@ -42,11 +43,14 @@ def trigger_mca_refresh(din=None, cin=None):
         )
         
         if response.status_code == 200:
-            data = response.json()
-            # Falconebiz usually returns a success message or status
-            return True, data.get("message") or "Refresh request triggered successfully. Data will update in 2-5 minutes."
+            try:
+                data = response.json()
+                return True, data.get("message") or "Refresh request triggered successfully. Data will update in 2-5 minutes."
+            except:
+                # If not JSON but status is 200, it might be a success string
+                return True, response.text or "Refresh triggered successfully."
         else:
-            return False, f"API Error: {response.status_code} - {response.text}"
+            return False, f"API Error: {response.status_code} - {response.text[:100]}"
             
     except Exception as e:
-        return False, f"Exception during refresh request: {str(e)}"
+        return False, f"Connection error: {str(e)}"
