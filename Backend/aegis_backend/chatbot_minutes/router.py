@@ -67,9 +67,9 @@ async def process_query(
 ):
     try:
         # 1. RBAC check (Check if user is admin globally for this tool)
-        from routes.rbac import check_route_permission
-        permission = await check_route_permission(user.email, "/api/minutes-chatbot")
-        is_admin = (permission == "admin")
+        from routes.rbac import check_route_access
+        rbac_resp = await check_route_access(user.email, "/api/minutes-chatbot")
+        is_admin = (rbac_resp.permission_type == "admin")
 
         chatbot_service = ChatbotService()
         result = chatbot_service.process_query(

@@ -90,13 +90,47 @@ def generate_summary_with_groq(content, max_tokens=1000):
 
 def generate_summary_with_azure_openai(content, max_tokens=1000):
     """Generate a summary using Azure OpenAI."""
-    # Simplified version for now - user wants Postgres focus
-    # (Assuming Azure env vars are set)
-    return "Azure OpenAI summary not fully implemented in this refactor. Use Groq."
+    try:
+        from openai import AzureOpenAI
+        
+        # Initialize client with environment variables
+        client = AzureOpenAI(
+            azure_endpoint=os.environ.get('AZURE_OPENAI_ENDPOINT'),
+            api_key=os.environ.get('AZURE_OPENAI_API_KEY'),
+            api_version=os.environ.get('AZURE_OPENAI_API_VERSION', '2023-05-15')
+        )
+        
+        deployment_name = os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME')
+        
+        prompt = f"""
+        Please provide a concise summary of the following director's disclosure document. 
+        Focus on: Director's name and DIN, Companies and positions, Shareholding (Active only), Disclosures, Concerns.
+        Format requirements: Plain text (no markdown), use section headers with colon, bullet points with '-', concise.
+        
+        {content[:8000]}
+        """
+        
+        response = client.chat.completions.create(
+            model=deployment_name,
+            messages=[
+                {"role": "system", "content": "You are an expert at corporate document summarization. Use plain text only."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content.strip() if response.choices[0].message.content else "No summary available"
+    except Exception as e:
+        logger.error(f"Error generating summary with Azure OpenAI: {e}")
+        # If Groq is available as fallback, try it
+        if os.environ.get('GROQ_API_KEY'):
+            logger.info("Attempting Groq fallback for summary...")
+            return generate_summary_with_groq(content, max_tokens)
+        return "Error generating summary with LLM"
 
 def generate_summary(content, max_tokens=1000):
     """Generate a summary using available LLM."""
-    if os.environ.get('USE_GROQ', 'true').lower() == 'true':
+    if os.environ.get('USE_GROQ', 'false').lower() == 'true':
         return generate_summary_with_groq(content, max_tokens)
     return generate_summary_with_azure_openai(content, max_tokens)
 
