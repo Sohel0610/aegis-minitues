@@ -56,7 +56,8 @@ def initialize_schema():
             ("nationality", "VARCHAR(50)"),
             ("dir3_kyc", "VARCHAR(50)"),
             ("approve_date", "DATE"),
-            ("last_api_sync", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            ("last_api_sync", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ("last_mca_updated", "TIMESTAMP")
         ]
         
         for col_name, col_type in columns_to_add:
@@ -173,8 +174,8 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
         
         cur.execute("""
             INSERT INTO directors_master.directors 
-            (din, name, din_status, gender, nationality, dir3_kyc, approve_date, last_api_sync)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            (din, name, din_status, gender, nationality, dir3_kyc, approve_date, last_mca_updated, last_api_sync)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (din) DO UPDATE SET
                 name = EXCLUDED.name,
                 din_status = EXCLUDED.din_status,
@@ -182,6 +183,7 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
                 nationality = EXCLUDED.nationality,
                 dir3_kyc = EXCLUDED.dir3_kyc,
                 approve_date = EXCLUDED.approve_date,
+                last_mca_updated = EXCLUDED.last_mca_updated,
                 last_api_sync = CURRENT_TIMESTAMP
         """, (
             din,
@@ -190,7 +192,8 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
             api_data.get('gender'),
             nationality,
             api_data.get('dir3_kyc'),
-            api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None
+            api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None,
+            api_data.get('last_updated')
         ))
         
         # 2. Sync Associations
@@ -312,8 +315,8 @@ if __name__ == "__main__":
                         # 1. Upsert Master
                         cur.execute("""
                             INSERT INTO directors_master.directors 
-                            (din, name, din_status, gender, nationality, dir3_kyc, approve_date, last_api_sync)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                            (din, name, din_status, gender, nationality, dir3_kyc, approve_date, last_mca_updated, last_api_sync)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                             ON CONFLICT (din) DO UPDATE SET
                                 name = EXCLUDED.name,
                                 din_status = EXCLUDED.din_status,
@@ -321,6 +324,7 @@ if __name__ == "__main__":
                                 nationality = EXCLUDED.nationality,
                                 dir3_kyc = EXCLUDED.dir3_kyc,
                                 approve_date = EXCLUDED.approve_date,
+                                last_mca_updated = EXCLUDED.last_mca_updated,
                                 last_api_sync = CURRENT_TIMESTAMP
                         """, (
                             din,
@@ -329,7 +333,8 @@ if __name__ == "__main__":
                             api_data.get('gender'),
                             nationality,
                             api_data.get('dir3_kyc'),
-                            api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None
+                            api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None,
+                            api_data.get('last_updated')
                         ))
                         
                         # 2. Sync Associations

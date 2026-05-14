@@ -133,7 +133,8 @@ from routes import (
     institutional_risk,     # Institutional Risk Monitor
     disclosure_downloader,
     registry_management,
-    director_exports
+    director_exports,
+    mca_sync
 )
 import chatbot_minutes
 
@@ -165,6 +166,7 @@ app.include_router(institutional_risk.router, prefix="/api")   # Register Instit
 app.include_router(disclosure_downloader.router, prefix="/api")
 app.include_router(registry_management.router, prefix="/api")
 app.include_router(director_exports.router, prefix="/api")
+app.include_router(mca_sync.router)
 app.include_router(chatbot_minutes.router) # Router already has /api/minutes-chatbot prefix
 
 # Print all registered routes for debugging

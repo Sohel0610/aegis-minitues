@@ -116,6 +116,8 @@ async def get_enriched_directors():
                 d.gender, 
                 d.nationality, 
                 d.dir3_kyc,
+                d.last_api_sync,
+                d.last_mca_updated,
                 COUNT(CASE 
                     WHEN (ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None') THEN 1
                     WHEN ebm.status ILIKE 'Active%' THEN 1
@@ -125,7 +127,7 @@ async def get_enriched_directors():
             LEFT JOIN directors_master.external_board_members ebm ON d.din = ebm.din
             WHERE d.last_api_sync IS NOT NULL
             AND (ebm.status IS NULL OR UPPER(ebm.status) != 'AMALGAMATED')
-            GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc
+            GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc, d.last_api_sync, d.last_mca_updated
             ORDER BY d.name
         """)
         return cur.fetchall()

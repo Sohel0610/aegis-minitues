@@ -4,8 +4,9 @@ import {
   Users, Building2, Network, ShieldCheck, Search, 
   Calendar, Award, Filter, ArrowRight, ExternalLink, 
   User, CheckCircle2, AlertCircle, TrendingUp, Briefcase,
-  Globe, Shield, Cpu, LayoutDashboard, Share2, ChevronDown, Loader2, Info
+  Globe, Shield, Cpu, LayoutDashboard, Share2, ChevronDown, Loader2, Info, RefreshCw
 } from "lucide-react";
+import { toast } from "sonner";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   Legend, PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, LabelList
@@ -38,6 +39,8 @@ interface Director {
   nationality: string;
   dir3_kyc: string;
   external_board_count: number;
+  last_api_sync?: string;
+  last_mca_updated?: string;
 }
 
 const DirectorRegistryIntelligence = () => {
@@ -50,6 +53,7 @@ const DirectorRegistryIntelligence = () => {
 
   const AEGIS_PURPLE = "#75479C";
   const AEGIS_BLUE = "#0B74B0";
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     fetchDirectors();
@@ -86,6 +90,30 @@ const DirectorRegistryIntelligence = () => {
       setAssociations(data);
     } catch (err) {
       console.error("Failed to fetch associations", err);
+    }
+  };
+  
+  const handleRefresh = async () => {
+    if (!selectedDirector) return;
+    
+    setIsRefreshing(true);
+    const toastId = toast.loading("Requesting live update from MCA...");
+    
+    try {
+      const res = await fetch(`/api/mca/request-update?din=${selectedDirector.din}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        toast.success(data.message || "Refresh triggered! Data will update in ~2 mins.", { id: toastId });
+      } else {
+        toast.error(data.detail || "Refresh request failed.", { id: toastId });
+      }
+    } catch (err) {
+      toast.error("Failed to reach refresh service.", { id: toastId });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -128,6 +156,23 @@ const DirectorRegistryIntelligence = () => {
     return { median: median.toFixed(1), peak, threshold: 15 };
   }, [directors]);
 
+  const getStatusInfo = (lastUpdated?: string) => {
+    if (!lastUpdated) return { label: "Stale", color: "#EF4444", bg: "bg-red-50", text: "text-red-700" };
+    
+    const lastDate = new Date(lastUpdated);
+    const now = new Date();
+    const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
+    const diffDays = diffHours / 24;
+
+    if (diffHours <= 24) {
+      return { label: "Live", color: "#10B981", bg: "bg-green-50", text: "text-green-700" };
+    } else if (diffDays <= 90) {
+      return { label: "Cached", color: "#F59E0B", bg: "bg-amber-50", text: "text-amber-700" };
+    } else {
+      return { label: "Stale", color: "#EF4444", bg: "bg-red-50", text: "text-red-700" };
+    }
+  };
+
   if (loading) return <div className="p-20 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-[#75479C]" /></div>;
 
   return (
@@ -142,7 +187,17 @@ const DirectorRegistryIntelligence = () => {
             </h1>
             <p className="text-gray-500 font-medium ml-11">Governance & overboarding analysis | Registry V2.1</p>
           </div>
-          <Badge variant="outline" className="text-gray-500 font-bold px-4 py-1 border-gray-200">MCA live ecosystem</Badge>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleRefresh}
+              disabled={isRefreshing || !selectedDirector}
+              className="flex items-center gap-2 px-4 py-2 bg-[#0B74B0]/10 text-[#0B74B0] rounded-xl font-bold text-xs hover:bg-[#0B74B0]/20 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Triggering...' : 'Refresh from MCA'}
+            </button>
+            <Badge variant="outline" className="text-gray-500 font-bold px-4 py-1 border-gray-200">MCA live ecosystem</Badge>
+          </div>
         </div>
 
         {/* Full-Width Director Selector */}
@@ -242,6 +297,21 @@ const DirectorRegistryIntelligence = () => {
                        <TrendingUp size={20} className="text-green-500" />
                        {selectedDirector?.external_board_count} boards
                     </p>
+                 </div>
+                 <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last registry sync</p>
+                    <p className="text-xs font-black text-gray-900">{selectedDirector?.last_api_sync ? new Date(selectedDirector.last_api_sync).toLocaleString() : 'N/A'}</p>
+                 </div>
+                 <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Source Updated (MCA)</p>
+                    <div className="flex items-center gap-2">
+                       <p className="text-xs font-black text-[#0B74B0]">{selectedDirector?.last_mca_updated ? new Date(selectedDirector.last_mca_updated).toLocaleString() : 'Pending Refresh'}</p>
+                       {selectedDirector && (
+                         <Badge className={`${getStatusInfo(selectedDirector.last_mca_updated).bg} ${getStatusInfo(selectedDirector.last_mca_updated).text} text-[8px] px-1.5 py-0 rounded-md border-0`}>
+                           {getStatusInfo(selectedDirector.last_mca_updated).label}
+                         </Badge>
+                       )}
+                    </div>
                  </div>
               </div>
            </div>

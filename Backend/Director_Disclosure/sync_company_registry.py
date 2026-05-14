@@ -156,7 +156,8 @@ def init_company_schema():
             ("district", "TEXT"), ("activity", "TEXT"), ("last_agm", "TEXT"),
             ("last_bal_sheet", "TEXT"), ("email", "TEXT"), ("address", "TEXT"),
             ("list_status", "TEXT"), ("is_adani", "BOOLEAN DEFAULT TRUE"),
-            ("last_sync", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP")
+            ("last_sync", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("last_mca_updated", "TIMESTAMP WITH TIME ZONE")
         ]:
             cur.execute(f"ALTER TABLE directors_data.companies ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
 
@@ -275,8 +276,9 @@ def save_company_to_db(data: dict) -> tuple[bool, str]:
             INSERT INTO directors_data.companies (
                 cin, name, status, incorporation_date, auth_capital, paid_capital,
                 pincode, category, class, roc, subcategory, state, district,
-                activity, last_agm, last_bal_sheet, email, address, list_status, last_sync
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)
+                activity, last_agm, last_bal_sheet, email, address, list_status, 
+                last_mca_updated, last_sync
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)
             ON CONFLICT (cin) DO UPDATE SET
                 name=EXCLUDED.name, status=EXCLUDED.status,
                 incorporation_date=EXCLUDED.incorporation_date,
@@ -287,6 +289,7 @@ def save_company_to_db(data: dict) -> tuple[bool, str]:
                 activity=EXCLUDED.activity, last_agm=EXCLUDED.last_agm,
                 last_bal_sheet=EXCLUDED.last_bal_sheet, email=EXCLUDED.email,
                 address=EXCLUDED.address, list_status=EXCLUDED.list_status,
+                last_mca_updated=EXCLUDED.last_mca_updated,
                 last_sync=CURRENT_TIMESTAMP
         """, (
             cin, details.get('company_name'), details.get('statusname'),
@@ -297,7 +300,8 @@ def save_company_to_db(data: dict) -> tuple[bool, str]:
             details.get('category'), details.get('class'), details.get('roc'),
             details.get('subcategory'), details.get('state'), details.get('district'),
             details.get('activity'), filings.get('last_agm'), filings.get('last_bal_sheet'),
-            contacts.get('email'), contacts.get('address'), details.get('list_status')
+            contacts.get('email'), contacts.get('address'), details.get('list_status'),
+            data.get('last_updated')
         ))
 
         # 2. Two-layer director sync

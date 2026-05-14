@@ -27,7 +27,8 @@ from . import (
     director_intelligence,
     institutional_risk,
     registry_management,
-    director_exports
+    director_exports,
+    mca_sync
 )
 
 # Export all routers
@@ -56,5 +57,6 @@ __all__ = [
     "director_intelligence",
     "institutional_risk",
     "registry_management",
-    "director_exports"
+    "director_exports",
+    "mca_sync"
 ]

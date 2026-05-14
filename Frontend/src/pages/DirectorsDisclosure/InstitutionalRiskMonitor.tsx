@@ -12,8 +12,9 @@ if (typeof VariablePie === 'function') (VariablePie as any)(Highcharts);
 import {
   AlertTriangle, Building2, TrendingUp, Shield,
   ChevronRight, Loader2, X, CheckCircle,
-  Activity, DollarSign, Layers, Info, Users
+  Activity, DollarSign, Layers, Info, Users, RefreshCw
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -194,6 +195,7 @@ const RedFlagRow = ({ item, index, onClick, type }: { item: any; index: number; 
 const EntityModal = ({ cin, open, onClose }: { cin: string; open: boolean; onClose: () => void }) => {
   const [data, setData] = useState<EntityDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (!open || !cin) return;
@@ -201,6 +203,41 @@ const EntityModal = ({ cin, open, onClose }: { cin: string; open: boolean; onClo
     fetch(`/api/institutional-risk/entity/${cin}`)
       .then(r => r.json()).then(setData).catch(console.error).finally(() => setLoading(false));
   }, [open, cin]);
+
+  const handleRefresh = async () => {
+    if (!cin) return;
+    
+    setIsRefreshing(true);
+    const toastId = toast.loading("Requesting live company update from MCA...");
+    
+    try {
+      const res = await fetch(`/api/mca/request-update?cin=${cin}`, {
+        method: 'POST'
+      });
+      const resData = await res.json();
+      
+      if (res.ok) {
+        toast.success(resData.message || "Refresh triggered! Update takes ~5 mins.", { id: toastId });
+      } else {
+        toast.error(resData.detail || "Refresh request failed.", { id: toastId });
+      }
+    } catch (err) {
+      toast.error("Failed to reach refresh service.", { id: toastId });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const getStatusInfo = (lastUpdated?: string) => {
+    if (!lastUpdated) return { label: "Stale", bg: "bg-red-50", text: "text-red-700" };
+    const lastDate = new Date(lastUpdated);
+    const now = new Date();
+    const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
+    const diffDays = diffHours / 24;
+    if (diffHours <= 24) return { label: "Live", bg: "bg-green-50", text: "text-green-700" };
+    if (diffDays <= 90) return { label: "Cached", bg: "bg-amber-50", text: "text-amber-700" };
+    return { label: "Stale", bg: "bg-red-50", text: "text-red-700" };
+  };
 
   const c = data?.company;
   return (
@@ -220,10 +257,20 @@ const EntityModal = ({ cin, open, onClose }: { cin: string; open: boolean; onClo
               </DialogHeader>
             </div>
             {c && (
-              <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase border ${(c.status || "").toLowerCase() === "active"
-                ? "bg-green-50 text-green-700 border-green-100"
-                : "bg-red-50 text-red-700 border-red-100"
-                }`}>{c.status || "Unknown"}</span>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-[#0B74B0]/10 text-[#0B74B0] rounded-xl font-bold text-[10px] hover:bg-[#0B74B0]/20 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {isRefreshing ? 'Trig...' : 'Refresh'}
+                </button>
+                <span className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase border ${(c.status || "").toLowerCase() === "active"
+                  ? "bg-green-50 text-green-700 border-green-100"
+                  : "bg-red-50 text-red-700 border-red-100"
+                  }`}>{c.status || "Unknown"}</span>
+              </div>
             )}
           </div>
           {c && (
@@ -263,6 +310,20 @@ const EntityModal = ({ cin, open, onClose }: { cin: string; open: boolean; onClo
                     { label: "State", value: c?.state },
                     { label: "Address", value: c?.address },
                     { label: "Auth Capital", value: fmtCr(parseAmount(c?.auth_capital)) },
+                    { label: "Last Sync", value: c?.last_sync ? new Date(c.last_sync).toLocaleString() : 'N/A' },
+                    { 
+                      label: "MCA Updated", 
+                      value: (
+                        <div className="flex items-center gap-1.5">
+                          <span>{c?.last_mca_updated ? new Date(c.last_mca_updated).toLocaleString() : 'Pending'}</span>
+                          {c && (
+                             <span className={`${getStatusInfo(c.last_mca_updated).bg} ${getStatusInfo(c.last_mca_updated).text} text-[8px] px-1 py-0 rounded border-0 font-black`}>
+                               {getStatusInfo(c.last_mca_updated).label}
+                             </span>
+                          )}
+                        </div>
+                      ) 
+                    },
                   ].filter(f => f.value && f.value !== "₹0 Cr").map((f, i) => (
                     <div key={i} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                       <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{f.label}</p>
