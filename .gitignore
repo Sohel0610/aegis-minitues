@@ -19,6 +19,11 @@ dist-ssr
 .env.test.local
 .env.production.local
 
+# Aegis Generated Disclosures
+Backend/Director_Disclosure/Output_Disclosures/
+*.docx
+venv/
+
 # Python
 __pycache__
 *.pyc
@@ -136,4 +141,4 @@ lerna-debug.log*
 .idea
 .DS_Store
 Thumbs.db
-*/venvvenv/ 
+*/venv
