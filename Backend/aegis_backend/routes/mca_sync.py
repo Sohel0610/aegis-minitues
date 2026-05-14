@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
-from aegis_backend.utils.falconebiz_service import trigger_mca_refresh
+from utils.falconebiz_service import trigger_mca_refresh
 
 router = APIRouter(prefix="/api/mca", tags=["MCA Sync"])
 
