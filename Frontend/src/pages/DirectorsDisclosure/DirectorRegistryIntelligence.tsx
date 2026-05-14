@@ -300,12 +300,20 @@ const DirectorRegistryIntelligence = () => {
                  </div>
                  <div className="space-y-1">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last registry sync</p>
-                    <p className="text-xs font-black text-gray-900">{selectedDirector?.last_api_sync ? new Date(selectedDirector.last_api_sync).toLocaleString() : 'N/A'}</p>
+                    <p className="text-xs font-black text-gray-900">
+                       {selectedDirector?.last_api_sync 
+                         ? new Date(selectedDirector.last_api_sync).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) 
+                         : 'N/A'}
+                    </p>
                  </div>
                  <div className="space-y-1">
                     <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Source Updated (MCA)</p>
                     <div className="flex items-center gap-2">
-                       <p className="text-xs font-black text-[#0B74B0]">{selectedDirector?.last_mca_updated ? new Date(selectedDirector.last_mca_updated).toLocaleString() : 'Pending Refresh'}</p>
+                       <p className="text-xs font-black text-[#0B74B0]">
+                          {selectedDirector?.last_mca_updated 
+                            ? new Date(selectedDirector.last_mca_updated).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) 
+                            : 'Pending Refresh'}
+                       </p>
                        {selectedDirector && (
                          <Badge className={`${getStatusInfo(selectedDirector.last_mca_updated).bg} ${getStatusInfo(selectedDirector.last_mca_updated).text} text-[8px] px-1.5 py-0 rounded-md border-0`}>
                            {getStatusInfo(selectedDirector.last_mca_updated).label}
