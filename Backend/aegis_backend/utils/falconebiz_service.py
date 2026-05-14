@@ -43,14 +43,20 @@ def trigger_mca_refresh(din=None, cin=None):
         )
         
         if response.status_code == 200:
+            resp_text = response.text
+            if "Update requested" in resp_text:
+                return True, "Update requested successfully. Please check back in 2-5 minutes for the latest data."
+            
             try:
                 data = response.json()
-                return True, data.get("message") or "Refresh request triggered successfully. Data will update in 2-5 minutes."
+                if isinstance(data, list) and len(data) > 0:
+                    msg = data[0].get("success_msg") or data[0].get("message")
+                    if msg: return True, msg
+                return True, data.get("message") or "Refresh triggered successfully."
             except:
-                # If not JSON but status is 200, it might be a success string
-                return True, response.text or "Refresh triggered successfully."
+                return True, "Refresh triggered successfully."
         else:
-            return False, f"API Error: {response.status_code} - {response.text[:100]}"
+            return False, f"API Error: {response.status_code}"
             
     except Exception as e:
         return False, f"Connection error: {str(e)}"
