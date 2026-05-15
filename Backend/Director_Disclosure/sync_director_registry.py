@@ -203,6 +203,9 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
             com_name = assoc.get('com_name', 'Unknown')
             if not cin or cin == 'N/A': continue
             
+            # Use a conditional update for status: 
+            # If the current status is 'Resigned', don't let the (potentially stale) 
+            # Director API overwrite it back to 'Active' unless it's a very fresh update.
             cur.execute("""
                 INSERT INTO directors_master.external_board_members 
                 (din, cin, company_name, designation, appointment_date, status)
@@ -211,7 +214,10 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
                     company_name = EXCLUDED.company_name,
                     designation = EXCLUDED.designation,
                     appointment_date = EXCLUDED.appointment_date,
-                    status = EXCLUDED.status
+                    status = CASE 
+                        WHEN directors_master.external_board_members.status = 'Resigned' THEN 'Resigned'
+                        ELSE EXCLUDED.status 
+                    END
             """, (
                 din, cin, com_name, assoc.get('designation'),
                 assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
@@ -353,7 +359,10 @@ if __name__ == "__main__":
                                     company_name = EXCLUDED.company_name,
                                     designation = EXCLUDED.designation,
                                     appointment_date = EXCLUDED.appointment_date,
-                                    status = EXCLUDED.status
+                                    status = CASE 
+                                        WHEN directors_master.external_board_members.status = 'Resigned' THEN 'Resigned'
+                                        ELSE EXCLUDED.status 
+                                    END
                             """, (din, cin, com_name, assoc.get('designation'),
                                 assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
                                 assoc.get('status', 'Active')))
