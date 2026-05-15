@@ -161,22 +161,20 @@ async def get_director_associations(din: str):
     cur = conn.cursor(cursor_factory=extras.RealDictCursor)
     try:
         cur.execute("""
-            SELECT * FROM (
-                SELECT 
-                    ea.cin, 
-                    ea.company_name, 
-                    ea.designation, 
-                    ea.appointment_date, 
-                    COALESCE(c.status, ea.status) as status,
-                    COALESCE(c.is_adani, FALSE) as is_group
-                FROM directors_master.external_board_members ea
-                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
-                WHERE ea.din = %s
-            ) sub
-            WHERE COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%'
-              AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%'
-              AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
-            ORDER BY appointment_date DESC
+            SELECT 
+                ea.cin, 
+                ea.company_name, 
+                ea.designation, 
+                ea.appointment_date, 
+                COALESCE(c.status, ea.status) as status,
+                COALESCE(c.is_adani, FALSE) as is_group
+            FROM directors_master.external_board_members ea
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+            WHERE ea.din = %s
+              AND COALESCE(UPPER(c.status), UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+              AND COALESCE(UPPER(c.status), UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+              AND COALESCE(UPPER(c.status), UPPER(ea.status), '') != 'AMALGAMATED'
+            ORDER BY ea.appointment_date DESC NULLS LAST
         """, (din,))
         return cur.fetchall()
     except Exception as e:
