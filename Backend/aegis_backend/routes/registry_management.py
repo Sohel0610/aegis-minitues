@@ -265,7 +265,7 @@ async def get_companies_by_director(din: str):
             SELECT DISTINCT cin, company_name as name 
             FROM directors_master.external_board_members 
             WHERE din = %s 
-              AND (status IS NULL OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%' AND UPPER(status) NOT LIKE 'INACTIVE%'))
+              AND (status IS NULL OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%%' AND UPPER(status) NOT LIKE 'INACTIVE%%'))
             ORDER BY company_name ASC
         """, (din,))
         return cur.fetchall()

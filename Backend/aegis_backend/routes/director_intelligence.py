@@ -171,8 +171,8 @@ async def get_director_associations(din: str):
             FROM directors_master.external_board_members ea
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE ea.din = %s
-              AND (ea.status IS NULL OR (UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
-              AND (c.status IS NULL OR UPPER(c.status) != 'AMALGAMATED')
+              AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
+              AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
             ORDER BY ea.appointment_date DESC NULLS LAST
         """, (din,))
         results = cur.fetchall()
