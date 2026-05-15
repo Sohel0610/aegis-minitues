@@ -54,15 +54,14 @@ def test_api():
         )
         
         print(f"\nHTTP Status Code: {response.status_code}")
-        print("\n--- RAW RESPONSE ---")
-        try:
-            # Try to print as formatted JSON if possible
-            raw_data = response.json()
-            print(json.dumps(raw_data, indent=2))
-        except:
-            # Fallback to raw text
-            print(response.text)
-        print("-" * 20)
+        
+        print("\n--- RESPONSE HEADERS ---")
+        for key, value in response.headers.items():
+            print(f"{key}: {value}")
+
+        print("\n--- RAW RESPONSE BODY ---")
+        print(response.text)
+        print("\n" + "-" * 30)
 
     except Exception as e:
         print(f"\nError occurred: {e}")
