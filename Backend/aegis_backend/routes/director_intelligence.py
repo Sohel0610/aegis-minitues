@@ -166,18 +166,19 @@ async def get_director_associations(din: str):
                 ea.company_name, 
                 ea.designation, 
                 ea.appointment_date, 
-                COALESCE(c.status, ea.status) as status,
+                COALESCE(ea.status, 'Active') as status,
                 COALESCE(c.is_adani, FALSE) as is_group
             FROM directors_master.external_board_members ea
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE ea.din = %s
-              AND COALESCE(UPPER(c.status), UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
-              AND COALESCE(UPPER(c.status), UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
-              AND COALESCE(UPPER(c.status), UPPER(ea.status), '') != 'AMALGAMATED'
+              AND (ea.status IS NULL OR (UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
+              AND (c.status IS NULL OR UPPER(c.status) != 'AMALGAMATED')
             ORDER BY ea.appointment_date DESC NULLS LAST
         """, (din,))
-        return cur.fetchall()
+        results = cur.fetchall()
+        return results
     except Exception as e:
+        print(f"CRITICAL SQL ERROR in get_director_associations for DIN {din}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cur.close()
