@@ -54,7 +54,7 @@ async def get_intelligence_summary():
             FROM directors_master.directors d
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL 
-            AND (ea.status IS NULL OR UPPER(ea.status) != 'AMALGAMATED')
+            AND (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
             GROUP BY d.din_status
         """)
         status_breakdown = cur.fetchall()
@@ -66,7 +66,7 @@ async def get_intelligence_summary():
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL 
             AND UPPER(d.gender) IN ('MALE', 'FEMALE')
-            AND (ea.status IS NULL OR UPPER(ea.status) != 'AMALGAMATED')
+            AND (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
             GROUP BY 1
         """)
         gender_breakdown = cur.fetchall()
@@ -77,13 +77,18 @@ async def get_intelligence_summary():
             FROM directors_master.directors d
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             WHERE d.last_api_sync IS NOT NULL
-            AND (ea.status IS NULL OR UPPER(ea.status) != 'AMALGAMATED')
+            AND (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
             GROUP BY 1
         """)
         kyc_breakdown = cur.fetchall()
 
-        # 5. Total Associations tracked (Excluding Amalgamated)
-        cur.execute("SELECT COUNT(*) as total FROM directors_master.external_board_members WHERE status IS NULL OR UPPER(status) != 'AMALGAMATED'")
+        # 5. Total Associations tracked (Excluding Amalgamated/Resigned)
+        cur.execute("""
+            SELECT COUNT(*) as total 
+            FROM directors_master.external_board_members 
+            WHERE status IS NULL 
+               OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%' AND UPPER(status) NOT LIKE 'INACTIVE%')
+        """)
         assoc_count = cur.fetchone()
 
         return {
@@ -126,7 +131,7 @@ async def get_enriched_directors():
             FROM directors_master.directors d
             LEFT JOIN directors_master.external_board_members ebm ON d.din = ebm.din
             WHERE d.last_api_sync IS NOT NULL
-            AND (ebm.status IS NULL OR UPPER(ebm.status) != 'AMALGAMATED')
+            AND (ebm.status IS NULL OR (UPPER(ebm.status) != 'AMALGAMATED' AND UPPER(ebm.status) NOT LIKE 'RESIGNED%' AND UPPER(ebm.status) NOT LIKE 'INACTIVE%'))
             GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc, d.last_api_sync, d.last_mca_updated
             ORDER BY d.name
         """)
@@ -159,7 +164,7 @@ async def get_director_associations(din: str):
                 LEFT JOIN directors_data.companies c ON ea.cin = c.cin
                 WHERE ea.din = %s
             ) sub
-            WHERE status IS NULL OR UPPER(status) != 'AMALGAMATED'
+            WHERE status IS NULL OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%' AND UPPER(status) NOT LIKE 'INACTIVE%')
             ORDER BY appointment_date DESC
         """, (din,))
         return cur.fetchall()
