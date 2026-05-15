@@ -301,7 +301,7 @@ def save_company_to_db(data: dict) -> tuple[bool, str]:
             details.get('subcategory'), details.get('state'), details.get('district'),
             details.get('activity'), filings.get('last_agm'), filings.get('last_bal_sheet'),
             contacts.get('email'), contacts.get('address'), details.get('list_status'),
-            data.get('last_updated')
+            details.get('last_updated')
         ))
 
         # 2. Two-layer director sync

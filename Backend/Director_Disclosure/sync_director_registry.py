@@ -193,7 +193,7 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
             nationality,
             api_data.get('dir3_kyc'),
             api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None,
-            api_data.get('last_updated')
+            api_data.get('updated_at')
         ))
         
         # 2. Sync Associations
@@ -340,7 +340,7 @@ if __name__ == "__main__":
                             nationality,
                             api_data.get('dir3_kyc'),
                             api_data.get('approve_date') if api_data.get('approve_date') != 'N/A' else None,
-                            api_data.get('last_updated')
+                            api_data.get('updated_at')
                         ))
                         
                         # 2. Sync Associations
