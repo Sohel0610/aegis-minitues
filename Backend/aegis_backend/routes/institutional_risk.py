@@ -43,7 +43,9 @@ def get_risk_summary():
                 SELECT COUNT(DISTINCT cin) AS total
                 FROM directors_master.external_board_members
                 WHERE cin IS NOT NULL AND cin != ''
-                  AND (status IS NULL OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%' AND UPPER(status) NOT LIKE 'INACTIVE%'))
+                  AND COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%'
+                  AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%'
+                  AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
             """)
             total = cur.fetchone()["total"]
         except Exception:
@@ -181,7 +183,9 @@ def get_red_flags():
             FROM directors_data.companies c
             JOIN directors_master.external_board_members ea ON c.cin = ea.cin
             WHERE UPPER(COALESCE(c.status, '')) NOT IN ('ACTIVE', '')
-              AND (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
+              AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+              AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+              AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
             GROUP BY c.cin, c.name, c.status, c.state, c.last_agm, c.last_bal_sheet
             ORDER BY director_count DESC
             LIMIT 50
@@ -196,7 +200,9 @@ def get_red_flags():
             FROM directors_data.companies c
             LEFT JOIN directors_master.external_board_members ea ON c.cin = ea.cin
             WHERE (c.last_agm IS NULL OR c.last_agm = '' OR c.last_agm = 'Not Available')
-              AND (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
+              AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+              AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+              AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
             GROUP BY c.cin, c.name, c.status, c.state, c.last_agm, c.last_bal_sheet
             ORDER BY director_count DESC
             LIMIT 50
@@ -306,7 +312,9 @@ def get_entity_pedigree(cin: str):
             FROM directors_master.external_board_members ea
             LEFT JOIN directors_master.directors d ON ea.din = d.din
             WHERE ea.cin = %s
-              AND (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
+              AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+              AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+              AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
             ORDER BY ea.appointment_date
         """, (cin,))
         board = [dict(r) for r in cur.fetchall()]

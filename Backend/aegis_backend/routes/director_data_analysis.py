@@ -413,7 +413,9 @@ def get_company_count():
             cursor.execute("""
                 SELECT COUNT(DISTINCT cin) AS count 
                 FROM directors_master.external_board_members 
-                WHERE (status IS NULL OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%' AND UPPER(status) NOT LIKE 'INACTIVE%'))
+                WHERE COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%'
+                  AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%'
+                  AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
             """)
             total = cursor.fetchone()["count"] or 0
             
@@ -422,7 +424,9 @@ def get_company_count():
                 SELECT COUNT(DISTINCT cin) AS count 
                 FROM directors_master.external_board_members 
                 WHERE cin LIKE 'L%' 
-                AND (status IS NULL OR (UPPER(status) != 'AMALGAMATED' AND UPPER(status) NOT LIKE 'RESIGNED%' AND UPPER(status) NOT LIKE 'INACTIVE%'))
+                AND COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%'
+                AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%'
+                AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
             """)
             public = cursor.fetchone()["count"] or 0
             
@@ -444,7 +448,9 @@ def get_cross_directorship():
                 SELECT d.name, d.din, COUNT(ea.cin) AS companies
                 FROM directors_master.directors d
                 JOIN directors_master.external_board_members ea ON d.din = ea.din
-                WHERE (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
+                WHERE COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+                  AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+                  AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
                 GROUP BY d.name, d.din
                 ORDER BY companies DESC
                 LIMIT 100
@@ -466,8 +472,8 @@ def get_clustering():
                 JOIN directors_master.external_board_members ea2 ON ea1.cin = ea2.cin AND ea1.din < ea2.din
                 JOIN directors_master.directors d1 ON ea1.din = d1.din
                 JOIN directors_master.directors d2 ON ea2.din = d2.din
-                WHERE (ea1.status IS NULL OR (UPPER(ea1.status) != 'AMALGAMATED' AND UPPER(ea1.status) NOT LIKE 'RESIGNED%' AND UPPER(ea1.status) NOT LIKE 'INACTIVE%'))
-                  AND (ea2.status IS NULL OR (UPPER(ea2.status) != 'AMALGAMATED' AND UPPER(ea2.status) NOT LIKE 'RESIGNED%' AND UPPER(ea2.status) NOT LIKE 'INACTIVE%'))
+                WHERE COALESCE(UPPER(ea1.status), '') NOT LIKE 'RESIGNED%' AND COALESCE(UPPER(ea1.status), '') NOT LIKE 'INACTIVE%' AND COALESCE(UPPER(ea1.status), '') != 'AMALGAMATED'
+                  AND COALESCE(UPPER(ea2.status), '') NOT LIKE 'RESIGNED%' AND COALESCE(UPPER(ea2.status), '') NOT LIKE 'INACTIVE%' AND COALESCE(UPPER(ea2.status), '') != 'AMALGAMATED'
                 GROUP BY d1.name, d2.name
                 ORDER BY shared_companies DESC
                 LIMIT 30
@@ -524,7 +530,9 @@ def get_wtd_count():
                 SELECT d.name, COUNT(ea.cin) as positions
                 FROM directors_master.directors d
                 JOIN directors_master.external_board_members ea ON d.din = ea.din
-                WHERE (ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%'))
+                WHERE COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+                  AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+                  AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
                 GROUP BY d.name
                 ORDER BY positions DESC
                 LIMIT 50
@@ -549,7 +557,9 @@ def get_all_companies_with_director_count():
                            SELECT 1 FROM directors_data.companies c WHERE c.cin = ea.cin
                        ) as is_group
                 FROM directors_master.external_board_members ea
-                WHERE ea.status IS NULL OR (UPPER(ea.status) != 'AMALGAMATED' AND UPPER(ea.status) NOT LIKE 'RESIGNED%' AND UPPER(ea.status) NOT LIKE 'INACTIVE%')
+                WHERE COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+                  AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+                  AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
                 GROUP BY ea.cin, ea.company_name
                 ORDER BY is_group DESC, director_count DESC, ea.company_name ASC
             """)
