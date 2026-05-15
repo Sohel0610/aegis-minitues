@@ -306,10 +306,13 @@ def save_company_to_db(data: dict) -> tuple[bool, str]:
 
         # 2. Two-layer director sync
         directors_list = data.get('directors', [])
-        if isinstance(directors_list, list) and directors_list:
-            cur.execute("SELECT din FROM directors_master.directors WHERE din IS NOT NULL")
-            group_dins = {r[0] for r in cur.fetchall()}
+        if isinstance(directors_list, list):
             company_name = details.get('company_name')
+            
+            # Get current directors in DB for this CIN to identify resignations
+            cur.execute("SELECT din FROM directors_master.external_board_members WHERE cin = %s", (cin,))
+            existing_dins = {r[0] for r in cur.fetchall()}
+            incoming_dins = set()
 
             for d in directors_list:
                 din   = d.get('din')
@@ -317,22 +320,29 @@ def save_company_to_db(data: dict) -> tuple[bool, str]:
                 desig = d.get('designation')
                 appt  = d.get('appointment_date')
                 if not din: continue
+                
+                incoming_dins.add(din)
 
                 # Layer A: Full external catalogue (always)
+                # Mark as 'Active' since they are in the current directors list
                 cur.execute("""
                     INSERT INTO directors_master.external_board_members
                         (din, name, cin, company_name, designation, appointment_date, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,'Active')
                     ON CONFLICT (din, cin) DO UPDATE SET
                         name=EXCLUDED.name, company_name=EXCLUDED.company_name,
                         designation=EXCLUDED.designation, appointment_date=EXCLUDED.appointment_date,
-                        status=EXCLUDED.status
-                """, (din, name, cin, company_name, desig, appt, details.get('statusname')))
+                        status='Active'
+                """, (din, name, cin, company_name, desig, appt))
 
-                # Layer B: RESERVED FOR DIN SYNC SCRIPT ONLY
-                # We no longer update external_board_members from the Company API 
-                # to prevent data conflicts with the Director-centric sync.
-                pass
+            # Identify Resigned Directors (those in DB but not in the fresh API response)
+            resigned_dins = existing_dins - incoming_dins
+            for r_din in resigned_dins:
+                cur.execute("""
+                    UPDATE directors_master.external_board_members 
+                    SET status = 'Resigned' 
+                    WHERE din = %s AND cin = %s AND status != 'Resigned'
+                """, (r_din, cin))
 
         # 3. Charges — store amount as TEXT to preserve API values exactly
         cur.execute("DELETE FROM directors_data.company_charges WHERE cin = %s", (cin,))
