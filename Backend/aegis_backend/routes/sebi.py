@@ -41,8 +41,8 @@ class SEBIAnalysisDataResponse(BaseModel):
 async def get_sebi_excel_data(limit: int = 100, offset: int = 0):
     """Get SEBI analysis data from the Azure PostgreSQL database"""
     try:
-        # Define the target database name
-        SEBI_DB = "aegis_sebi_db"
+        # Define the target database name using environment variable
+        SEBI_DB = os.getenv('POSTGRES_DATABASE_SEBI') or 'aegis_sebi_db'
         
         # Connect to the database and fetch data
         def fetch_sebi_data():

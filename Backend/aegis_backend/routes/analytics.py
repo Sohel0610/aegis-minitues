@@ -132,7 +132,7 @@ async def get_rbi_total_count():
             try:
                 cursor.execute("""
                     SELECT COUNT(*) AS count FROM master_summaries 
-                    WHERE pdf_link IS NOT NULL AND pdf_link != 'NIL'
+                    WHERE NOT (pdf_link = 'NIL' AND summary = 'NIL')
                 """)
                 row = cursor.fetchone()
                 return int(row["count"]) if row else 0
@@ -143,6 +143,7 @@ async def get_rbi_total_count():
         count = await loop.run_in_executor(thread_pool, fetch)
         return {"count": count}
     except Exception as e:
+        logger.error(f"Error fetching RBI total count: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint to get total count of SEBI notifications
@@ -151,13 +152,14 @@ async def get_sebi_total_count():
     """Get total count of SEBI notifications from PostgreSQL."""
     try:
         def fetch():
-            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_BSE'))
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_SEBI') or 'aegis_sebi_db')
             if not conn: return 0
             cursor = get_pg_cursor(conn)
             try:
                 cursor.execute("""
-                    SELECT COUNT(*) AS count FROM excel_summaries 
+                    SELECT COUNT(*) AS count FROM aegis_sebi_data 
                     WHERE pdf_link IS NOT NULL AND pdf_link != 'NIL'
+                    AND summary IS NOT NULL AND summary != 'NIL'
                 """)
                 row = cursor.fetchone()
                 return int(row["count"]) if row else 0
@@ -168,4 +170,5 @@ async def get_sebi_total_count():
         count = await loop.run_in_executor(thread_pool, fetch)
         return {"count": count}
     except Exception as e:
+        logger.error(f"Error fetching SEBI total count: {e}")
         raise HTTPException(status_code=500, detail=str(e))
