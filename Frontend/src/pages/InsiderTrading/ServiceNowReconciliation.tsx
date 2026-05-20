@@ -153,45 +153,7 @@ const ServiceNowReconciliation = () => {
             Compare ServiceNow employee disclosures & pre-clearance approvals against CDSL/NSDL depository trade logs.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleSync}
-            disabled={syncing}
-            className="bg-[#75479C] hover:bg-[#5a357a] text-white flex items-center gap-2"
-          >
-            {syncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {syncing ? (syncPhase || "Syncing...") : "Sync ServiceNow Data"}
-          </Button>
-        </div>
       </div>
-
-      {/* Sync Result Steps */}
-      {syncResult && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
-            <span className="text-sm font-semibold text-green-900">{syncResult.message}</span>
-            {syncResult.new_records_from_api > 0 && (
-              <span className="ml-2 px-2 py-0.5 bg-green-200 text-green-900 text-xs font-bold rounded">
-                +{syncResult.new_records_from_api} new records
-              </span>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            {syncResult.steps.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                {getStepIcon(s.status)}
-                <span className="font-semibold text-gray-700 w-28">{getStepLabel(s.step)}</span>
-                <span className="text-gray-600">{s.detail}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 rounded-md flex items-center gap-2.5">

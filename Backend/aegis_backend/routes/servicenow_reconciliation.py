@@ -42,6 +42,7 @@ class ServiceNowSummaryResponse(BaseModel):
     unsanctioned_trades_count: int
     volume_breaches_count: int
     holding_discrepancies_count: int
+    last_calculated: Optional[str] = None
 
 # ── Endpoints ──
 
@@ -167,91 +168,71 @@ async def sync_servicenow_data():
 
 @router.get("/servicenow/summary", response_model=ServiceNowSummaryResponse)
 async def get_servicenow_summary():
-    """Get high level metrics on declarations, tickets, and detected violations"""
+    """
+    Read pre-calculated summary from the compliance_cache_summary table.
+    This table is populated by running: python scripts/precalculate_compliance.py
+    """
     try:
         conn = get_conn()
         cur = conn.cursor()
 
-        # Count master declarations
-        cur.execute("SELECT COUNT(*) FROM public.servicenow_declarations")
-        total_dec = cur.fetchone()['count']
-
-        # Count holdings
-        cur.execute("SELECT COUNT(*) FROM public.servicenow_holdings")
-        total_hold = cur.fetchone()['count']
-
-        # Count pre-clearances
-        cur.execute("SELECT COUNT(*) FROM public.servicenow_preclearances")
-        total_pc = cur.fetchone()['count']
-
-        # Count Unsanctioned Trades (insider trades without pre-clearance)
+        # Check if the cache table exists and has data
         cur.execute("""
-            SELECT COUNT(DISTINCT (sr.pangir, sr.company_id, sr.batch_id)) AS count
-            FROM public.shareholder_records sr
-            JOIN (
-                SELECT company_id, MAX(batch_id) as max_batch_id
-                FROM public.shareholder_records
-                GROUP BY company_id
-            ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
-            JOIN (
-                SELECT DISTINCT pan_card FROM public.servicenow_holdings WHERE pan_card != ''
-                UNION
-                SELECT DISTINCT pan_card FROM public.servicenow_preclearance_details WHERE pan_card != ''
-            ) dp ON sr.pangir = dp.pan_card
-            WHERE 
-                sr.position_difference != 0
-                AND NOT EXISTS (
-                    SELECT 1 
-                    FROM public.servicenow_preclearance_details pd2
-                    JOIN public.servicenow_preclearances pc2 ON pd2.ritm_number = pc2.ritm_number
-                    WHERE pd2.pan_card = sr.pangir AND pc2.state = 'Closed Complete'
-                )
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'compliance_cache_summary'
+            ) AS table_exists
         """)
-        unsanctioned_count = cur.fetchone()['count'] or 0
+        table_exists = cur.fetchone()['table_exists']
 
-        # Count Volume Breaches (Over-trading)
+        if not table_exists:
+            conn.close()
+            # Cache table not created yet — return zeros
+            return {
+                "total_declarations": 0,
+                "total_holdings": 0,
+                "total_preclearances": 0,
+                "unsanctioned_trades_count": 0,
+                "volume_breaches_count": 0,
+                "holding_discrepancies_count": 0,
+                "last_calculated": None,
+            }
+
         cur.execute("""
-            SELECT COUNT(DISTINCT (sr.pangir, sr.company_id, sr.batch_id)) AS count
-            FROM public.shareholder_records sr
-            JOIN (
-                SELECT company_id, MAX(batch_id) as max_batch_id
-                FROM public.shareholder_records
-                GROUP BY company_id
-            ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
-            JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
-            JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number
-            WHERE 
-                sr.position_difference != 0
-                AND pc.state = 'Closed Complete'
-                AND ABS(sr.position_difference) > pd.approved_quantity
+            SELECT
+                total_declarations,
+                total_holdings,
+                total_preclearances,
+                unsanctioned_count,
+                volume_breach_count,
+                holding_mismatch_count,
+                calculated_at
+            FROM public.compliance_cache_summary
+            ORDER BY calculated_at DESC
+            LIMIT 1
         """)
-        volume_breach_count = cur.fetchone()['count'] or 0
-
-        # Count Holding Discrepancies
-        cur.execute("""
-            SELECT COUNT(*) AS count
-            FROM public.servicenow_holdings sh
-            JOIN public.servicenow_declarations sd ON sh.ritm_number = sd.ritm_number
-            JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sh.company_id = sr.company_id
-            JOIN (
-                SELECT company_id, MAX(batch_id) as max_batch_id
-                FROM public.shareholder_records
-                GROUP BY company_id
-            ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
-            WHERE 
-                sd.state = 'Closed Complete'
-                AND sh.declared_quantity != sr.position_latest
-        """)
-        holding_discrepancy_count = cur.fetchone()['count'] or 0
-
+        row = cur.fetchone()
         conn.close()
+
+        if not row:
+            return {
+                "total_declarations": 0,
+                "total_holdings": 0,
+                "total_preclearances": 0,
+                "unsanctioned_trades_count": 0,
+                "volume_breaches_count": 0,
+                "holding_discrepancies_count": 0,
+                "last_calculated": None,
+            }
+
         return {
-            "total_declarations": total_dec,
-            "total_holdings": total_hold,
-            "total_preclearances": total_pc,
-            "unsanctioned_trades_count": unsanctioned_count,
-            "volume_breaches_count": volume_breach_count,
-            "holding_discrepancies_count": holding_discrepancy_count
+            "total_declarations": row['total_declarations'],
+            "total_holdings": row['total_holdings'],
+            "total_preclearances": row['total_preclearances'],
+            "unsanctioned_trades_count": row['unsanctioned_count'],
+            "volume_breaches_count": row['volume_breach_count'],
+            "holding_discrepancies_count": row['holding_mismatch_count'],
+            "last_calculated": str(row['calculated_at']) if row['calculated_at'] else None,
         }
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow summary: {e}")
@@ -263,160 +244,72 @@ async def get_servicenow_violations(
     limit: int = Query(50),
     offset: int = Query(0)
 ):
-    """Fetch list of detected violations of a specific category"""
+    """
+    Read pre-calculated violation details from compliance_cache_violations table.
+    This table is populated by running: python scripts/precalculate_compliance.py
+    """
     try:
         conn = get_conn()
         cur = conn.cursor()
-        violations = []
 
-        if type.upper() == "UNSANCTIONED":
-            cur.execute("""
-                SELECT 
-                    sr.name AS shareholder_name,
-                    sr.pangir AS pan,
-                    c.company_name,
-                    sr.position_difference AS shares_traded,
-                    rb.batch_name,
-                    rb.latest_date AS transaction_date,
-                    COALESCE(
-                        (SELECT requested_for FROM public.servicenow_declarations WHERE email = sr.email LIMIT 1),
-                        (SELECT requested_for FROM public.servicenow_preclearances WHERE email = sr.email LIMIT 1),
-                        'Insider Employee'
-                    ) AS employee_name,
-                    sr.email AS employee_email
-                FROM public.shareholder_records sr
-                JOIN (
-                    SELECT company_id, MAX(batch_id) as max_batch_id
-                    FROM public.shareholder_records
-                    GROUP BY company_id
-                ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
-                JOIN public.companies c ON sr.company_id = c.id
-                JOIN public.result_batches rb ON sr.batch_id = rb.id
-                JOIN (
-                    SELECT DISTINCT pan_card FROM public.servicenow_holdings WHERE pan_card != ''
-                    UNION
-                    SELECT DISTINCT pan_card FROM public.servicenow_preclearance_details WHERE pan_card != ''
-                ) dp ON sr.pangir = dp.pan_card
-                WHERE 
-                    sr.position_difference != 0
-                    AND NOT EXISTS (
-                        SELECT 1 
-                        FROM public.servicenow_preclearance_details pd2
-                        JOIN public.servicenow_preclearances pc2 ON pd2.ritm_number = pc2.ritm_number
-                        WHERE pd2.pan_card = sr.pangir AND pc2.state = 'Closed Complete'
-                    )
-                ORDER BY rb.latest_date DESC, sr.name
-                LIMIT %s OFFSET %s
-            """, (limit, offset))
-            rows = cur.fetchall()
-            for r in rows:
-                violations.append({
-                    "shareholder_name": r['shareholder_name'],
-                    "pan": r['pan'],
-                    "company_name": r['company_name'],
-                    "shares_traded": r['shares_traded'],
-                    "batch_name": r['batch_name'],
-                    "transaction_date": str(r['transaction_date']) if r['transaction_date'] else None,
-                    "employee_name": r['employee_name'],
-                    "employee_email": r['employee_email']
-                })
+        # Check if the cache table exists
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'compliance_cache_violations'
+            ) AS table_exists
+        """)
+        table_exists = cur.fetchone()['table_exists']
 
-        elif type.upper() == "VOLUME_BREACH":
-            cur.execute("""
-                SELECT 
-                    sr.name AS shareholder_name,
-                    sr.pangir AS pan,
-                    c.company_name,
-                    sr.position_difference AS shares_traded,
-                    pd.approved_quantity AS approved_volume,
-                    (ABS(sr.position_difference) - pd.approved_quantity) AS excess_volume,
-                    rb.batch_name,
-                    rb.latest_date AS transaction_date,
-                    pc.requested_for AS employee_name,
-                    pc.email AS employee_email,
-                    pc.ritm_number AS preclearance_ritm
-                FROM public.shareholder_records sr
-                JOIN (
-                    SELECT company_id, MAX(batch_id) as max_batch_id
-                    FROM public.shareholder_records
-                    GROUP BY company_id
-                ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
-                JOIN public.companies c ON sr.company_id = c.id
-                JOIN public.result_batches rb ON sr.batch_id = rb.id
-                JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
-                JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number
-                WHERE 
-                    sr.position_difference != 0
-                    AND pc.state = 'Closed Complete'
-                    AND ABS(sr.position_difference) > pd.approved_quantity
-                ORDER BY rb.latest_date DESC, sr.name
-                LIMIT %s OFFSET %s
-            """, (limit, offset))
-            rows = cur.fetchall()
-            for r in rows:
-                violations.append({
-                    "shareholder_name": r['shareholder_name'],
-                    "pan": r['pan'],
-                    "company_name": r['company_name'],
-                    "shares_traded": r['shares_traded'],
-                    "approved_volume": r['approved_volume'],
-                    "excess_volume": r['excess_volume'],
-                    "batch_name": r['batch_name'],
-                    "transaction_date": str(r['transaction_date']) if r['transaction_date'] else None,
-                    "employee_name": r['employee_name'],
-                    "employee_email": r['employee_email'],
-                    "ritm_number": r['preclearance_ritm']
-                })
+        if not table_exists:
+            conn.close()
+            return {"violations": [], "count": 0}
 
-        elif type.upper() == "HOLDING_MISMATCH":
-            cur.execute("""
-                SELECT 
-                    sd.requested_for AS employee,
-                    sd.email AS employee_email,
-                    sh.name AS declarant,
-                    sh.relationship,
-                    sh.pan_card AS pan,
-                    c.company_name,
-                    sh.declared_quantity,
-                    sr.position_latest AS depository_quantity,
-                    (sr.position_latest - sh.declared_quantity) AS difference,
-                    sd.ritm_number AS declaration_ritm,
-                    sd.phase,
-                    sd.fiscal_year
-                FROM public.servicenow_holdings sh
-                JOIN public.servicenow_declarations sd ON sh.ritm_number = sd.ritm_number
-                JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sr.company_id = sh.company_id
-                JOIN (
-                    SELECT company_id, MAX(batch_id) as max_batch_id
-                    FROM public.shareholder_records
-                    GROUP BY company_id
-                ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
-                JOIN public.companies c ON sh.company_id = c.id
-                WHERE 
-                    sd.state = 'Closed Complete'
-                    AND sh.declared_quantity != sr.position_latest
-                ORDER BY sd.requested_for, c.company_name
-                LIMIT %s OFFSET %s
-            """, (limit, offset))
-            rows = cur.fetchall()
-            for r in rows:
-                violations.append({
-                    "employee_name": r['employee'],
-                    "employee_email": r['employee_email'],
-                    "declarant_name": r['declarant'],
-                    "relationship": r['relationship'],
-                    "pan": r['pan'],
-                    "company_name": r['company_name'],
-                    "declared_quantity": r['declared_quantity'],
-                    "depository_quantity": r['depository_quantity'],
-                    "difference": r['difference'],
-                    "ritm_number": r['declaration_ritm'],
-                    "phase": r['phase'],
-                    "fiscal_year": r['fiscal_year']
-                })
+        # Count total for this violation type
+        cur.execute("""
+            SELECT COUNT(*) AS cnt
+            FROM public.compliance_cache_violations
+            WHERE violation_type = %s
+        """, (type.upper(),))
+        total = cur.fetchone()['cnt']
 
+        # Fetch paginated rows
+        cur.execute("""
+            SELECT
+                violation_type, shareholder_name, pan, company_name,
+                employee_name, employee_email, shares_traded,
+                approved_volume, excess_volume,
+                declared_quantity, depository_quantity, difference,
+                ritm_number, batch_name, transaction_date,
+                relationship, phase, fiscal_year
+            FROM public.compliance_cache_violations
+            WHERE violation_type = %s
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """, (type.upper(), limit, offset))
+
+        rows = cur.fetchall()
         conn.close()
-        return {"violations": violations, "count": len(violations)}
+
+        violations = []
+        for r in rows:
+            v = {}
+            # Map all non-None fields
+            for key in ['shareholder_name', 'pan', 'company_name', 'employee_name',
+                        'employee_email', 'shares_traded', 'approved_volume',
+                        'excess_volume', 'declared_quantity', 'depository_quantity',
+                        'difference', 'ritm_number', 'batch_name', 'transaction_date',
+                        'relationship', 'phase', 'fiscal_year']:
+                if r.get(key) is not None:
+                    v[key] = r[key]
+
+            # For HOLDING_MISMATCH, map shareholder_name → declarant_name for frontend compatibility
+            if type.upper() == 'HOLDING_MISMATCH':
+                v['declarant_name'] = v.pop('shareholder_name', None)
+
+            violations.append(v)
+
+        return {"violations": violations, "count": total}
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow violations: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
