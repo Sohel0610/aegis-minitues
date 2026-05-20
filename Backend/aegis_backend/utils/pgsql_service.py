@@ -61,14 +61,17 @@ def get_pg_connection(database=None):
     Get a PostgreSQL connection from the pool.
     Explicitly supports multi-database strategy (Director, BSE, Insider Trading).
     """
-    host     = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or 'localhost'
-    user     = os.getenv('POSTGRES_USER') or os.getenv('DB_USER')
+    host     = (os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or 'localhost').strip()
+    user     = (os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or '').strip()
     password = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD')
-    port     = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5432'
+    port     = (os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5432').strip()
 
     # Fallback logic for database name
     if not database:
         database = os.getenv('POSTGRES_DATABASE') or os.getenv('DB_NAME')
+    
+    if database:
+        database = database.strip()
 
     if not all([host, user, password, database]):
         logger.error(f"Missing PostgreSQL credentials: {{'Host': bool(host), 'User': bool(user), 'DB': bool(database)}}")
