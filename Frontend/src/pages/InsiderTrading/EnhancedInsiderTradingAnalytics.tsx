@@ -1,11 +1,35 @@
 import { useState, useEffect } from "react";
-import { Loader2, AlertCircle, Users, TrendingUp, Lightbulb, Activity } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+  Activity,
+  Users,
+  TrendingDown,
+  TrendingUp,
+  Search,
+  ArrowUpRight,
+  ArrowDownRight,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext";
 import InsiderTradingFilterBar from "@/components/InsiderTradingFilterBar";
 
-// ── Types ─────────────────────────────────────────────────────────
+// ── Color palette (same as outside design) ────────────────────────
+const C = {
+  bg: "#F8FAFB",
+  card: "#FFFFFF",
+  border: "rgba(0,0,0,0.08)",
+  borderStrong: "rgba(0,0,0,0.12)",
+  orange: "#0066B3",
+  blue: "#4DA6FF",
+  green: "#00C98A",
+  red: "#FF3B5C",
+  amber: "#F7941D",
+  text: "#323232",
+  sub: "#64748B",
+  muted: "#94A3B8",
+};
+
+// ── Types (unchanged) ─────────────────────────────────────────────
 interface InsiderTradingSummary {
   total_companies: number;
   total_investors: number;
@@ -40,13 +64,22 @@ interface EnhancedInsiderTradingDetails {
   top_sellers: InsiderRecord[];
 }
 
+// ── Tab config ────────────────────────────────────────────────────
+const tabConfig = [
+  { id: "new" as const, label: "New Investors", color: C.green },
+  { id: "exits" as const, label: "Exits", color: C.red },
+  { id: "buyers" as const, label: "Top Buyers", color: C.blue },
+  { id: "sellers" as const, label: "Top Sellers", color: C.amber },
+];
+
 // ── Component ─────────────────────────────────────────────────────
 const EnhancedInsiderTradingAnalytics = () => {
   const { filters, buildQuery } = useInsiderTradingFilters();
-  const [activeTab, setActiveTab] = useState<'new' | 'exits' | 'buyers' | 'sellers'>('new');
+  const [activeTab, setActiveTab] = useState<"new" | "exits" | "buyers" | "sellers">("new");
   const [details, setDetails] = useState<EnhancedInsiderTradingDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   // Refetch whenever global filters change
   useEffect(() => {
@@ -85,51 +118,13 @@ const EnhancedInsiderTradingAnalytics = () => {
     return record.source || "N/A";
   };
 
-  // KPI Insights
-  const getTopInsights = () => {
-    if (!details?.summary) {
-      return [
-        { title: "Total Investors", value: "0", icon: Users, change: "0", changeType: "neutral" },
-        { title: "Net Investor Change", value: "0", icon: TrendingUp, change: "vs last period", changeType: "neutral" },
-        { title: "Net Shares Change", value: "0", icon: Activity, change: "positions modified", changeType: "neutral" },
-      ];
-    }
-    const s = details.summary;
-    const netChange = (s.added_count || 0) - (s.removed_count || 0);
-    return [
-      {
-        title: "Total Investors",
-        value: s.total_investors?.toLocaleString() || "0",
-        icon: Users,
-        change: s.net_investors_change > 0 ? `+${s.net_investors_change}` : `${s.net_investors_change}`,
-        changeType: s.net_investors_change >= 0 ? "positive" : "negative",
-      },
-      {
-        title: "Net Investor Change",
-        value: `${netChange >= 0 ? "+" : ""}${netChange}`,
-        icon: TrendingUp,
-        change: "vs last period",
-        changeType: netChange >= 0 ? "positive" : "negative",
-      },
-      {
-        title: "Modified Positions",
-        value: s.changed_count?.toLocaleString() || "0",
-        icon: Activity,
-        change: "positions modified",
-        changeType: "neutral",
-      },
-    ];
-  };
-
-  const topInsights = getTopInsights();
-
-  // ── Render ────────────────────────────────────────────────────────
+  // ── Loading / Error states ──────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#ffffff" }}>
-        <div className="text-center">
-          <Loader2 className="h-10 w-10 animate-spin mx-auto mb-3" style={{ color: "#75479C" }} />
-          <p className="text-base text-gray-900">Loading analytics...</p>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Poppins, sans-serif" }}>
+        <div style={{ textAlign: "center" }}>
+          <Loader2 size={40} color={C.orange} style={{ animation: "spin 1s linear infinite", marginBottom: 12 }} />
+          <p style={{ color: C.text, fontSize: 14 }}>Loading analytics...</p>
         </div>
       </div>
     );
@@ -137,20 +132,20 @@ const EnhancedInsiderTradingAnalytics = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#ffffff" }}>
-        <div className="text-center p-5 max-w-md">
-          <AlertCircle className="h-10 w-10 mx-auto mb-3" style={{ color: "#EF4444" }} />
-          <h2 className="text-lg font-semibold mb-2 text-gray-900">Error Loading Analytics</h2>
-          <p className="mb-3 text-sm text-gray-700">{error}</p>
-          <button onClick={fetchData} className="px-3 py-1.5 bg-[#75479C] text-white rounded text-sm hover:bg-[#5a357a] transition-colors">
-            Retry
-          </button>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Poppins, sans-serif" }}>
+        <div style={{ textAlign: "center", maxWidth: 400 }}>
+          <AlertCircle size={40} color={C.red} style={{ marginBottom: 12 }} />
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: C.text, marginBottom: 8 }}>Error Loading Analytics</h2>
+          <p style={{ fontSize: 14, color: C.sub, marginBottom: 16 }}>{error}</p>
+          <button onClick={fetchData} style={{ padding: "8px 18px", borderRadius: 8, background: C.orange, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Poppins" }}>Retry</button>
         </div>
       </div>
     );
   }
 
-  // Get the active table data
+  const s = details?.summary;
+
+  // Get active table data
   const tableData: InsiderRecord[] = (() => {
     if (!details) return [];
     switch (activeTab) {
@@ -162,177 +157,201 @@ const EnhancedInsiderTradingAnalytics = () => {
     }
   })();
 
+  const filtered = tableData.filter((r) =>
+    (r.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
+    (r.pangir?.toLowerCase() || "").includes(search.toLowerCase())
+  );
+
   return (
-    <div className="min-h-screen p-4 md:p-6" style={{ background: "#ffffff" }}>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
       {/* Header */}
-      <div className="mb-5">
-        <Card className="border-0 shadow-none bg-transparent">
-          <CardHeader className="px-0 pb-3">
-            <div className="flex items-center gap-2.5">
-              <Activity className="h-7 w-7" style={{ color: "#75479C" }} />
-              <div>
-                <CardTitle className="text-xl font-semibold text-gray-900">
-                  Insider Trading Analytics
-                </CardTitle>
-                <CardDescription className="text-sm" style={{ color: "#666666" }}>
-                  Comprehensive analysis of insider trading activities
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
+        <div style={{ width: 46, height: 46, borderRadius: 13, background: "linear-gradient(135deg, #0057B8, #003087)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(0,87,184,0.4)", flexShrink: 0 }}>
+          <Activity size={22} color="#fff" strokeWidth={2.5} />
+        </div>
+        <div>
+          <h1 style={{ color: C.text, margin: 0, fontSize: 20, fontWeight: 700 }}>Insider Trading Insight</h1>
+          <p style={{ color: C.sub, margin: "3px 0 0", fontSize: 13 }}>Comprehensive analysis of insider trading activities</p>
+        </div>
       </div>
 
       {/* Global filter bar */}
       <InsiderTradingFilterBar />
 
       {/* Key Metrics */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Lightbulb className="h-5 w-5 text-[#75479C]" />
-          <h3 className="text-lg font-semibold text-gray-900">Key Metrics</h3>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+          <div style={{ width: 3, height: 18, borderRadius: 3, background: C.orange }} />
+          <span style={{ fontSize: 13, color: C.text, fontWeight: 700, letterSpacing: "0.01em" }}>Key Metrics</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {topInsights.map((insight, index) => (
-            <div key={index} className="bg-white border rounded-md p-4 shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <insight.icon className="h-5 w-5 text-[#75479C] flex-shrink-0" />
-                <h4 className="font-medium text-sm text-gray-900">{insight.title}</h4>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+          {[
+            {
+              label: "Total Investors",
+              value: s?.total_investors?.toLocaleString() || "0",
+              sub: `${(s?.net_investors_change ?? 0) >= 0 ? "+" : ""}${s?.net_investors_change ?? 0} vs last period`,
+              icon: Users,
+              color: C.blue,
+              trend: (s?.net_investors_change ?? 0) >= 0 ? "up" : "down",
+            },
+            {
+              label: "Net Investor Change",
+              value: `${((s?.added_count ?? 0) - (s?.removed_count ?? 0)) >= 0 ? "+" : ""}${(s?.added_count ?? 0) - (s?.removed_count ?? 0)}`,
+              sub: "vs last period",
+              icon: TrendingDown,
+              color: C.red,
+              trend: ((s?.added_count ?? 0) - (s?.removed_count ?? 0)) >= 0 ? "up" : "down",
+            },
+            {
+              label: "Modified Positions",
+              value: s?.changed_count?.toLocaleString() || "0",
+              sub: "positions modified",
+              icon: Activity,
+              color: C.amber,
+              trend: "neutral" as const,
+            },
+          ].map((m) => {
+            const Icon = m.icon;
+            return (
+              <div key={m.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 20px", display: "flex", gap: 14, alignItems: "center", position: "relative", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ position: "absolute", bottom: -14, right: -14, width: 60, height: 60, borderRadius: "50%", background: `${m.color}15`, filter: "blur(10px)" }} />
+                <div style={{ width: 44, height: 44, borderRadius: 11, background: `${m.color}14`, border: `1px solid ${m.color}28`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon size={20} color={m.color} strokeWidth={2} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 24, color: C.text, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.1 }}>{m.value}</div>
+                  <div style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>{m.label}</div>
+                  <div style={{ fontSize: 11, color: m.trend === "down" ? C.red : m.trend === "up" ? C.green : C.amber, marginTop: 2, fontWeight: 600 }}>{m.sub}</div>
+                </div>
               </div>
-              <div className="border-t border-gray-200 pt-2">
-                <p className="text-2xl font-bold text-gray-900 text-center">{insight.value}</p>
-                {insight.change && (
-                  <p className={`text-xs text-center mt-1 ${insight.changeType === "positive" ? "text-green-600" :
-                      insight.changeType === "negative" ? "text-red-600" : "text-gray-500"
-                    }`}>
-                    {insight.change}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Movement Analysis */}
-      <div className="mb-6">
-        <Card className="border rounded-md shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Activity className="h-5 w-5 text-[#75479C]" />
-              Movement Analysis
-            </CardTitle>
-            <CardDescription className="text-sm" style={{ color: "#666666" }}>
-              Overview of insider trading activities
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-green-50 border border-green-200 rounded-md p-4 flex flex-col items-center">
-                <div className="text-2xl font-semibold text-green-800">{details?.summary?.added_count?.toLocaleString() ?? "0"}</div>
-                <div className="text-green-700 text-xs mt-1">New Investors</div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+          <div style={{ width: 3, height: 18, borderRadius: 3, background: C.blue }} />
+          <span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>Movement Analysis</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+          {[
+            { label: "New Investors", value: s?.added_count?.toLocaleString() || "0", color: C.green, icon: TrendingUp },
+            { label: "Full Exits", value: s?.removed_count?.toLocaleString() || "0", color: C.red, icon: TrendingDown },
+            { label: "Modified", value: s?.changed_count?.toLocaleString() || "0", color: C.amber, icon: Activity },
+            { label: "Unchanged", value: s?.unchanged_count?.toLocaleString() || "0", color: C.muted, icon: Users },
+          ].map((m) => {
+            const Icon = m.icon;
+            return (
+              <div key={m.label} style={{ background: `${m.color}0D`, border: `1px solid ${m.color}28`, borderRadius: 12, padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                  <Icon size={16} color={m.color} strokeWidth={2} />
+                </div>
+                <div style={{ fontSize: 22, color: m.color, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 }}>{m.value}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4, fontWeight: 500 }}>{m.label}</div>
               </div>
-              <div className="bg-red-50 border border-red-200 rounded-md p-4 flex flex-col items-center">
-                <div className="text-2xl font-semibold text-red-800">{details?.summary?.removed_count?.toLocaleString() ?? "0"}</div>
-                <div className="text-red-700 text-xs mt-1">Full Exits</div>
-              </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex flex-col items-center">
-                <div className="text-2xl font-semibold text-yellow-800">{details?.summary?.changed_count?.toLocaleString() ?? "0"}</div>
-                <div className="text-yellow-700 text-xs mt-1">Modified Positions</div>
-              </div>
-              <div className="bg-gray-50 border border-gray-200 rounded-md p-4 flex flex-col items-center">
-                <div className="text-2xl font-semibold text-gray-800">{details?.summary?.unchanged_count?.toLocaleString() ?? "0"}</div>
-                <div className="text-gray-700 text-xs mt-1">Unchanged</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Detailed Analysis — 15 records per tab */}
-      <div className="mb-6">
-        <Card className="border rounded-md shadow-sm">
-          <CardHeader>
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <CardTitle className="text-lg font-semibold text-gray-900">Detailed Analysis</CardTitle>
-                <CardDescription className="text-sm" style={{ color: "#666666" }}>
-                  Top 15 movers in insider trading activities
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant={activeTab === "new" ? "default" : "outline"} onClick={() => setActiveTab("new")}
-                  className={activeTab === "new" ? "bg-[#4CAF50] text-white" : ""}>
-                  New Investors ({details?.top_new_investors?.length ?? 0})
-                </Button>
-                <Button variant={activeTab === "exits" ? "default" : "outline"} onClick={() => setActiveTab("exits")}
-                  className={activeTab === "exits" ? "bg-[#EF4444] text-white" : ""}>
-                  Exits ({details?.top_exits?.length ?? 0})
-                </Button>
-                <Button variant={activeTab === "buyers" ? "default" : "outline"} onClick={() => setActiveTab("buyers")}
-                  className={activeTab === "buyers" ? "bg-[#2196F3] text-white" : ""}>
-                  Top Buyers ({details?.top_buyers?.length ?? 0})
-                </Button>
-                <Button variant={activeTab === "sellers" ? "default" : "outline"} onClick={() => setActiveTab("sellers")}
-                  className={activeTab === "sellers" ? "bg-[#FF9800] text-white" : ""}>
-                  Top Sellers ({details?.top_sellers?.length ?? 0})
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">PAN/GIR</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Position Older</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Position Latest</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Difference</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Email</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Source</th>
+      {/* Detailed Analysis Table */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, background: "linear-gradient(90deg, rgba(0,87,184,0.05) 0%, transparent 100%)" }}>
+          <div>
+            <div style={{ fontSize: 14, color: C.text, fontWeight: 700 }}>Detailed Analysis</div>
+            <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>Top 15 movers in insider trading activities</div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {tabConfig.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => { setActiveTab(t.id); setSearch(""); }}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: "Poppins",
+                  background: activeTab === t.id ? t.color : "rgba(255,255,255,0.05)",
+                  color: activeTab === t.id ? "#fff" : C.muted,
+                  boxShadow: activeTab === t.id ? `0 4px 14px ${t.color}44` : "none",
+                  transition: "all 0.18s",
+                }}
+              >
+                {t.label} ({(() => {
+                  if (!details) return 0;
+                  switch (t.id) {
+                    case "new": return details.top_new_investors?.length ?? 0;
+                    case "exits": return details.top_exits?.length ?? 0;
+                    case "buyers": return details.top_buyers?.length ?? 0;
+                    case "sellers": return details.top_sellers?.length ?? 0;
+                    default: return 0;
+                  }
+                })()})
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 8, background: C.bg }}>
+          <Search size={14} color={C.muted} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by PAN or name…"
+            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: C.text, flex: 1, fontFamily: "Poppins" }}
+          />
+          {search && (
+            <button onClick={() => setSearch("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: C.muted, fontSize: 16 }}>×</button>
+          )}
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "rgba(0,87,184,0.04)" }}>
+                {["PAN/GIR", "Name", "Pos. Older", "Pos. Latest", "Difference", "Email", "Source"].map((h) => (
+                  <th key={h} style={{ padding: "10px 16px", textAlign: ["Pos. Older", "Pos. Latest", "Difference"].includes(h) ? "right" : "left", fontSize: 10, color: "#334155", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}` }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length > 0 ? (
+                filtered.map((r, i) => (
+                  <tr key={r.pangir || i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg, cursor: "pointer" }}>
+                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pangir?.trim() || "N/A"}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(r)}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub, textAlign: "right", whiteSpace: "nowrap" }}>{(r.position_older ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>{(r.position_latest ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: (r.position_difference ?? 0) >= 0 ? C.green : C.red, display: "inline-flex", alignItems: "center", gap: 2 }}>
+                        {(r.position_difference ?? 0) >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                        {(r.position_difference ?? 0) >= 0 ? "+" : ""}{(r.position_difference ?? 0).toLocaleString()}
+                      </span>
+                    </td>
+                    <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email?.trim() || "N/A"}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displaySource(r)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {tableData.length > 0 ? (
-                    tableData.map((record, index) => (
-                      <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono text-sm">{record.pangir?.trim() || "N/A"}</td>
-                        <td className="py-3 px-4 font-medium text-gray-900">{displayName(record)}</td>
-                        <td className="py-3 px-4">{record.position_older?.toLocaleString() ?? "0"}</td>
-                        <td className="py-3 px-4">{record.position_latest?.toLocaleString() ?? "0"}</td>
-                        <td className={`py-3 px-4 font-medium ${record.position_difference > 0 ? "text-green-600" :
-                            record.position_difference < 0 ? "text-red-600" : "text-gray-600"
-                          }`}>
-                          {record.position_difference > 0 ? "+" : ""}
-                          {record.position_difference?.toLocaleString() ?? "0"}
-                        </td>
-                        <td className="py-3 px-4 text-sm">{record.email?.trim() || "N/A"}</td>
-                        <td className="py-3 px-4 text-sm">{displaySource(record)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={7} className="text-center py-10 text-gray-500">
-                        No data available for the selected filters
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Footer */}
-      <div className="mt-8 text-center">
-        <p className="text-gray-600 text-sm">
-          📊 Data based on insider trading records | Analysis for{" "}
-          {details?.summary?.total_investors?.toLocaleString() ?? "0"} investors across{" "}
-          {details?.summary?.total_companies ?? "0"} companies
-        </p>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} style={{ padding: 40, textAlign: "center", color: C.muted, fontSize: 13 }}>
+                    No records match your search
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg }}>
+          <span style={{ fontSize: 12, color: C.muted }}>Showing {filtered.length} of {tableData.length} records</span>
+        </div>
       </div>
     </div>
   );

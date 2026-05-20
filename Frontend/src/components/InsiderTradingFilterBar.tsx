@@ -1,75 +1,228 @@
 /**
  * InsiderTradingFilterBar
- * Shared filter UI (Company, Batch, Depository) used across all Insider Trading tabs.
+ * Shared filter UI (Company, Batch, Depository) — redesigned to match outside project style.
  */
-import { Filter } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState } from "react";
+import { Filter, X, ChevronDown } from "lucide-react";
 import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext";
 
-const InsiderTradingFilterBar = () => {
-    const { filters, filterOptions, setCompany, setBatch, setDepository, clearFilters } = useInsiderTradingFilters();
+const C = {
+  bg: "#F8FAFB",
+  card: "#FFFFFF",
+  border: "rgba(0,0,0,0.08)",
+  orange: "#0066B3",
+  text: "#323232",
+  sub: "#64748B",
+  muted: "#94A3B8",
+};
 
-    if (!filterOptions) return null;
+function FilterDropdown({
+  options,
+  selected,
+  placeholder,
+  onSelect,
+}: {
+  options: { label: string; value: string }[];
+  selected: string;
+  placeholder: string;
+  onSelect: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isPlaceholder = !selected;
+  const displayText = selected
+    ? options.find((o) => o.value === selected)?.label || selected
+    : placeholder;
 
-    return (
-        <div className="mb-6 bg-white border rounded-md shadow-sm">
-            <div className="p-4">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                        <Filter className="h-5 w-5 text-[#75479C]" />
-                        <div>
-                            <h3 className="text-base font-semibold text-gray-900">Filters</h3>
-                            <p className="text-xs text-gray-500">Applied across all tabs</p>
-                        </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
-                        {/* Batch filter */}
-                        <Select value={filters.batch} onValueChange={setBatch}>
-                            <SelectTrigger className="w-full md:w-[200px] bg-white">
-                                <SelectValue placeholder="Select Period" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white" style={{ backgroundColor: "#ffffff" }}>
-                                {filterOptions.batches.map((b) => (
-                                    <SelectItem key={b.batch_name} value={b.batch_name}>
-                                        {b.batch_name} {b.older_date && b.latest_date ? `(${b.older_date} → ${b.latest_date})` : ""}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        {/* Company filter */}
-                        <Select value={filters.company} onValueChange={setCompany}>
-                            <SelectTrigger className="w-full md:w-[220px] bg-white">
-                                <SelectValue placeholder="Select Company" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white" style={{ backgroundColor: "#ffffff" }}>
-                                {filterOptions.companies.map((c) => (
-                                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        {/* Depository filter */}
-                        <Select value={filters.depository} onValueChange={setDepository}>
-                            <SelectTrigger className="w-full md:w-[160px] bg-white">
-                                <SelectValue placeholder="Select Depository" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white" style={{ backgroundColor: "#ffffff" }}>
-                                {filterOptions.depositories.map((d) => (
-                                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        <Button variant="outline" onClick={clearFilters}>
-                            Clear
-                        </Button>
-                    </div>
-                </div>
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "7px 13px",
+          borderRadius: 8,
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          cursor: "pointer",
+          color: isPlaceholder ? C.muted : C.orange,
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: "Poppins",
+          whiteSpace: "nowrap",
+          maxWidth: 240,
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+          {displayText}
+        </span>
+        <ChevronDown
+          size={13}
+          color={isPlaceholder ? C.muted : C.orange}
+          style={{ flexShrink: 0 }}
+        />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            marginTop: 4,
+            background: "#FFFFFF",
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            zIndex: 100,
+            minWidth: 280,
+            maxHeight: 300,
+            overflowY: "auto",
+          }}
+        >
+          {options.map((opt) => (
+            <div
+              key={opt.value}
+              onClick={() => {
+                onSelect(opt.value);
+                setOpen(false);
+              }}
+              style={{
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontSize: 12,
+                color: C.text,
+                fontWeight: opt.value === selected ? 600 : 400,
+                background: opt.value === selected ? "rgba(0,102,179,0.06)" : "transparent",
+                borderBottom: `1px solid ${C.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontFamily: "Poppins",
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {opt.label}
+              </span>
             </div>
+          ))}
         </div>
-    );
+      )}
+      {/* Close dropdown when clicking outside */}
+      {open && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 99 }}
+          onClick={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+const InsiderTradingFilterBar = () => {
+  const {
+    filters,
+    filterOptions,
+    setCompany,
+    setBatch,
+    setDepository,
+    clearFilters,
+  } = useInsiderTradingFilters();
+
+  if (!filterOptions) return null;
+
+  const batchOptions = filterOptions.batches.map((b) => ({
+    value: b.batch_name,
+    label: `${b.batch_name}${b.older_date && b.latest_date ? ` (${b.older_date} → ${b.latest_date})` : ""}`,
+  }));
+
+  const companyOptions = filterOptions.companies.map((c) => ({
+    value: c,
+    label: c,
+  }));
+
+  const depositoryOptions = filterOptions.depositories.map((d) => ({
+    value: d,
+    label: d,
+  }));
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: "13px 20px",
+        marginBottom: 20,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: "rgba(0,102,179,0.12)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Filter size={14} color={C.orange} />
+        </div>
+        <div>
+          <div style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
+            Filters
+          </div>
+          <div style={{ fontSize: 10, color: C.muted }}>
+            Applied across all tabs
+          </div>
+        </div>
+      </div>
+
+      <FilterDropdown
+        options={batchOptions}
+        selected={filters.batch}
+        placeholder="Select Period"
+        onSelect={setBatch}
+      />
+      <FilterDropdown
+        options={companyOptions}
+        selected={filters.company}
+        placeholder="Select Company"
+        onSelect={setCompany}
+      />
+      <FilterDropdown
+        options={depositoryOptions}
+        selected={filters.depository}
+        placeholder="Depository Type"
+        onSelect={setDepository}
+      />
+
+      <button
+        onClick={clearFilters}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          padding: "7px 13px",
+          borderRadius: 8,
+          background: "transparent",
+          border: `1px solid ${C.border}`,
+          cursor: "pointer",
+          color: C.sub,
+          fontSize: 12,
+          fontFamily: "Poppins",
+        }}
+      >
+        <X size={13} /> Clear
+      </button>
+    </div>
+  );
 };
 
 export default InsiderTradingFilterBar;

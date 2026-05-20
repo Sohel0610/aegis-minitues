@@ -1,12 +1,39 @@
 import { useState, useEffect } from "react";
-import { Database, Search, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Server,
+  Search,
+  CheckCircle,
+  AlertTriangle,
+  Clock,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext";
 import InsiderTradingFilterBar from "@/components/InsiderTradingFilterBar";
 
-// ── Types ─────────────────────────────────────────────────────────
+// ── Color palette (same as outside design) ────────────────────────
+const C = {
+  bg: "#F8FAFB",
+  card: "#FFFFFF",
+  border: "rgba(0,0,0,0.08)",
+  orange: "#0066B3",
+  blue: "#4DA6FF",
+  green: "#00C98A",
+  red: "#FF3B5C",
+  amber: "#F7941D",
+  text: "#323232",
+  sub: "#64748B",
+  muted: "#94A3B8",
+};
+
+const statusCfg: Record<string, { color: string; bg: string; border: string; icon: any; label: string }> = {
+  ADDED:     { color: C.green, bg: "rgba(0,201,138,0.1)",  border: "rgba(0,201,138,0.25)",  icon: CheckCircle,   label: "Added" },
+  REMOVED:   { color: C.red,   bg: "rgba(255,59,92,0.1)",  border: "rgba(255,59,92,0.25)",  icon: AlertTriangle, label: "Removed" },
+  CHANGED:   { color: C.amber, bg: "rgba(247,148,29,0.1)", border: "rgba(247,148,29,0.25)", icon: Clock,         label: "Changed" },
+  UNCHANGED: { color: C.muted, bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.25)", icon: CheckCircle, label: "Unchanged" },
+};
+
+// ── Types (unchanged) ─────────────────────────────────────────────
 interface InsiderRecord {
   id?: number;
   company?: string;
@@ -78,7 +105,6 @@ const InsiderTradingMasterData = () => {
       const res = await fetch(`/api/insider-trading/records${qs}`);
       if (!res.ok) throw new Error("Failed to fetch records");
 
-
       const data: RecordsResponse = await res.json();
       setRecords(data.records || []);
       setTotal(data.total || 0);
@@ -98,14 +124,8 @@ const InsiderTradingMasterData = () => {
     return name;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status?.toUpperCase()) {
-      case "ADDED": return "bg-green-100 text-green-800 border-green-200";
-      case "REMOVED": return "bg-red-100 text-red-800 border-red-200";
-      case "CHANGED": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "UNCHANGED": return "bg-gray-100 text-gray-700 border-gray-200";
-      default: return "bg-gray-100 text-gray-700 border-gray-200";
-    }
+  const getStatusConfig = (status: string) => {
+    return statusCfg[status?.toUpperCase()] || statusCfg.UNCHANGED;
   };
 
   // Search filtering (client-side on current page)
@@ -123,187 +143,202 @@ const InsiderTradingMasterData = () => {
   const totalPages = Math.ceil(total / RECORDS_PER_PAGE);
   const currentPage = Math.floor(offset / RECORDS_PER_PAGE) + 1;
 
-  // ── Render ────────────────────────────────────────────────────────
+  const statusButtons = [
+    { key: "", label: "All", count: counts.TOTAL || 0 },
+    { key: "ADDED", label: "Added", count: counts.ADDED || 0 },
+    { key: "REMOVED", label: "Removed", count: counts.REMOVED || 0 },
+    { key: "CHANGED", label: "Changed", count: counts.CHANGED || 0 },
+    { key: "UNCHANGED", label: "Unchanged", count: counts.UNCHANGED || 0 },
+  ];
+
   return (
-    <div className="min-h-screen p-4 md:p-6" style={{ background: "#ffffff" }}>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
       {/* Header */}
-      <div className="mb-6">
-        <Card className="border-0 shadow-none bg-transparent">
-          <CardHeader className="px-0 pb-3">
-            <div className="flex items-center gap-2.5">
-              <Database className="h-7 w-7" style={{ color: "#75479C" }} />
-              <div>
-                <CardTitle className="text-xl font-semibold text-gray-900">Master Data</CardTitle>
-                <CardDescription className="text-sm" style={{ color: "#666666" }}>
-                  Individual shareholder records — showing {RECORDS_PER_PAGE} records per page
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 13, background: `linear-gradient(135deg, ${C.amber}, #b85c00)`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(247,148,29,0.35)", flexShrink: 0 }}>
+            <Server size={22} color="#fff" strokeWidth={2.5} />
+          </div>
+          <div>
+            <h1 style={{ color: C.text, margin: 0, fontSize: 20, fontWeight: 700 }}>Master Data</h1>
+            <p style={{ color: C.sub, margin: "3px 0 0", fontSize: 13 }}>Individual shareholder records — showing {RECORDS_PER_PAGE} records per page</p>
+          </div>
+        </div>
+
       </div>
 
       {/* Global filter bar */}
       <InsiderTradingFilterBar />
 
-      {/* Status filter buttons */}
-      <div className="mb-4 flex flex-wrap gap-2 items-center">
-        <span className="text-sm font-medium text-gray-700 mr-2">Status:</span>
-        <Button
-          variant={!statusFilter ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setStatusFilter(""); setOffset(0); }}
-          className={!statusFilter ? "bg-[#75479C] text-white" : ""}
-        >
-          All ({counts.TOTAL?.toLocaleString()})
-        </Button>
-        <Button
-          variant={statusFilter === "ADDED" ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setStatusFilter("ADDED"); setOffset(0); }}
-          className={statusFilter === "ADDED" ? "bg-green-600 text-white" : ""}
-        >
-          Added ({counts.ADDED?.toLocaleString()})
-        </Button>
-        <Button
-          variant={statusFilter === "REMOVED" ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setStatusFilter("REMOVED"); setOffset(0); }}
-          className={statusFilter === "REMOVED" ? "bg-red-600 text-white" : ""}
-        >
-          Removed ({counts.REMOVED?.toLocaleString()})
-        </Button>
-        <Button
-          variant={statusFilter === "CHANGED" ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setStatusFilter("CHANGED"); setOffset(0); }}
-          className={statusFilter === "CHANGED" ? "bg-yellow-600 text-white" : ""}
-        >
-          Changed ({counts.CHANGED?.toLocaleString()})
-        </Button>
-        <Button
-          variant={statusFilter === "UNCHANGED" ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setStatusFilter("UNCHANGED"); setOffset(0); }}
-          className={statusFilter === "UNCHANGED" ? "bg-gray-600 text-white" : ""}
-        >
-          Unchanged ({counts.UNCHANGED?.toLocaleString()})
-        </Button>
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 22 }}>
+        {statusButtons.map((sb) => {
+          const isActive = statusFilter === sb.key;
+          const cfg = sb.key === "" ? { color: C.text, bg: C.card, border: C.border } : { color: statusCfg[sb.key]?.color || C.text, bg: statusCfg[sb.key]?.bg || C.card, border: statusCfg[sb.key]?.border || C.border };
+          return (
+            <button
+              key={sb.key}
+              onClick={() => { setStatusFilter(sb.key); setOffset(0); }}
+              style={{
+                background: isActive ? cfg.bg : C.card,
+                border: `1px solid ${isActive ? cfg.border : C.border}`,
+                borderRadius: 12,
+                padding: "16px 18px",
+                cursor: "pointer",
+                textAlign: "left",
+                transition: "all 0.15s",
+                boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
+                fontFamily: "Poppins, sans-serif",
+              }}
+            >
+              <div style={{ fontSize: 26, color: cfg.color, fontWeight: 800, letterSpacing: "-0.03em" }}>{sb.count.toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4, textTransform: "capitalize", fontWeight: 500 }}>
+                {sb.key === "" ? "Total Records" : `${sb.label} Investors`}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Records Table */}
-      <Card className="border rounded-md shadow-sm">
-        <CardHeader className="border-b">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <CardTitle className="text-lg font-semibold text-gray-900">Shareholder Records</CardTitle>
-              <CardDescription className="text-sm" style={{ color: "#666666" }}>
-                Showing {RECORDS_PER_PAGE} of {total.toLocaleString()} total records (Page {currentPage} of {totalPages || 1})
-              </CardDescription>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                type="text"
-                placeholder="Search PAN, name, email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border rounded-md w-64"
-              />
-            </div>
+      {/* Table */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", background: "linear-gradient(90deg, rgba(247,148,29,0.04) 0%, transparent 100%)" }}>
+          <div style={{ display: "flex", gap: 5 }}>
+            {statusButtons.map((sb) => {
+              const isActive = statusFilter === sb.key;
+              const cfg = sb.key === "" ? { color: C.sub } : { color: statusCfg[sb.key]?.color || C.sub };
+              return (
+                <button
+                  key={sb.key}
+                  onClick={() => { setStatusFilter(sb.key); setOffset(0); }}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: 7,
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    fontFamily: "Poppins",
+                    background: isActive ? (sb.key === "" ? "rgba(255,255,255,0.1)" : statusCfg[sb.key]?.bg || "transparent") : "transparent",
+                    color: cfg.color,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {sb.label}
+                </button>
+              );
+            })}
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-[#75479C]" />
-              <span className="ml-3 text-gray-600">Loading records...</span>
-            </div>
-          ) : error ? (
-            <div className="text-center py-10">
-              <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-              <p className="text-red-600">{error}</p>
-              <Button onClick={fetchRecords} variant="outline" className="mt-3">Retry</Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">PAN/GIR</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Older</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Latest</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Diff</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Company</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">Depository</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedRecords.length > 0 ? (
-                    displayedRecords.map((record, idx) => (
-                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono text-sm">{record.pangir?.trim() || "N/A"}</td>
-                        <td className="py-3 px-4 font-medium text-gray-900">{displayName(record)}</td>
-                        <td className="py-3 px-4">{record.position_older?.toLocaleString() ?? "0"}</td>
-                        <td className="py-3 px-4">{record.position_latest?.toLocaleString() ?? "0"}</td>
-                        <td className={`py-3 px-4 font-medium ${record.position_difference > 0 ? "text-green-600" :
-                            record.position_difference < 0 ? "text-red-600" : "text-gray-600"
-                          }`}>
-                          {record.position_difference > 0 ? "+" : ""}
-                          {record.position_difference?.toLocaleString() ?? "0"}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(record.status)}`}>
-                            {record.status}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+            <Search size={13} color={C.muted} />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by PAN or name…"
+              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Poppins" }}
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
+            <Loader2 size={32} color={C.orange} style={{ animation: "spin 1s linear infinite" }} />
+            <span style={{ marginLeft: 12, color: C.sub, fontSize: 14 }}>Loading records...</span>
+          </div>
+        ) : error ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <AlertCircle size={32} color={C.red} style={{ marginBottom: 8 }} />
+            <p style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</p>
+            <button onClick={fetchRecords} style={{ padding: "6px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.card, cursor: "pointer", fontSize: 12, fontFamily: "Poppins", color: C.text }}>Retry</button>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "rgba(0,87,184,0.04)" }}>
+                  {["PAN/GIR", "Name", "Pos. Older", "Pos. Latest", "Difference", "Status", "Company", "Depository"].map((h) => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: ["Pos. Older", "Pos. Latest", "Difference"].includes(h) ? "right" : "left", fontSize: 10, color: "#334155", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {displayedRecords.length > 0 ? (
+                  displayedRecords.map((r, i) => {
+                    const cfg = getStatusConfig(r.status);
+                    const Icon = cfg.icon;
+                    return (
+                      <tr key={r.pangir || i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg }}>
+                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pangir?.trim() || "N/A"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(r)}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub, textAlign: "right" }}>{(r.position_older ?? 0).toLocaleString()}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700, textAlign: "right" }}>{(r.position_latest ?? 0).toLocaleString()}</td>
+                        <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: (r.position_difference ?? 0) > 0 ? C.green : (r.position_difference ?? 0) < 0 ? C.red : C.muted }}>
+                            {(r.position_difference ?? 0) > 0 ? "+" : ""}{(r.position_difference ?? 0).toLocaleString()}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-sm">{record.company || "—"}</td>
-                        <td className="py-3 px-4 text-sm">{record.depository || "—"}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 9px", borderRadius: 12, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            <Icon size={11} />{cfg.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.company || "—"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{r.depository || "—"}</td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={8} className="text-center py-10 text-gray-500">
-                        No records found for the selected filters
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} style={{ padding: 40, textAlign: "center", color: C.muted, fontSize: 13 }}>No records found</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-          {/* Pagination */}
-          {!loading && !error && total > RECORDS_PER_PAGE && (
-            <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
-              <div className="text-sm text-gray-600">
-                Showing {offset + 1}–{Math.min(offset + RECORDS_PER_PAGE, total)} of {total.toLocaleString()} records
-                <span className="ml-2 text-gray-400">({RECORDS_PER_PAGE} per page)</span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={offset === 0}
-                  onClick={() => setOffset(Math.max(0, offset - RECORDS_PER_PAGE))}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={offset + RECORDS_PER_PAGE >= total}
-                  onClick={() => setOffset(offset + RECORDS_PER_PAGE)}
-                >
-                  Next
-                </Button>
-              </div>
+        {/* Pagination */}
+        {!loading && !error && total > RECORDS_PER_PAGE && (
+          <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg }}>
+            <span style={{ fontSize: 12, color: C.muted }}>
+              Showing {offset + 1}–{Math.min(offset + RECORDS_PER_PAGE, total)} of {total.toLocaleString()} records
+            </span>
+            <div style={{ display: "flex", gap: 5 }}>
+              <button
+                disabled={offset === 0}
+                onClick={() => setOffset(Math.max(0, offset - RECORDS_PER_PAGE))}
+                style={{
+                  padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`,
+                  cursor: offset === 0 ? "default" : "pointer", fontSize: 12, fontFamily: "Poppins",
+                  background: C.card, color: offset === 0 ? C.muted : C.text, fontWeight: 600,
+                  opacity: offset === 0 ? 0.5 : 1,
+                }}
+              >
+                Previous
+              </button>
+              <button
+                disabled={offset + RECORDS_PER_PAGE >= total}
+                onClick={() => setOffset(offset + RECORDS_PER_PAGE)}
+                style={{
+                  padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`,
+                  cursor: offset + RECORDS_PER_PAGE >= total ? "default" : "pointer", fontSize: 12, fontFamily: "Poppins",
+                  background: C.card, color: offset + RECORDS_PER_PAGE >= total ? C.muted : C.text, fontWeight: 600,
+                  opacity: offset + RECORDS_PER_PAGE >= total ? 0.5 : 1,
+                }}
+              >
+                Next
+              </button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+
+        {/* Footer when not paginating */}
+        {!loading && !error && total <= RECORDS_PER_PAGE && (
+          <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg }}>
+            <span style={{ fontSize: 12, color: C.muted }}>Showing {displayedRecords.length} of {total} records</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

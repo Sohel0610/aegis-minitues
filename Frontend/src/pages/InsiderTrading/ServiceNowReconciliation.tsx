@@ -1,8 +1,33 @@
 import { useState, useEffect } from "react";
-import { Loader2, AlertCircle, RefreshCw, CheckCircle, HelpCircle, FileSpreadsheet, ShieldAlert, Award, UserCheck } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  CheckCircle,
+  HelpCircle,
+  ShieldAlert,
+  UserCheck,
+  FileSpreadsheet,
+  Award,
+  AlertTriangle,
+} from "lucide-react";
 
+// ── Color palette (same as all other pages) ───────────────────────
+const C = {
+  bg: "#F8FAFB",
+  card: "#FFFFFF",
+  border: "rgba(0,0,0,0.08)",
+  orange: "#0066B3",
+  blue: "#4DA6FF",
+  green: "#00C98A",
+  red: "#FF3B5C",
+  amber: "#F7941D",
+  text: "#323232",
+  sub: "#64748B",
+  muted: "#94A3B8",
+};
+
+// ── Types (unchanged) ─────────────────────────────────────────────
 interface SummaryMetrics {
   total_declarations: number;
   total_holdings: number;
@@ -46,14 +71,22 @@ interface SyncResult {
   steps: SyncStep[];
 }
 
+// ── Tab config ────────────────────────────────────────────────────
+const tabConfig = [
+  { id: "UNSANCTIONED" as const, label: "Unsanctioned Trades", color: C.red },
+  { id: "VOLUME_BREACH" as const, label: "Volume Breaches", color: C.amber },
+  { id: "HOLDING_MISMATCH" as const, label: "Holding Discrepancies", color: "#D97706" },
+];
+
+// ── Component ─────────────────────────────────────────────────────
 const ServiceNowReconciliation = () => {
-  const [activeTab, setActiveTab] = useState<'UNSANCTIONED' | 'VOLUME_BREACH' | 'HOLDING_MISMATCH'>('UNSANCTIONED');
+  const [activeTab, setActiveTab] = useState<"UNSANCTIONED" | "VOLUME_BREACH" | "HOLDING_MISMATCH">("UNSANCTIONED");
   const [summary, setSummary] = useState<SummaryMetrics | null>(null);
   const [violations, setViolations] = useState<ViolationRecord[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingViolations, setLoadingViolations] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [syncPhase, setSyncPhase] = useState('');
+  const [syncPhase, setSyncPhase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
@@ -99,7 +132,7 @@ const ServiceNowReconciliation = () => {
       setSyncing(true);
       setSyncResult(null);
       setError(null);
-      setSyncPhase('Connecting to ServiceNow API...');
+      setSyncPhase("Connecting to ServiceNow API...");
 
       const res = await fetch("/api/servicenow/sync", { method: "POST" });
 
@@ -111,8 +144,7 @@ const ServiceNowReconciliation = () => {
       const data: SyncResult = await res.json();
       setSyncResult(data);
 
-      // Refresh dashboard data
-      setSyncPhase('Refreshing dashboard...');
+      setSyncPhase("Refreshing dashboard...");
       await fetchSummary();
       await fetchViolations();
 
@@ -123,290 +155,250 @@ const ServiceNowReconciliation = () => {
       setError(err instanceof Error ? err.message : "Failed to sync ServiceNow records");
     } finally {
       setSyncing(false);
-      setSyncPhase('');
+      setSyncPhase("");
     }
   };
 
-  const getStepIcon = (status: string) => {
-    if (status === 'success') return <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />;
-    if (status === 'error') return <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />;
-    return <HelpCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />;
+  const getTabCount = (tabId: string) => {
+    if (!summary) return 0;
+    switch (tabId) {
+      case "UNSANCTIONED": return summary.unsanctioned_trades_count ?? 0;
+      case "VOLUME_BREACH": return summary.volume_breaches_count ?? 0;
+      case "HOLDING_MISMATCH": return summary.holding_discrepancies_count ?? 0;
+      default: return 0;
+    }
   };
 
-  const getStepLabel = (step: string) => {
-    if (step === 'fetch_api') return 'ServiceNow API';
-    if (step === 'save_json') return 'Save JSON File';
-    if (step === 'db_ingestion') return 'Database Update';
-    return step;
+  // KPI card data
+  const kpiCards = [
+    { label: "Declarations", value: summary?.total_declarations ?? 0, sub: "Submitted Forms", color: C.blue, icon: FileSpreadsheet },
+    { label: "Holdings Declared", value: summary?.total_holdings ?? 0, sub: "Position Lines", color: C.green, icon: Award },
+    { label: "Pre-clearances", value: summary?.total_preclearances ?? 0, sub: "Buy/Sell Applications", color: C.orange, icon: CheckCircle },
+    { label: "Unsanctioned Trades", value: summary?.unsanctioned_trades_count ?? 0, sub: "No Pre-clearance", color: C.red, icon: AlertTriangle },
+    { label: "Volume Breaches", value: summary?.volume_breaches_count ?? 0, sub: "Over approved limit", color: C.amber, icon: AlertCircle },
+    { label: "Holding Mismatches", value: summary?.holding_discrepancies_count ?? 0, sub: "Form vs Depository", color: "#D97706", icon: RefreshCw },
+  ];
+
+  // Table headers per tab
+  const getHeaders = () => {
+    switch (activeTab) {
+      case "UNSANCTIONED":
+        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Qty", "Batch Period", "Date"];
+      case "VOLUME_BREACH":
+        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Vol", "Approved Vol", "Excess Vol", "RITM Ticket", "Date"];
+      case "HOLDING_MISMATCH":
+        return ["Employee Name", "Declared Shareholder", "Relationship", "PAN", "Company", "Declared Qty", "Depository Qty", "Difference", "Ticket", "Period"];
+    }
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-6" style={{ background: "#ffffff" }}>
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 border-b border-gray-100 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ShieldAlert className="h-7 w-7 text-[#75479C]" />
-            ServiceNow PIT Compliance
-          </h1>
-          <p className="text-sm text-gray-600">
-            Compare ServiceNow employee disclosures & pre-clearance approvals against CDSL/NSDL depository trade logs.
-          </p>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 13, background: "linear-gradient(135deg, #FF3B5C, #B8002E)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(255,59,92,0.35)", flexShrink: 0 }}>
+            <ShieldAlert size={22} color="#fff" strokeWidth={2.5} />
+          </div>
+          <div>
+            <h1 style={{ color: C.text, margin: 0, fontSize: 20, fontWeight: 700 }}>ServiceNow PIT Compliance</h1>
+            <p style={{ color: C.sub, margin: "3px 0 0", fontSize: 13 }}>Compare ServiceNow employee disclosures & pre-clearance approvals against depository trade logs</p>
+          </div>
         </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 9,
+            background: syncing ? "rgba(148,163,184,0.1)" : "rgba(0,102,179,0.1)",
+            border: syncing ? "1px solid rgba(148,163,184,0.25)" : "1px solid rgba(0,102,179,0.25)",
+            cursor: syncing ? "not-allowed" : "pointer",
+            color: syncing ? C.muted : C.orange, fontSize: 12, fontWeight: 700, fontFamily: "Poppins",
+            opacity: syncing ? 0.7 : 1,
+          }}
+        >
+          <RefreshCw size={13} style={syncing ? { animation: "spin 1s linear infinite" } : {}} />
+          {syncing ? syncPhase || "Syncing..." : "Sync ServiceNow"}
+        </button>
       </div>
 
+      {/* Error banner */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 rounded-md flex items-center gap-2.5">
-          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-          <span className="text-sm font-medium">{error}</span>
+        <div style={{ marginBottom: 20, padding: "12px 16px", background: "rgba(255,59,92,0.08)", border: "1px solid rgba(255,59,92,0.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <AlertCircle size={18} color={C.red} style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: C.red, fontWeight: 500 }}>{error}</span>
+        </div>
+      )}
+
+      {/* Sync result banner */}
+      {syncResult && (
+        <div style={{ marginBottom: 20, padding: "12px 16px", background: "rgba(0,201,138,0.08)", border: "1px solid rgba(0,201,138,0.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <CheckCircle size={18} color={C.green} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{syncResult.message}</div>
+            <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
+              {syncResult.new_records_from_api} new records fetched from API
+            </div>
+          </div>
         </div>
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        <Card className="border rounded-md shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-semibold uppercase text-gray-500">Declarations</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-xl font-bold text-gray-900">
-              {loadingSummary ? <Loader2 className="h-5 w-5 animate-spin" /> : summary?.total_declarations ?? 0}
-            </div>
-            <p className="text-[10px] text-gray-500 mt-1">Submitted Forms</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border rounded-md shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-semibold uppercase text-gray-500">Holdings Declared</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-xl font-bold text-gray-900">
-              {loadingSummary ? <Loader2 className="h-5 w-5 animate-spin" /> : summary?.total_holdings ?? 0}
-            </div>
-            <p className="text-[10px] text-gray-500 mt-1">Position Lines</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border rounded-md shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-semibold uppercase text-gray-500">Pre-clearances</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-xl font-bold text-gray-900">
-              {loadingSummary ? <Loader2 className="h-5 w-5 animate-spin" /> : summary?.total_preclearances ?? 0}
-            </div>
-            <p className="text-[10px] text-gray-500 mt-1">Buy/Sell Applications</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border rounded-md shadow-sm bg-red-50 border-red-200">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-semibold uppercase text-red-700">Unsanctioned Trades</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-xl font-bold text-red-900">
-              {loadingSummary ? <Loader2 className="h-5 w-5 animate-spin" /> : summary?.unsanctioned_trades_count ?? 0}
-            </div>
-            <p className="text-[10px] text-red-600 mt-1">No Pre-clearance Approved</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border rounded-md shadow-sm bg-orange-50 border-orange-200">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-semibold uppercase text-orange-700">Volume Breaches</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-xl font-bold text-orange-900">
-              {loadingSummary ? <Loader2 className="h-5 w-5 animate-spin" /> : summary?.volume_breaches_count ?? 0}
-            </div>
-            <p className="text-[10px] text-orange-600 mt-1">Traded over approved limit</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border rounded-md shadow-sm bg-amber-50 border-amber-200">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-semibold uppercase text-amber-700">Holding Mismatches</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-xl font-bold text-amber-900">
-              {loadingSummary ? <Loader2 className="h-5 w-5 animate-spin" /> : summary?.holding_discrepancies_count ?? 0}
-            </div>
-            <p className="text-[10px] text-amber-600 mt-1">Form vs Depository mismatch</p>
-          </CardContent>
-        </Card>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+          <div style={{ width: 3, height: 18, borderRadius: 3, background: C.orange }} />
+          <span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>Compliance Overview</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 14 }}>
+          {kpiCards.map((kpi) => {
+            const Icon = kpi.icon;
+            const isAlert = ["Unsanctioned Trades", "Volume Breaches", "Holding Mismatches"].includes(kpi.label);
+            return (
+              <div key={kpi.label} style={{
+                background: isAlert ? `${kpi.color}0D` : C.card,
+                border: `1px solid ${isAlert ? `${kpi.color}28` : C.border}`,
+                borderRadius: 12, padding: "18px 16px", position: "relative", overflow: "hidden",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}>
+                <div style={{ position: "absolute", top: -15, right: -15, width: 50, height: 50, borderRadius: "50%", background: `${kpi.color}12`, filter: "blur(12px)" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>{kpi.label}</span>
+                  <Icon size={14} color={kpi.color} />
+                </div>
+                <div style={{ fontSize: 22, color: isAlert ? kpi.color : C.text, fontWeight: 800, letterSpacing: "-0.03em" }}>
+                  {loadingSummary ? "..." : kpi.value.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>{kpi.sub}</div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Main Tabbed Grid */}
-      <Card className="border rounded-md shadow-sm">
-        <CardHeader className="border-b border-gray-100">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <CardTitle className="text-base font-bold text-gray-900">Compliance Check Details</CardTitle>
-              <CardDescription className="text-xs">
-                Select a violation type to inspect matched records and discrepancies.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={activeTab === 'UNSANCTIONED' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('UNSANCTIONED')}
-                className={activeTab === 'UNSANCTIONED' ? 'bg-[#EF4444] hover:bg-[#DC2626] text-white' : ''}
-              >
-                Unsanctioned Trades ({summary?.unsanctioned_trades_count ?? 0})
-              </Button>
-              <Button
-                variant={activeTab === 'VOLUME_BREACH' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('VOLUME_BREACH')}
-                className={activeTab === 'VOLUME_BREACH' ? 'bg-[#F97316] hover:bg-[#EA580C] text-white' : ''}
-              >
-                Volume Breaches ({summary?.volume_breaches_count ?? 0})
-              </Button>
-              <Button
-                variant={activeTab === 'HOLDING_MISMATCH' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('HOLDING_MISMATCH')}
-                className={activeTab === 'HOLDING_MISMATCH' ? 'bg-[#F59E0B] hover:bg-[#D97706] text-white' : ''}
-              >
-                Holding Discrepancies ({summary?.holding_discrepancies_count ?? 0})
-              </Button>
-            </div>
+      {/* Compliance Check Details Table */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, background: "linear-gradient(90deg, rgba(255,59,92,0.04) 0%, transparent 100%)" }}>
+          <div>
+            <div style={{ fontSize: 14, color: C.text, fontWeight: 700 }}>Compliance Check Details</div>
+            <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>Select a violation type to inspect matched records and discrepancies</div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loadingViolations ? (
-            <div className="py-20 flex flex-col items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-[#75479C] mb-2" />
-              <p className="text-sm text-gray-600">Calculating compliance metrics...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50 text-gray-700 font-semibold">
-                    {activeTab === 'UNSANCTIONED' && (
-                      <>
-                        <th className="text-left py-3 px-4">Insider Shareholder</th>
-                        <th className="text-left py-3 px-4">PAN</th>
-                        <th className="text-left py-3 px-4">Company</th>
-                        <th className="text-left py-3 px-4">Employee / Owner</th>
-                        <th className="text-left py-3 px-4">Traded Quantity</th>
-                        <th className="text-left py-3 px-4">Batch Period</th>
-                        <th className="text-left py-3 px-4">Date</th>
-                      </>
-                    )}
-                    {activeTab === 'VOLUME_BREACH' && (
-                      <>
-                        <th className="text-left py-3 px-4">Insider Shareholder</th>
-                        <th className="text-left py-3 px-4">PAN</th>
-                        <th className="text-left py-3 px-4">Company</th>
-                        <th className="text-left py-3 px-4">Employee / Owner</th>
-                        <th className="text-left py-3 px-4">Traded Volume</th>
-                        <th className="text-left py-3 px-4">Approved Volume</th>
-                        <th className="text-left py-3 px-4">Excess Volume</th>
-                        <th className="text-left py-3 px-4">RITM Ticket</th>
-                        <th className="text-left py-3 px-4">Date</th>
-                      </>
-                    )}
-                    {activeTab === 'HOLDING_MISMATCH' && (
-                      <>
-                        <th className="text-left py-3 px-4">Employee Name</th>
-                        <th className="text-left py-3 px-4">Declared Shareholder</th>
-                        <th className="text-left py-3 px-4">Relationship</th>
-                        <th className="text-left py-3 px-4">PAN</th>
-                        <th className="text-left py-3 px-4">Company</th>
-                        <th className="text-left py-3 px-4">Declared Qty</th>
-                        <th className="text-left py-3 px-4">Depository Qty</th>
-                        <th className="text-left py-3 px-4">Difference</th>
-                        <th className="text-left py-3 px-4">Declaration Ticket</th>
-                        <th className="text-left py-3 px-4">Period</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {violations.length > 0 ? (
-                    violations.map((record, index) => (
-                      <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 text-gray-900">
-                        {activeTab === 'UNSANCTIONED' && (
-                          <>
-                            <td className="py-3.5 px-4 font-medium">{record.shareholder_name}</td>
-                            <td className="py-3.5 px-4 font-mono text-xs">{record.pan}</td>
-                            <td className="py-3.5 px-4">{record.company_name}</td>
-                            <td className="py-3.5 px-4">
-                              <div>{record.employee_name}</div>
-                              <div className="text-[10px] text-gray-500">{record.employee_email}</div>
-                            </td>
-                            <td className="py-3.5 px-4 font-bold text-red-600">
-                              {record.shares_traded && record.shares_traded > 0 ? "+" : ""}
-                              {record.shares_traded?.toLocaleString()}
-                            </td>
-                            <td className="py-3.5 px-4 text-xs text-gray-600">{record.batch_name}</td>
-                            <td className="py-3.5 px-4 text-xs text-gray-600">{record.transaction_date}</td>
-                          </>
-                        )}
-                        {activeTab === 'VOLUME_BREACH' && (
-                          <>
-                            <td className="py-3.5 px-4 font-medium">{record.shareholder_name}</td>
-                            <td className="py-3.5 px-4 font-mono text-xs">{record.pan}</td>
-                            <td className="py-3.5 px-4">{record.company_name}</td>
-                            <td className="py-3.5 px-4">
-                              <div>{record.employee_name}</div>
-                              <div className="text-[10px] text-gray-500">{record.employee_email}</div>
-                            </td>
-                            <td className="py-3.5 px-4 font-semibold">{record.shares_traded?.toLocaleString()}</td>
-                            <td className="py-3.5 px-4 text-gray-600">{record.approved_volume?.toLocaleString()}</td>
-                            <td className="py-3.5 px-4 font-bold text-red-600">+{record.excess_volume?.toLocaleString()}</td>
-                            <td className="py-3.5 px-4 font-mono text-xs text-[#75479C]">{record.ritm_number}</td>
-                            <td className="py-3.5 px-4 text-xs text-gray-600">{record.transaction_date}</td>
-                          </>
-                        )}
-                        {activeTab === 'HOLDING_MISMATCH' && (
-                          <>
-                            <td className="py-3.5 px-4 font-medium">
-                              <div>{record.employee_name}</div>
-                              <div className="text-[10px] text-gray-500">{record.employee_email}</div>
-                            </td>
-                            <td className="py-3.5 px-4 font-medium">{record.declarant_name}</td>
-                            <td className="py-3.5 px-4 capitalize text-xs text-gray-600">{record.relationship}</td>
-                            <td className="py-3.5 px-4 font-mono text-xs">{record.pan}</td>
-                            <td className="py-3.5 px-4 text-xs">{record.company_name}</td>
-                            <td className="py-3.5 px-4 text-gray-600">{record.declared_quantity?.toLocaleString()}</td>
-                            <td className="py-3.5 px-4 font-semibold">{record.depository_quantity?.toLocaleString()}</td>
-                            <td className="py-3.5 px-4 font-bold text-orange-600">
-                              {record.difference && record.difference > 0 ? "+" : ""}
-                              {record.difference?.toLocaleString()}
-                            </td>
-                            <td className="py-3.5 px-4 font-mono text-xs text-[#75479C]">{record.ritm_number}</td>
-                            <td className="py-3.5 px-4 text-xs text-gray-600">
-                              {record.fiscal_year} — {record.phase}
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={10} className="text-center py-16 text-gray-500">
-                        <UserCheck className="h-10 w-10 mx-auto text-green-500 mb-2 opacity-55" />
-                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Compliance Clear</h4>
-                        <p className="text-xs max-w-xs mx-auto">
-                          No active {activeTab.toLowerCase().replace('_', ' ')} violations detected in the database records.
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <div style={{ display: "flex", gap: 6 }}>
+            {tabConfig.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                style={{
+                  padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                  fontSize: 12, fontWeight: 700, fontFamily: "Poppins",
+                  background: activeTab === t.id ? t.color : "rgba(255,255,255,0.05)",
+                  color: activeTab === t.id ? "#fff" : C.muted,
+                  boxShadow: activeTab === t.id ? `0 4px 14px ${t.color}44` : "none",
+                  transition: "all 0.18s",
+                }}
+              >
+                {t.label} ({getTabCount(t.id)})
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* Footer information */}
-      <div className="mt-8 text-center text-xs text-gray-600 max-w-2xl mx-auto">
-        <p>
-          🔒 Compliance data synced and audited automatically. Checks follow SEBI Prohibition of Insider Trading regulations.
-        </p>
+        {loadingViolations ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
+            <Loader2 size={32} color={C.orange} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
+            <p style={{ color: C.sub, fontSize: 13 }}>Calculating compliance metrics...</p>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "rgba(0,87,184,0.04)" }}>
+                  {getHeaders().map((h) => (
+                    <th key={h} style={{
+                      padding: "10px 16px", textAlign: "left", fontSize: 10,
+                      color: "#334155", textTransform: "uppercase", letterSpacing: "0.07em",
+                      fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}`,
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {violations.length > 0 ? (
+                  violations.map((record, index) => (
+                    <tr key={index} style={{ borderBottom: `1px solid ${C.border}`, background: index % 2 === 0 ? "#FFFFFF" : C.bg }}>
+                      {activeTab === "UNSANCTIONED" && (
+                        <>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 600 }}>{record.shareholder_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text }}>{record.company_name}</td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <div style={{ fontSize: 12, color: C.text }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 10, color: C.muted }}>{record.employee_email}</div>
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.red, fontWeight: 800 }}>
+                            {record.shares_traded && record.shares_traded > 0 ? "+" : ""}{record.shares_traded?.toLocaleString()}
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>{record.batch_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>{record.transaction_date}</td>
+                        </>
+                      )}
+                      {activeTab === "VOLUME_BREACH" && (
+                        <>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 600 }}>{record.shareholder_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text }}>{record.company_name}</td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <div style={{ fontSize: 12, color: C.text }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 10, color: C.muted }}>{record.employee_email}</div>
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700 }}>{record.shares_traded?.toLocaleString()}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub }}>{record.approved_volume?.toLocaleString()}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.red, fontWeight: 800 }}>+{record.excess_volume?.toLocaleString()}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>{record.transaction_date}</td>
+                        </>
+                      )}
+                      {activeTab === "HOLDING_MISMATCH" && (
+                        <>
+                          <td style={{ padding: "12px 16px" }}>
+                            <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 10, color: C.muted }}>{record.employee_email}</div>
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 600 }}>{record.declarant_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.sub, textTransform: "capitalize" }}>{record.relationship}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.text }}>{record.company_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub }}>{record.declared_quantity?.toLocaleString()}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700 }}>{record.depository_quantity?.toLocaleString()}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.amber, fontWeight: 800 }}>
+                            {record.difference && record.difference > 0 ? "+" : ""}{record.difference?.toLocaleString()}
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>
+                            {record.fiscal_year} — {record.phase}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={10} style={{ padding: "60px 0", textAlign: "center" }}>
+                      <UserCheck size={40} color={C.green} style={{ margin: "0 auto 8px", opacity: 0.55 }} />
+                      <h4 style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>Compliance Clear</h4>
+                      <p style={{ fontSize: 12, color: C.muted, maxWidth: 320, margin: "0 auto" }}>
+                        No active {activeTab.toLowerCase().replace("_", " ")} violations detected in the database records.
+                      </p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg }}>
+          <span style={{ fontSize: 12, color: C.muted }}>Showing {violations.length} records</span>
+          <span style={{ fontSize: 11, color: C.muted }}>🔒 SEBI PIT Compliance Audit</span>
+        </div>
       </div>
     </div>
   );
