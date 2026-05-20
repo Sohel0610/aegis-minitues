@@ -9,6 +9,17 @@ import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext
 const C = {
   bg: "#F8FAFB",
   card: "#FFFFFF",
+/**
+ * InsiderTradingFilterBar
+ * Shared filter UI (Company, Batch, Depository) — redesigned to match outside project style.
+ */
+import { useState } from "react";
+import { Filter, X, ChevronDown } from "lucide-react";
+import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext";
+
+const C = {
+  bg: "#F8FAFB",
+  card: "#FFFFFF",
   border: "rgba(0,0,0,0.08)",
   orange: "#0066B3",
   text: "#1E293B",
@@ -28,9 +39,13 @@ function FilterDropdown({
   onSelect: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const valueText = selected
+  const isPlaceholder = !selected;
+  const displayText = selected
     ? options.find((o) => o.value === selected)?.label || selected
-    : "All";
+    : placeholder;
+
+  // Prepend the default reset option as the first item in the dropdown list
+  const dropdownOptions = [{ label: placeholder, value: "" }, ...options];
 
   return (
     <div style={{ position: "relative" }}>
@@ -38,32 +53,29 @@ function FilterDropdown({
         onClick={() => setOpen(!open)}
         style={{
           display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 2,
-          padding: "6px 14px",
+          alignItems: "center",
+          gap: 6,
+          padding: "7px 13px",
           borderRadius: 8,
           background: C.card,
           border: `1px solid ${C.border}`,
           cursor: "pointer",
+          color: isPlaceholder ? C.muted : C.orange,
+          fontSize: 12,
+          fontWeight: 600,
           fontFamily: "Adani",
-          width: placeholder === "Select Business Units" ? 220 : 160,
-          textAlign: "left",
+          whiteSpace: "nowrap",
+          maxWidth: 240,
         }}
       >
-        <span style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>
-          {placeholder}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+          {displayText}
         </span>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 6 }}>
-          <span style={{ fontSize: 12, color: selected ? C.orange : C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: placeholder === "Select Business Units" ? 170 : 110 }}>
-            {valueText}
-          </span>
-          <ChevronDown
-            size={12}
-            color={selected ? C.orange : C.muted}
-            style={{ flexShrink: 0, marginLeft: "auto" }}
-          />
-        </div>
+        <ChevronDown
+          size={13}
+          color={isPlaceholder ? C.muted : C.orange}
+          style={{ flexShrink: 0 }}
+        />
       </button>
       {open && (
         <div
@@ -82,7 +94,7 @@ function FilterDropdown({
             overflowY: "auto",
           }}
         >
-          {options.map((opt) => (
+          {dropdownOptions.map((opt) => (
             <div
               key={opt.value}
               onClick={() => {
@@ -96,6 +108,7 @@ function FilterDropdown({
                 background: selected === opt.value ? "#F0F7FF" : "transparent",
                 color: selected === opt.value ? C.orange : C.text,
                 fontFamily: "Adani",
+                fontWeight: opt.value === "" && !selected ? 600 : 400,
               }}
               onMouseEnter={(e) => {
                 if (selected !== opt.value)
@@ -122,16 +135,16 @@ function FilterDropdown({
 }
 
 const InsiderTradingFilterBar = () => {
-  const {
-    filters,
-    filterOptions,
-    setCompany,
-    setBatch,
-    setDepository,
-    clearFilters,
-  } = useInsiderTradingFilters();
+  const { filters, setFilters, filterOptions } = useInsiderTradingFilters();
 
-  if (!filterOptions) return null;
+  const setBatch = (batch: string) => setFilters({ ...filters, batch });
+  const setCompany = (company: string) => setFilters({ ...filters, company });
+  const setDepository = (depository: string) =>
+    setFilters({ ...filters, depository });
+
+  const clearFilters = () => {
+    setFilters({ batch: "", company: "", depository: "" });
+  };
 
   const batchOptions = filterOptions.batches.map((b) => ({
     value: b.batch_name,
@@ -209,25 +222,19 @@ const InsiderTradingFilterBar = () => {
         onClick={clearFilters}
         style={{
           display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 2,
-          padding: "6px 14px",
+          alignItems: "center",
+          gap: 5,
+          padding: "7px 13px",
           borderRadius: 8,
           background: "transparent",
           border: `1px solid ${C.border}`,
           cursor: "pointer",
+          color: C.sub,
+          fontSize: 12,
           fontFamily: "Adani",
-          minWidth: 80,
-          textAlign: "left",
         }}
       >
-        <span style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>
-          Clear
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: C.sub, fontWeight: 600 }}>
-          <X size={12} /> Reset
-        </div>
+        <X size={13} /> Clear
       </button>
     </div>
   );
