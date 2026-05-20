@@ -23,15 +23,10 @@ _BACKEND_DIR = os.path.dirname(_BACKEND_APP_DIR)                             # B
 _PROJECT_ROOT = os.path.dirname(_BACKEND_DIR)                                # AEGIS_Servicenow/
 SN_JSON_PATH = os.path.join(_PROJECT_ROOT, "servicenow_data.json")
 
-# ── Dedicated local connection pool for aegis_insider (uses DB_* vars, not POSTGRES_*) ──
-_sn_pool: psycopg2.pool.ThreadedConnectionPool | None = None
-
-def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
-    global _sn_pool
-    if _sn_pool is None:
-        _sn_pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=2,
-            maxconn=10,
+def get_conn():
+    """Get a direct connection to aegis_insider without pooling."""
+    try:
+        conn = psycopg2.connect(
             host=os.getenv('DB_HOST', '192.168.0.56'),
             port=int(os.getenv('DB_PORT', '5436')),
             dbname=os.getenv('DB_NAME', 'aegis_insider'),
@@ -39,26 +34,12 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
             password=os.getenv('DB_PASSWORD', 'postgres'),
             sslmode=os.getenv('DB_SSLMODE', 'disable'),
             connect_timeout=10,
+            cursor_factory=RealDictCursor
         )
-        logger.info(f"ServiceNow pool initialized: {os.getenv('DB_NAME','aegis_insider')} @ {os.getenv('DB_HOST','192.168.0.56')}:{os.getenv('DB_PORT','5436')}")
-    return _sn_pool
-
-def get_conn():
-    """Get a pooled connection to aegis_insider (local DB_* credentials)."""
-    try:
-        conn = _get_pool().getconn()
-        conn.cursor_factory = RealDictCursor
         return conn
     except Exception as e:
-        logger.error(f"ServiceNow pool error: {e}")
+        logger.error(f"ServiceNow connection error: {e}")
         raise HTTPException(status_code=503, detail="aegis_insider database unavailable")
-
-def _return_conn(conn):
-    """Return a connection back to the pool."""
-    try:
-        _get_pool().putconn(conn)
-    except Exception:
-        pass
 
 # ── Response models ──
 class ServiceNowSummaryResponse(BaseModel):
@@ -272,7 +253,7 @@ async def get_servicenow_summary():
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
     finally:
         if conn:
-            _return_conn(conn)
+            conn.close()
 
 @router.get("/servicenow/violations")
 async def get_servicenow_violations(
@@ -453,4 +434,4 @@ async def get_servicenow_violations(
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
     finally:
         if conn:
-            _return_conn(conn)
+            conn.close()
