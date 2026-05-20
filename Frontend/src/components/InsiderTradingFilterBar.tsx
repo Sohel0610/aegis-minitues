@@ -28,10 +28,9 @@ function FilterDropdown({
   onSelect: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const isPlaceholder = !selected;
-  const displayText = selected
+  const valueText = selected
     ? options.find((o) => o.value === selected)?.label || selected
-    : placeholder;
+    : "All";
 
   return (
     <div style={{ position: "relative" }}>
@@ -39,29 +38,32 @@ function FilterDropdown({
         onClick={() => setOpen(!open)}
         style={{
           display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "7px 13px",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 2,
+          padding: "6px 14px",
           borderRadius: 8,
           background: C.card,
           border: `1px solid ${C.border}`,
           cursor: "pointer",
-          color: isPlaceholder ? C.muted : C.orange,
-          fontSize: 12,
-          fontWeight: 600,
           fontFamily: "Adani",
-          whiteSpace: "nowrap",
-          maxWidth: 240,
+          width: placeholder === "Select Business Units" ? 220 : 160,
+          textAlign: "left",
         }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-          {displayText}
+        <span style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>
+          {placeholder}
         </span>
-        <ChevronDown
-          size={13}
-          color={isPlaceholder ? C.muted : C.orange}
-          style={{ flexShrink: 0 }}
-        />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 6 }}>
+          <span style={{ fontSize: 12, color: selected ? C.orange : C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: placeholder === "Select Business Units" ? 170 : 110 }}>
+            {valueText}
+          </span>
+          <ChevronDown
+            size={12}
+            color={selected ? C.orange : C.muted}
+            style={{ flexShrink: 0, marginLeft: "auto" }}
+          />
+        </div>
       </button>
       {open && (
         <div
@@ -70,13 +72,13 @@ function FilterDropdown({
             top: "100%",
             left: 0,
             marginTop: 4,
-            background: "#FFFFFF",
+            background: C.card,
             border: `1px solid ${C.border}`,
             borderRadius: 8,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-            zIndex: 100,
-            minWidth: 280,
-            maxHeight: 300,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+            zIndex: 50,
+            minWidth: 200,
+            maxHeight: 240,
             overflowY: "auto",
           }}
         >
@@ -88,30 +90,30 @@ function FilterDropdown({
                 setOpen(false);
               }}
               style={{
-                padding: "10px 14px",
-                cursor: "pointer",
+                padding: "8px 12px",
                 fontSize: 12,
-                color: C.text,
-                fontWeight: opt.value === selected ? 600 : 400,
-                background: opt.value === selected ? "rgba(0,102,179,0.06)" : "transparent",
-                borderBottom: `1px solid ${C.border}`,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
+                cursor: "pointer",
+                background: selected === opt.value ? "#F0F7FF" : "transparent",
+                color: selected === opt.value ? C.orange : C.text,
                 fontFamily: "Adani",
               }}
+              onMouseEnter={(e) => {
+                if (selected !== opt.value)
+                  e.currentTarget.style.background = C.bg;
+              }}
+              onMouseLeave={(e) => {
+                if (selected !== opt.value)
+                  e.currentTarget.style.background = "transparent";
+              }}
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                {opt.label}
-              </span>
+              {opt.label}
             </div>
           ))}
         </div>
       )}
-      {/* Close dropdown when clicking outside */}
       {open && (
         <div
-          style={{ position: "fixed", inset: 0, zIndex: 99 }}
+          style={{ position: "fixed", inset: 0, zIndex: 40 }}
           onClick={() => setOpen(false)}
         />
       )}
@@ -207,19 +209,25 @@ const InsiderTradingFilterBar = () => {
         onClick={clearFilters}
         style={{
           display: "flex",
-          alignItems: "center",
-          gap: 5,
-          padding: "7px 13px",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 2,
+          padding: "6px 14px",
           borderRadius: 8,
           background: "transparent",
           border: `1px solid ${C.border}`,
           cursor: "pointer",
-          color: C.sub,
-          fontSize: 12,
           fontFamily: "Adani",
+          minWidth: 80,
+          textAlign: "left",
         }}
       >
-        <X size={13} /> Clear
+        <span style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>
+          Clear
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: C.sub, fontWeight: 600 }}>
+          <X size={12} /> Reset
+        </div>
       </button>
     </div>
   );
