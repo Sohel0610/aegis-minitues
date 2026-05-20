@@ -24,7 +24,7 @@ async def get_current_chatbot_user(request: Request, db: Session = Depends(get_d
     If SSO is disabled, returns a guest user.
     If SSO is enabled, in a real implementation we would validate the session.
     """
-    sso_enabled = os.getenv("SSO_ENABLED", "true").lower() == "true"
+    sso_enabled = os.getenv("SSO_ENABLED", "false").lower() == "true"
     
     if not sso_enabled:
         email = "guest@adani.com" 

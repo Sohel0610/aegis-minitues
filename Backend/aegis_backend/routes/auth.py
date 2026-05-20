@@ -30,7 +30,7 @@ router = APIRouter()
 PG_SCHEMA = "rbac"
 
 # SSO Toggle
-SSO_ENABLED = os.getenv("SSO_ENABLED", "True").lower() in ("true", "1", "yes")
+SSO_ENABLED = os.getenv("SSO_ENABLED", "False").lower() in ("true", "1", "yes")
 
 # Configuration from environment variables
 CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID")

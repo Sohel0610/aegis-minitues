@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Database, BarChart3, FileText, BookOpen, Home } from "lucide-react";
+import { Database, BarChart3, FileText, BookOpen, Home, ShieldAlert } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { InsiderTradingFilterProvider } from "@/contexts/InsiderTradingFilterContext";
@@ -9,9 +9,11 @@ import InsiderTradingDataSource from "./InsiderTrading/InsiderTradingDataSource"
 import InsiderTradingMasterData from "./InsiderTrading/InsiderTradingMasterData";
 import InsiderTradingDocumentation from "./InsiderTrading/InsiderTradingDocumentation";
 import InsiderTradingUserGuide from "./InsiderTradingUserGuide";
+import ServiceNowReconciliation from "./InsiderTrading/ServiceNowReconciliation";
+import ServiceNowUserGuide from "./InsiderTrading/ServiceNowUserGuide";
 
 
-type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home';
+type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide';
 
 const InsiderTrading = () => {
   const navigate = useNavigate();
@@ -70,6 +72,20 @@ const InsiderTrading = () => {
         isActive: currentPath.endsWith('/documentation')
       },
       {
+        id: 'servicenow',
+        label: 'ServiceNow Compliance',
+        icon: ShieldAlert,
+        href: '/insider-trading/servicenow',
+        isActive: currentPath.endsWith('/servicenow') && !currentPath.endsWith('/servicenow-guide')
+      },
+      {
+        id: 'servicenow-guide',
+        label: 'ServiceNow Guide',
+        icon: BookOpen,
+        href: '/insider-trading/servicenow-guide',
+        isActive: currentPath.endsWith('/servicenow-guide')
+      },
+      {
         id: 'user-guide',
         label: 'User Guide',
         icon: BookOpen,
@@ -89,6 +105,10 @@ const InsiderTrading = () => {
       return <InsiderTradingDocumentation />;
     } else if (location.pathname.endsWith('/user-guide')) {
       return <InsiderTradingUserGuide />;
+    } else if (location.pathname.endsWith('/servicenow')) {
+      return <ServiceNowReconciliation />;
+    } else if (location.pathname.endsWith('/servicenow-guide')) {
+      return <ServiceNowUserGuide />;
     } else {
       // Default to analytics
       return <EnhancedInsiderTradingAnalytics />;

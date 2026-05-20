@@ -134,12 +134,14 @@ from routes import (
     disclosure_downloader,
     registry_management,
     director_exports,
-    mca_sync
+    mca_sync,
+    servicenow_reconciliation
 )
 import chatbot_minutes
 
 # Include all route modules with /api prefix where needed
 app.include_router(health.router, prefix="/api")
+app.include_router(servicenow_reconciliation.router, prefix="/api")
 app.include_router(excel.router, prefix="/api")
 app.include_router(bse.router, prefix="/api")
 app.include_router(sebi.router, prefix="/api")

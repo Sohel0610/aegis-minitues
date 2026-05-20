@@ -28,7 +28,8 @@ from . import (
     institutional_risk,
     registry_management,
     director_exports,
-    mca_sync
+    mca_sync,
+    servicenow_reconciliation
 )
 
 # Export all routers
@@ -58,5 +59,6 @@ __all__ = [
     "institutional_risk",
     "registry_management",
     "director_exports",
-    "mca_sync"
+    "mca_sync",
+    "servicenow_reconciliation"
 ]

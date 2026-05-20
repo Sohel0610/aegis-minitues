@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def _sso_enabled() -> bool:
-    return os.getenv("SSO_ENABLED", "true").lower() == "true"
+    return os.getenv("SSO_ENABLED", "false").lower() == "true"
 
 
 async def require_session(request: Request) -> dict:
