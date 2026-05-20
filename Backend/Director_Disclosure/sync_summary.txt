@@ -1,19 +1,19 @@
 ===============================================================
   AEGIS COMPANY SYNC - FINAL REPORT
-  Run completed : 2026-05-15 14:30:55
+  Run completed : 2026-05-20 14:34:30
 ===============================================================
   Total CINs attempted : 1029
-  [OK]   Successfully synced  : 953
-  [FAIL] Failed total         : 76
+  [OK]   Successfully synced  : 949
+  [FAIL] Failed total         : 80
   -------------------------------------------------------------
      Proxy unreachable  : 0
      SSL errors         : 0
      Timeouts           : 0
      API HTTP errors    : 0
      DB write errors    : 0
-     Other errors       : 76
+     Other errors       : 80
   -------------------------------------------------------------
-  Time elapsed : 22.0s  (0.4 min)
+  Time elapsed : 22.4s  (0.4 min)
   Failed CINs logged to : sync_failed_cins.log
   To retry:  python sync_company_registry.py --retry
 ===============================================================

@@ -16,7 +16,7 @@ DOMAIN = "adani.com"
 FETCH_CIN_URL = "https://www.falconebiz.com/api/company_details"
 UPDATE_CIN_URL = "https://www.falconebiz.com/api/request_update"
 
-CIN = "U40106GJ2015PLC082803"  # Default Adani Green Energy Limited CIN
+CIN = "U35105GJ2025PLC167975"  # Default Adani Green Energy Limited CIN
 
 # Adani Cloud Proxy
 PROXIES = {
