@@ -19,6 +19,10 @@ AMBIGUOUS_ALIASES = {
     "idea",
 }
 
+UNSAFE_SQL_ALIASES = {
+    "green energy",
+}
+
 
 def _alias_in_query(alias: str, query: str) -> bool:
     alias = alias.lower().strip()
@@ -37,6 +41,22 @@ def _alias_in_query(alias: str, query: str) -> bool:
         return False
 
     return True
+
+
+def get_searchable_aliases(entity_aliases):
+    """
+    Return aliases that are safe to use in SQL LIKE filters and strict matching.
+    Avoid generic phrases that can pull unrelated companies.
+    """
+    safe_aliases = []
+    for alias in entity_aliases or []:
+        alias_lower = alias.lower().strip()
+        if not alias_lower:
+            continue
+        if alias_lower in AMBIGUOUS_ALIASES or alias_lower in UNSAFE_SQL_ALIASES:
+            continue
+        safe_aliases.append(alias)
+    return safe_aliases
 
 
 def resolve_entity(query: str):
@@ -117,10 +137,14 @@ def _entity_match(notification, entity_aliases):
     
     company_lower = company.lower().strip()
     
-    for alias in entity_aliases:
+    for alias in get_searchable_aliases(entity_aliases):
         alias_lower = alias.lower().strip()
         
-        if alias_lower in company_lower or company_lower in alias_lower:
+        pattern = r"\b" + re.escape(alias_lower) + r"\b"
+        if re.search(pattern, company_lower):
+            return True
+
+        if company_lower == alias_lower:
             return True
     
     return False
