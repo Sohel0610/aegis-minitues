@@ -73,9 +73,9 @@ interface SyncResult {
 
 // ── Tab config ────────────────────────────────────────────────────
 const tabConfig = [
-  { id: "UNSANCTIONED" as const, label: "Unsanctioned Trades", color: C.red },
-  { id: "VOLUME_BREACH" as const, label: "Volume Breaches", color: C.amber },
-  { id: "HOLDING_MISMATCH" as const, label: "Holding Discrepancies", color: "#D97706" },
+  { id: "UNSANCTIONED" as const, label: "Unsanctioned Trades", color: C.red, tooltip: "Trades executed without prior pre-clearance approval" },
+  { id: "VOLUME_BREACH" as const, label: "Volume Breaches", color: C.amber, tooltip: "Trades exceeding the approved pre-clearance volume" },
+  { id: "HOLDING_MISMATCH" as const, label: "Holding Discrepancies", color: "#D97706", tooltip: "Mismatch between declared holdings and depository records" },
 ];
 
 // ── Component ─────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ const ServiceNowReconciliation = () => {
   };
 
   return (
-    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Adani, sans-serif" }}>
+    <div style={{ padding: "28px 24px", background: C.bg, minHeight: "100%", fontFamily: "Adani, sans-serif", maxWidth: "100%", boxSizing: "border-box" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -204,21 +204,6 @@ const ServiceNowReconciliation = () => {
             <p style={{ color: C.sub, margin: "3px 0 0", fontSize: 13 }}>Compare ServiceNow employee disclosures & pre-clearance approvals against depository trade logs</p>
           </div>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 9,
-            background: syncing ? "rgba(148,163,184,0.1)" : "rgba(0,102,179,0.1)",
-            border: syncing ? "1px solid rgba(148,163,184,0.25)" : "1px solid rgba(0,102,179,0.25)",
-            cursor: syncing ? "not-allowed" : "pointer",
-            color: syncing ? C.muted : C.orange, fontSize: 12, fontWeight: 700, fontFamily: "Adani",
-            opacity: syncing ? 0.7 : 1,
-          }}
-        >
-          <RefreshCw size={13} style={syncing ? { animation: "spin 1s linear infinite" } : {}} />
-          {syncing ? syncPhase || "Syncing..." : "Sync ServiceNow"}
-        </button>
       </div>
 
       {/* Error banner */}
@@ -286,6 +271,7 @@ const ServiceNowReconciliation = () => {
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
+                title={t.tooltip}
                 style={{
                   padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
                   fontSize: 12, fontWeight: 700, fontFamily: "Adani",
@@ -307,15 +293,16 @@ const ServiceNowReconciliation = () => {
             <p style={{ color: C.sub, fontSize: 13 }}>Calculating compliance metrics...</p>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={{ overflowX: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ background: "rgba(0,87,184,0.04)" }}>
                   {getHeaders().map((h) => (
                     <th key={h} style={{
-                      padding: "10px 16px", textAlign: "left", fontSize: 10,
-                      color: "#334155", textTransform: "uppercase", letterSpacing: "0.07em",
+                      padding: "10px 8px", textAlign: "left", fontSize: 9,
+                      color: "#334155", textTransform: "uppercase", letterSpacing: "0.05em",
                       fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}`,
+                      overflow: "hidden", textOverflow: "ellipsis",
                     }}>{h}</th>
                   ))}
                 </tr>
@@ -326,53 +313,53 @@ const ServiceNowReconciliation = () => {
                     <tr key={index} style={{ borderBottom: `1px solid ${C.border}`, background: index % 2 === 0 ? "#FFFFFF" : C.bg }}>
                       {activeTab === "UNSANCTIONED" && (
                         <>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 600 }}>{record.shareholder_name}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text }}>{record.company_name}</td>
-                          <td style={{ padding: "12px 16px" }}>
-                            <div style={{ fontSize: 12, color: C.text }}>{record.employee_name}</div>
-                            <div style={{ fontSize: 10, color: C.muted }}>{record.employee_email}</div>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.shareholder_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.company_name}</td>
+                          <td style={{ padding: "10px 8px" }}>
+                            <div style={{ fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 9, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_email}</div>
                           </td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.red, fontWeight: 800 }}>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>
                             {record.shares_traded && record.shares_traded > 0 ? "+" : ""}{record.shares_traded?.toLocaleString()}
                           </td>
-                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>{record.batch_name}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>{record.transaction_date}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.batch_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.transaction_date}</td>
                         </>
                       )}
                       {activeTab === "VOLUME_BREACH" && (
                         <>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 600 }}>{record.shareholder_name}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text }}>{record.company_name}</td>
-                          <td style={{ padding: "12px 16px" }}>
-                            <div style={{ fontSize: 12, color: C.text }}>{record.employee_name}</div>
-                            <div style={{ fontSize: 10, color: C.muted }}>{record.employee_email}</div>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.shareholder_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.company_name}</td>
+                          <td style={{ padding: "10px 8px" }}>
+                            <div style={{ fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 9, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_email}</div>
                           </td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700 }}>{record.shares_traded?.toLocaleString()}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub }}>{record.approved_volume?.toLocaleString()}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.red, fontWeight: 800 }}>+{record.excess_volume?.toLocaleString()}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>{record.transaction_date}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 700 }}>{record.shares_traded?.toLocaleString()}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>{record.approved_volume?.toLocaleString()}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>+{record.excess_volume?.toLocaleString()}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.transaction_date}</td>
                         </>
                       )}
                       {activeTab === "HOLDING_MISMATCH" && (
                         <>
-                          <td style={{ padding: "12px 16px" }}>
-                            <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{record.employee_name}</div>
-                            <div style={{ fontSize: 10, color: C.muted }}>{record.employee_email}</div>
+                          <td style={{ padding: "10px 8px" }}>
+                            <div style={{ fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 9, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_email}</div>
                           </td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 600 }}>{record.declarant_name}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.sub, textTransform: "capitalize" }}>{record.relationship}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.text }}>{record.company_name}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub }}>{record.declared_quantity?.toLocaleString()}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700 }}>{record.depository_quantity?.toLocaleString()}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.amber, fontWeight: 800 }}>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.declarant_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.sub, textTransform: "capitalize" }}>{record.relationship}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.company_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>{record.declared_quantity?.toLocaleString()}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 700 }}>{record.depository_quantity?.toLocaleString()}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.amber, fontWeight: 800 }}>
                             {record.difference && record.difference > 0 ? "+" : ""}{record.difference?.toLocaleString()}
                           </td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted }}>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>
                             {record.fiscal_year} — {record.phase}
                           </td>
                         </>

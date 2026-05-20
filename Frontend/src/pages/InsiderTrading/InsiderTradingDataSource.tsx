@@ -159,9 +159,6 @@ const InsiderTradingDataSource = () => {
             <p style={{ color: C.sub, margin: "3px 0 0", fontSize: 13 }}>Summary of insider trading data per company, batch, and depository</p>
           </div>
         </div>
-        <button onClick={fetchData} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 9, background: "rgba(0,201,138,0.1)", border: "1px solid rgba(0,201,138,0.25)", cursor: "pointer", color: C.green, fontSize: 12, fontWeight: 700, fontFamily: "Adani" }}>
-          <RefreshCw size={13} /> Refresh
-        </button>
       </div>
 
       {/* Global filter bar */}
@@ -202,8 +199,8 @@ const InsiderTradingDataSource = () => {
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ overflowX: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead>
               <tr style={{ background: "rgba(0,87,184,0.04)" }}>
                 {[
@@ -220,16 +217,18 @@ const InsiderTradingDataSource = () => {
                     key={h}
                     onClick={() => f && handleSort(f)}
                     style={{
-                      padding: "11px 16px",
+                      padding: "10px 8px",
                       textAlign: ["Total", "Added", "Removed", "Changed", "Unchanged"].includes(h) ? "right" : "left",
-                      fontSize: 10,
+                      fontSize: 9,
                       color: sortField === f ? C.orange : "#334155",
                       textTransform: "uppercase",
-                      letterSpacing: "0.07em",
+                      letterSpacing: "0.05em",
                       fontWeight: 700,
                       cursor: f ? "pointer" : "default",
                       whiteSpace: "nowrap",
                       borderBottom: `1px solid ${C.border}`,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                     }}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -245,16 +244,16 @@ const InsiderTradingDataSource = () => {
                   const d = depStyle[r.depository] || depStyle.Physical || depStyle.PHY;
                   return (
                     <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg }}>
-                      <td style={{ padding: "13px 16px", fontSize: 13, color: C.text, fontWeight: 600 }}>{r.company}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: C.sub }}>{r.batch}</td>
-                      <td style={{ padding: "13px 16px" }}>
-                        <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: d?.bg, color: d?.color, border: `1px solid ${d?.border}`, fontWeight: 700 }}>{r.depository}</span>
+                      <td style={{ padding: "10px 8px", fontSize: 12, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.company}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.batch}</td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: d?.bg, color: d?.color, border: `1px solid ${d?.border}`, fontWeight: 700 }}>{r.depository}</span>
                       </td>
-                      <td style={{ padding: "13px 16px", fontSize: 13, color: C.text, fontWeight: 800, textAlign: "right" }}>{r.total?.toLocaleString()}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: C.green, fontWeight: 700, textAlign: "right" }}>{r.added?.toLocaleString()}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: C.red, fontWeight: 700, textAlign: "right" }}>{r.removed?.toLocaleString()}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: C.amber, fontWeight: 700, textAlign: "right" }}>{r.changed?.toLocaleString()}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: C.sub, textAlign: "right" }}>{r.unchanged?.toLocaleString()}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 12, color: C.text, fontWeight: 800, textAlign: "right" }}>{r.total?.toLocaleString()}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 11, color: C.green, fontWeight: 700, textAlign: "right" }}>{r.added?.toLocaleString()}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 700, textAlign: "right" }}>{r.removed?.toLocaleString()}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 11, color: C.amber, fontWeight: 700, textAlign: "right" }}>{r.changed?.toLocaleString()}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub, textAlign: "right" }}>{r.unchanged?.toLocaleString()}</td>
                     </tr>
                   );
                 })

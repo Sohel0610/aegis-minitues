@@ -175,6 +175,7 @@ const ProductDashboardLayout = ({
           flexDirection: "column",
           position: "relative",
           boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
+          overflow: "hidden",
         }}
       >
         {/* Blue accent top bar */}
@@ -220,16 +221,7 @@ const ProductDashboardLayout = ({
               >
                 {productName}
               </div>
-              <div
-                style={{
-                  fontSize: 9.5,
-                  color: A.muted,
-                  fontWeight: 400,
-                  letterSpacing: "0.03em",
-                }}
-              >
-                AEGIS Surveillance
-              </div>
+
             </div>
           )}
         </div>
@@ -238,6 +230,7 @@ const ProductDashboardLayout = ({
         <nav
           style={{
             flex: 1,
+            minHeight: 0,
             padding: "14px 8px",
             display: "flex",
             flexDirection: "column",
@@ -284,58 +277,13 @@ const ProductDashboardLayout = ({
           )}
         </nav>
 
-        {/* Live status */}
-        {!isCollapsed && (
-          <div
-            style={{
-              padding: "12px 14px",
-              borderTop: `1px solid ${A.border}`,
-              flexShrink: 0,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "9px 12px",
-                borderRadius: 9,
-                background: "rgba(0,201,138,0.08)",
-                border: "1px solid rgba(0,201,138,0.18)",
-              }}
-            >
-              <Wifi size={13} color="#00C98A" />
-              <div style={{ flex: 1 }}>
-                <div
-                  style={{ fontSize: 11, color: "#00C98A", fontWeight: 700 }}
-                >
-                  Live Sync Active
-                </div>
-                <div style={{ fontSize: 10, color: A.muted }}>
-                  Last sync: 2 min ago
-                </div>
-              </div>
-              <div
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: "#00C98A",
-                  boxShadow: "0 0 8px #00C98A",
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Collapse toggle */}
         <div
           style={{
-            padding: "16px 0",
+            padding: "12px 12px",
             display: "flex",
-            justifyContent: "center",
+            justifyContent: "flex-end",
             borderTop: isCollapsed ? "none" : `1px solid ${A.border}`,
-            marginTop: "auto",
+            flexShrink: 0,
           }}
         >
           <button
@@ -415,15 +363,7 @@ const ProductDashboardLayout = ({
                   >
                     {productName}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 9.5,
-                      color: A.muted,
-                      letterSpacing: "0.03em",
-                    }}
-                  >
-                    AEGIS Surveillance
-                  </div>
+
                 </div>
               </div>
               <button
@@ -488,6 +428,7 @@ const ProductDashboardLayout = ({
       <main
         style={{
           flex: 1,
+          minWidth: 0,
           overflowY: "auto",
           overflowX: "hidden",
         }}
