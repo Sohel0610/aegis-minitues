@@ -152,15 +152,15 @@ const InsiderTradingFilterBar = () => {
         background: C.card,
         border: `1px solid ${C.border}`,
         borderRadius: 12,
-        padding: "16px 20px",
+        padding: "13px 20px",
         marginBottom: 20,
         display: "flex",
-        alignItems: "flex-end",
-        gap: 16,
+        alignItems: "center",
+        gap: 14,
         flexWrap: "wrap",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 4, marginRight: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div
           style={{
             width: 32,
@@ -184,65 +184,43 @@ const InsiderTradingFilterBar = () => {
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={{ fontSize: 10, color: C.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          Select Date Range
-        </span>
-        <FilterDropdown
-          options={batchOptions}
-          selected={filters.batch}
-          placeholder="Select Date Range"
-          onSelect={setBatch}
-        />
-      </div>
+      <FilterDropdown
+        options={batchOptions}
+        selected={filters.batch}
+        placeholder="Select Date Range"
+        onSelect={setBatch}
+      />
+      <FilterDropdown
+        options={companyOptions}
+        selected={filters.company}
+        placeholder="Select Business Units"
+        onSelect={setCompany}
+      />
+      <FilterDropdown
+        options={depositoryOptions}
+        selected={filters.depository}
+        placeholder="All"
+        onSelect={setDepository}
+      />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={{ fontSize: 10, color: C.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          Select Business Units
-        </span>
-        <FilterDropdown
-          options={companyOptions}
-          selected={filters.company}
-          placeholder="Select Business Units"
-          onSelect={setCompany}
-        />
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={{ fontSize: 10, color: C.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          All
-        </span>
-        <FilterDropdown
-          options={depositoryOptions}
-          selected={filters.depository}
-          placeholder="All"
-          onSelect={setDepository}
-        />
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={{ fontSize: 10, color: C.sub, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          Clear
-        </span>
-        <button
-          onClick={clearFilters}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "7px 13px",
-            borderRadius: 8,
-            background: "transparent",
-            border: `1px solid ${C.border}`,
-            cursor: "pointer",
-            color: C.sub,
-            fontSize: 12,
-            fontFamily: "Adani",
-          }}
-        >
-          <X size={13} /> Clear
-        </button>
-      </div>
+      <button
+        onClick={clearFilters}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          padding: "7px 13px",
+          borderRadius: 8,
+          background: "transparent",
+          border: `1px solid ${C.border}`,
+          cursor: "pointer",
+          color: C.sub,
+          fontSize: 12,
+          fontFamily: "Adani",
+        }}
+      >
+        <X size={13} /> Clear
+      </button>
     </div>
   );
 };
