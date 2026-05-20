@@ -20,9 +20,9 @@ const C = {
   orange: "#0066B3",
   blue: "#4DA6FF",
   green: "#00C98A",
-  red: "#FF3B5C",
+  red: "#6366F1",
   amber: "#F7941D",
-  text: "#323232",
+  text: "#1E293B",
   sub: "#64748B",
   muted: "#94A3B8",
 };
@@ -168,7 +168,7 @@ const InsiderTradingDataSource = () => {
       <InsiderTradingFilterBar />
 
       {/* Stat Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14, marginBottom: 22 }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-6">
         {statCards.map((s) => {
           const Icon = s.icon;
           return (

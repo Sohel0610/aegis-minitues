@@ -20,9 +20,9 @@ const C = {
   orange: "#0066B3",
   blue: "#4DA6FF",
   green: "#00C98A",
-  red: "#FF3B5C",
+  red: "#6366F1",
   amber: "#F7941D",
-  text: "#323232",
+  text: "#1E293B",
   sub: "#64748B",
   muted: "#94A3B8",
 };
@@ -196,7 +196,7 @@ const ServiceNowReconciliation = () => {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 46, height: 46, borderRadius: 13, background: "linear-gradient(135deg, #FF3B5C, #B8002E)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(255,59,92,0.35)", flexShrink: 0 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 13, background: "linear-gradient(135deg, #6366F1, #4F46E5)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(99,102,241,0.35)", flexShrink: 0 }}>
             <ShieldAlert size={22} color="#fff" strokeWidth={2.5} />
           </div>
           <div>
@@ -223,7 +223,7 @@ const ServiceNowReconciliation = () => {
 
       {/* Error banner */}
       {error && (
-        <div style={{ marginBottom: 20, padding: "12px 16px", background: "rgba(255,59,92,0.08)", border: "1px solid rgba(255,59,92,0.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginBottom: 20, padding: "12px 16px", background: "rgba(247,148,29,0.08)", border: "1px solid rgba(247,148,29,0.25)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
           <AlertCircle size={18} color={C.red} style={{ flexShrink: 0 }} />
           <span style={{ fontSize: 13, color: C.red, fontWeight: 500 }}>{error}</span>
         </div>
@@ -248,7 +248,7 @@ const ServiceNowReconciliation = () => {
           <div style={{ width: 3, height: 18, borderRadius: 3, background: C.orange }} />
           <span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>Compliance Overview</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 14 }}>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 mb-6">
           {kpiCards.map((kpi) => {
             const Icon = kpi.icon;
             const isAlert = ["Unsanctioned Trades", "Volume Breaches", "Holding Mismatches"].includes(kpi.label);
@@ -276,7 +276,7 @@ const ServiceNowReconciliation = () => {
 
       {/* Compliance Check Details Table */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, background: "linear-gradient(90deg, rgba(255,59,92,0.04) 0%, transparent 100%)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, background: "linear-gradient(90deg, rgba(99,102,241,0.04) 0%, transparent 100%)" }}>
           <div>
             <div style={{ fontSize: 14, color: C.text, fontWeight: 700 }}>Compliance Check Details</div>
             <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>Select a violation type to inspect matched records and discrepancies</div>

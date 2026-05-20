@@ -19,16 +19,16 @@ const C = {
   orange: "#0066B3",
   blue: "#4DA6FF",
   green: "#00C98A",
-  red: "#FF3B5C",
+  red: "#6366F1",
   amber: "#F7941D",
-  text: "#323232",
+  text: "#1E293B",
   sub: "#64748B",
   muted: "#94A3B8",
 };
 
 const statusCfg: Record<string, { color: string; bg: string; border: string; icon: any; label: string }> = {
   ADDED:     { color: C.green, bg: "rgba(0,201,138,0.1)",  border: "rgba(0,201,138,0.25)",  icon: CheckCircle,   label: "Added" },
-  REMOVED:   { color: C.red,   bg: "rgba(255,59,92,0.1)",  border: "rgba(255,59,92,0.25)",  icon: AlertTriangle, label: "Removed" },
+  REMOVED:   { color: C.red,   bg: "rgba(99,102,241,0.1)",  border: "rgba(99,102,241,0.25)",  icon: AlertTriangle, label: "Removed" },
   CHANGED:   { color: C.amber, bg: "rgba(247,148,29,0.1)", border: "rgba(247,148,29,0.25)", icon: Clock,         label: "Changed" },
   UNCHANGED: { color: C.muted, bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.25)", icon: CheckCircle, label: "Unchanged" },
 };
@@ -171,7 +171,7 @@ const InsiderTradingMasterData = () => {
       <InsiderTradingFilterBar />
 
       {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 22 }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-6">
         {statusButtons.map((sb) => {
           const isActive = statusFilter === sb.key;
           const cfg = sb.key === "" ? { color: C.text, bg: C.card, border: C.border } : { color: statusCfg[sb.key]?.color || C.text, bg: statusCfg[sb.key]?.bg || C.card, border: statusCfg[sb.key]?.border || C.border };

@@ -11,7 +11,7 @@ const C = {
   card: "#FFFFFF",
   border: "rgba(0,0,0,0.08)",
   orange: "#0066B3",
-  text: "#323232",
+  text: "#1E293B",
   sub: "#64748B",
   muted: "#94A3B8",
 };
@@ -187,19 +187,19 @@ const InsiderTradingFilterBar = () => {
       <FilterDropdown
         options={batchOptions}
         selected={filters.batch}
-        placeholder="Select Period"
+        placeholder="Select Date Range"
         onSelect={setBatch}
       />
       <FilterDropdown
         options={companyOptions}
         selected={filters.company}
-        placeholder="Select Company"
+        placeholder="Select Business Units"
         onSelect={setCompany}
       />
       <FilterDropdown
         options={depositoryOptions}
         selected={filters.depository}
-        placeholder="Depository Type"
+        placeholder="All"
         onSelect={setDepository}
       />
 

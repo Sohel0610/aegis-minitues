@@ -125,12 +125,12 @@ const InsiderTradingDocumentation = () => {
 
             {/* Main Content Area */}
             <main className="flex-grow max-w-5xl px-4 lg:px-0 py-4 lg:py-8">
-                <header className="mb-16 border-b-8 pb-10" style={{ borderColor: '#BD3861' }}>
+                <header className="mb-16 border-b-8 pb-10" style={{ borderColor: '#75479C' }}>
                     <div className="flex items-center gap-3 mb-4">
                         <span className="bg-gray-900 text-white px-2 py-0.5 text-[10px] font-bold tracking-[0.3em] uppercase">Document IT-2026</span>
                         <div className="h-[1px] flex-grow bg-gray-200" />
                     </div>
-                    <h1 className="text-5xl font-black mb-4 leading-tight" style={{ color: '#000000' }}>AEGIS Insider Trading System</h1>
+                    <h1 className="text-5xl font-black mb-4 leading-tight" style={{ color: '#1E293B' }}>AEGIS Insider Trading System</h1>
                     <div className="flex flex-col md:flex-row md:items-center gap-4 text-justify">
                         <p className="text-2xl font-light text-gray-500 italic max-w-2xl">A comprehensive guide to surveillance, compliance, and investigative protocols.</p>
                         <div className="hidden md:block h-12 w-[1px] bg-gray-200" />
@@ -177,9 +177,9 @@ const InsiderTradingDocumentation = () => {
                 <section id="purpose" className="mb-24 scroll-mt-32">
                     <div className="flex items-baseline gap-4 mb-8">
                         <span className="text-4xl font-black text-gray-200 tabular-nums">02</span>
-                        <h2 className="text-3xl font-bold uppercase tracking-tight" style={{ color: '#BD3861' }}>Application Purpose</h2>
+                        <h2 className="text-3xl font-bold uppercase tracking-tight" style={{ color: '#75479C' }}>Application Purpose</h2>
                     </div>
-                    <div className="bg-white border-2 border-gray-900 p-8 shadow-[12px_12px_0px_0px_rgba(189,56,97,0.1)]">
+                    <div className="bg-white border-2 border-gray-900 p-8 shadow-[12px_12px_0px_0px_rgba(117,71,156,0.1)]">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                             <div>
                                 <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-400 mb-6">Core Mission</h4>
@@ -192,7 +192,7 @@ const InsiderTradingDocumentation = () => {
                                     { num: "03", text: "Provide cross-company liquidity insights and concentration index metrics." }
                                 ].map((step, i) => (
                                     <div key={i} className="flex items-start gap-4">
-                                        <span className="text-xs font-black text-[#BD3861] mt-1">{step.num}</span>
+                                        <span className="text-xs font-black text-[#75479C] mt-1">{step.num}</span>
                                         <p className="text-sm border-b border-gray-100 pb-2 flex-grow font-medium">{step.text}</p>
                                     </div>
                                 ))}
@@ -254,7 +254,7 @@ const InsiderTradingDocumentation = () => {
                                 <tbody className="divide-y divide-gray-100">
                                     {[
                                         { cat: "ADDED", code: "S01", desc: "New entrants in security positions", color: "text-green-600" },
-                                        { cat: "REMOVED", code: "S02", desc: "Complete divestment of holdings", color: "text-red-600" },
+                                        { cat: "REMOVED", code: "S02", desc: "Complete divestment of holdings", color: "text-indigo-600" },
                                         { cat: "CHANGED", code: "S03", desc: "Modification of existing position volume", color: "text-orange-600" },
                                         { cat: "UNCHANGED", code: "S00", desc: "Static holding maintenance", color: "text-gray-400" }
                                     ].map((row, i) => (

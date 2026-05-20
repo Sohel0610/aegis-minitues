@@ -22,9 +22,9 @@ const C = {
   orange: "#0066B3",
   blue: "#4DA6FF",
   green: "#00C98A",
-  red: "#FF3B5C",
+  red: "#6366F1",
   amber: "#F7941D",
-  text: "#323232",
+  text: "#1E293B",
   sub: "#64748B",
   muted: "#94A3B8",
 };
@@ -184,7 +184,7 @@ const EnhancedInsiderTradingAnalytics = () => {
           <div style={{ width: 3, height: 18, borderRadius: 3, background: C.orange }} />
           <span style={{ fontSize: 13, color: C.text, fontWeight: 700, letterSpacing: "0.01em" }}>Key Metrics</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-6">
           {[
             {
               label: "Total Investors",
@@ -235,7 +235,7 @@ const EnhancedInsiderTradingAnalytics = () => {
           <div style={{ width: 3, height: 18, borderRadius: 3, background: C.blue }} />
           <span style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>Movement Analysis</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
           {[
             { label: "New Investors", value: s?.added_count?.toLocaleString() || "0", color: C.green, icon: TrendingUp },
             { label: "Full Exits", value: s?.removed_count?.toLocaleString() || "0", color: C.red, icon: TrendingDown },
