@@ -4,9 +4,8 @@ from typing import List, Optional, Dict, Any
 import logging
 import os
 import json
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from routes.servicenow_ingestion import run_ingestion
+from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,21 +17,14 @@ _BACKEND_DIR = os.path.dirname(_BACKEND_APP_DIR)                             # B
 _PROJECT_ROOT = os.path.dirname(_BACKEND_DIR)                                # AEGIS_Servicenow/
 SN_JSON_PATH = os.path.join(_PROJECT_ROOT, "servicenow_data.json")
 
+INSIDER_DB = "aegis_insider"
+
 def get_conn():
-    db_host = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or '192.168.0.56'
-    db_port = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5436'
-    db_name = os.getenv('POSTGRES_DATABASE_INSIDER') or os.getenv('DB_NAME') or 'aegis_insider'
-    db_user = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or 'postgres'
-    db_password = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD') or 'postgres'
-    
-    return psycopg2.connect(
-        host=db_host,
-        port=db_port,
-        dbname=db_name,
-        user=db_user,
-        password=db_password,
-        cursor_factory=RealDictCursor
-    )
+    """Get a pooled connection to aegis_insider from the shared ThreadedConnectionPool."""
+    conn = get_pg_connection(database=INSIDER_DB)
+    if conn is None:
+        raise HTTPException(status_code=503, detail="aegis_insider database unavailable")
+    return conn
 
 # ── Response models ──
 class ServiceNowSummaryResponse(BaseModel):
@@ -170,7 +162,7 @@ async def get_servicenow_summary():
     """Get high level metrics on declarations, tickets, and detected violations"""
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = get_pg_cursor(conn)
 
         # Count master declarations
         cur.execute("SELECT COUNT(*) FROM public.servicenow_declarations")
@@ -254,7 +246,7 @@ async def get_servicenow_violations(
     """Fetch list of detected violations of a specific category"""
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = get_pg_cursor(conn)
         violations = []
 
         if type.upper() == "UNSANCTIONED":
