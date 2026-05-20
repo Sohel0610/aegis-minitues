@@ -24,6 +24,7 @@ const HierarchyStructure = () => {
   const [bseTotalCount, setBseTotalCount] = useState<number | null>(null);
   const [rbiTotalCount, setRbiTotalCount] = useState<number | null>(null);
   const [sebiTotalCount, setSebiTotalCount] = useState<number | null>(null);
+  const [directorsDisclosureCount, setDirectorsDisclosureCount] = useState<number | null>(null);
 
   // Automation start dates and hours saved per day
   const BSE_AUTOMATION_START_DATE = new Date('2025-08-10');
@@ -50,6 +51,7 @@ const HierarchyStructure = () => {
       "sebi-analysis": "/sebi-dashboard",
       "minutes-preparation": "/minutes-preparation",
       "directors-disclosure": "/directors-disclosure",
+      "insider-trading": "/insider-trading",
     };
     return routeMap[childId] || null;
   };
@@ -102,9 +104,23 @@ const HierarchyStructure = () => {
       }
     };
 
+    // Fetch Directors Disclosure count
+    const fetchDirectorsDisclosureCount = async () => {
+      try {
+        const response = await fetch("/api/directors-disclosures");
+        if (response.ok) {
+          const data = await response.json();
+          setDirectorsDisclosureCount(typeof data.count === "number" ? data.count : 0);
+        }
+      } catch (error) {
+        console.error("Error fetching directors disclosures count:", error);
+      }
+    };
+
     fetchBseMonthlyStats();
     fetchRbiTotalCount();
     fetchSebiTotalCount();
+    fetchDirectorsDisclosureCount();
   }, []);
 
   const hierarchyData = [
@@ -264,20 +280,16 @@ const HierarchyStructure = () => {
                                 </div>
                               )}
                               {/* Display counts for Directors Disclosure in structured vertical list */}
-                              {child.id === "directors-disclosure" && (
+                              {child.id === "directors-disclosure" && directorsDisclosureCount !== null && (
                                 <div className="text-xs text-muted-foreground mt-2 w-full">
                                   <div className="space-y-1">
                                     <div className="flex justify-between">
                                       <span className="text-gray-500">Total Disclosure:</span>
-                                      <span className="font-medium">89</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-500">Changed Disclosure:</span>
-                                      <span className="font-medium">0</span>
+                                      <span className="font-medium">{directorsDisclosureCount}</span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-500">Total FTE Hours Saved per Quarter:</span>
-                                      <span className="font-medium">120 hrs</span>
+                                      <span className="font-medium">{(directorsDisclosureCount * 1.5).toFixed(1)} hrs</span>
                                     </div>
                                   </div>
                                 </div>
