@@ -189,15 +189,23 @@ async def get_servicenow_summary():
             SELECT COUNT(DISTINCT (sr.pangir, sr.company_id, sr.batch_id)) AS count
             FROM public.shareholder_records sr
             JOIN (
+                SELECT company_id, MAX(batch_id) as max_batch_id
+                FROM public.shareholder_records
+                GROUP BY company_id
+            ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
+            JOIN (
                 SELECT DISTINCT pan_card FROM public.servicenow_holdings WHERE pan_card != ''
                 UNION
                 SELECT DISTINCT pan_card FROM public.servicenow_preclearance_details WHERE pan_card != ''
             ) dp ON sr.pangir = dp.pan_card
-            LEFT JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
-            LEFT JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number AND pc.state = 'Closed Complete'
             WHERE 
                 sr.position_difference != 0
-                AND pc.ritm_number IS NULL
+                AND NOT EXISTS (
+                    SELECT 1 
+                    FROM public.servicenow_preclearance_details pd2
+                    JOIN public.servicenow_preclearances pc2 ON pd2.ritm_number = pc2.ritm_number
+                    WHERE pd2.pan_card = sr.pangir AND pc2.state = 'Closed Complete'
+                )
         """)
         unsanctioned_count = cur.fetchone()['count'] or 0
 
@@ -205,6 +213,11 @@ async def get_servicenow_summary():
         cur.execute("""
             SELECT COUNT(DISTINCT (sr.pangir, sr.company_id, sr.batch_id)) AS count
             FROM public.shareholder_records sr
+            JOIN (
+                SELECT company_id, MAX(batch_id) as max_batch_id
+                FROM public.shareholder_records
+                GROUP BY company_id
+            ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
             JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
             JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number
             WHERE 
@@ -220,6 +233,11 @@ async def get_servicenow_summary():
             FROM public.servicenow_holdings sh
             JOIN public.servicenow_declarations sd ON sh.ritm_number = sd.ritm_number
             JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sh.company_id = sr.company_id
+            JOIN (
+                SELECT company_id, MAX(batch_id) as max_batch_id
+                FROM public.shareholder_records
+                GROUP BY company_id
+            ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
             WHERE 
                 sd.state = 'Closed Complete'
                 AND sh.declared_quantity != sr.position_latest
@@ -267,6 +285,11 @@ async def get_servicenow_violations(
                     ) AS employee_name,
                     sr.email AS employee_email
                 FROM public.shareholder_records sr
+                JOIN (
+                    SELECT company_id, MAX(batch_id) as max_batch_id
+                    FROM public.shareholder_records
+                    GROUP BY company_id
+                ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
                 JOIN public.companies c ON sr.company_id = c.id
                 JOIN public.result_batches rb ON sr.batch_id = rb.id
                 JOIN (
@@ -274,11 +297,14 @@ async def get_servicenow_violations(
                     UNION
                     SELECT DISTINCT pan_card FROM public.servicenow_preclearance_details WHERE pan_card != ''
                 ) dp ON sr.pangir = dp.pan_card
-                LEFT JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
-                LEFT JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number AND pc.state = 'Closed Complete'
                 WHERE 
                     sr.position_difference != 0
-                    AND pc.ritm_number IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM public.servicenow_preclearance_details pd2
+                        JOIN public.servicenow_preclearances pc2 ON pd2.ritm_number = pc2.ritm_number
+                        WHERE pd2.pan_card = sr.pangir AND pc2.state = 'Closed Complete'
+                    )
                 ORDER BY rb.latest_date DESC, sr.name
                 LIMIT %s OFFSET %s
             """, (limit, offset))
@@ -310,6 +336,11 @@ async def get_servicenow_violations(
                     pc.email AS employee_email,
                     pc.ritm_number AS preclearance_ritm
                 FROM public.shareholder_records sr
+                JOIN (
+                    SELECT company_id, MAX(batch_id) as max_batch_id
+                    FROM public.shareholder_records
+                    GROUP BY company_id
+                ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
                 JOIN public.companies c ON sr.company_id = c.id
                 JOIN public.result_batches rb ON sr.batch_id = rb.id
                 JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
@@ -354,7 +385,12 @@ async def get_servicenow_violations(
                     sd.fiscal_year
                 FROM public.servicenow_holdings sh
                 JOIN public.servicenow_declarations sd ON sh.ritm_number = sd.ritm_number
-                JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sh.company_id = sr.company_id
+                JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sr.company_id = sh.company_id
+                JOIN (
+                    SELECT company_id, MAX(batch_id) as max_batch_id
+                    FROM public.shareholder_records
+                    GROUP BY company_id
+                ) lb ON sr.company_id = lb.company_id AND sr.batch_id = lb.max_batch_id
                 JOIN public.companies c ON sh.company_id = c.id
                 WHERE 
                     sd.state = 'Closed Complete'
