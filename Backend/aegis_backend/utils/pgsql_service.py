@@ -30,6 +30,11 @@ class PooledConnection:
 
         if pool:
             try:
+                if not self._conn.closed:
+                    self._conn.rollback()
+            except Exception:
+                pass
+            try:
                 pool.putconn(self._conn)
             except Exception:
                 try:
@@ -103,14 +108,14 @@ def get_pg_connection(database=None):
                 _pools[pool_key] = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=25, **conn_params)
             except Exception as e:
                 logger.error(f"Critical: Failed to initialize pool for {database}: {e}")
-                return None
+                raise RuntimeError(f"Database connection pool initialization failed: {e}")
 
     try:
         conn = _pools[pool_key].getconn()
         return PooledConnection(conn, pool_key)
     except Exception as e:
         logger.error(f"Pool exhausted or connection unavailable (DB: {database}): {e}")
-        return None
+        raise RuntimeError(f"Database connection unavailable: {e}")
 
 def put_pg_connection(conn):
     """Explicitly return a connection to the pool (or use context manager)."""
