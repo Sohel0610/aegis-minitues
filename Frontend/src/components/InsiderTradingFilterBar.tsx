@@ -9,17 +9,6 @@ import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext
 const C = {
   bg: "#F8FAFB",
   card: "#FFFFFF",
-/**
- * InsiderTradingFilterBar
- * Shared filter UI (Company, Batch, Depository) — redesigned to match outside project style.
- */
-import { useState } from "react";
-import { Filter, X, ChevronDown } from "lucide-react";
-import { useInsiderTradingFilters } from "@/contexts/InsiderTradingFilterContext";
-
-const C = {
-  bg: "#F8FAFB",
-  card: "#FFFFFF",
   border: "rgba(0,0,0,0.08)",
   orange: "#0066B3",
   text: "#1E293B",
@@ -135,16 +124,16 @@ function FilterDropdown({
 }
 
 const InsiderTradingFilterBar = () => {
-  const { filters, setFilters, filterOptions } = useInsiderTradingFilters();
+  const {
+    filters,
+    filterOptions,
+    setCompany,
+    setBatch,
+    setDepository,
+    clearFilters,
+  } = useInsiderTradingFilters();
 
-  const setBatch = (batch: string) => setFilters({ ...filters, batch });
-  const setCompany = (company: string) => setFilters({ ...filters, company });
-  const setDepository = (depository: string) =>
-    setFilters({ ...filters, depository });
-
-  const clearFilters = () => {
-    setFilters({ batch: "", company: "", depository: "" });
-  };
+  if (!filterOptions) return null;
 
   const batchOptions = filterOptions.batches.map((b) => ({
     value: b.batch_name,
