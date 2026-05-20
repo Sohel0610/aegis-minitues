@@ -360,6 +360,8 @@ async def get_my_permissions(email: str):
 
 @router.get("/rbac/check-access", response_model=PermissionCheckResponse)
 @router.post("/rbac/check-access", response_model=PermissionCheckResponse)
+@router.get("/permissions/check", response_model=PermissionCheckResponse)
+@router.post("/permissions/check", response_model=PermissionCheckResponse)
 async def check_route_access(email: str, route: str):
     """Check if a user has access to a specific route."""
     # Sanitize route
@@ -421,6 +423,7 @@ def check_route_permission(email: str, route: str) -> Optional[str]:
         conn.close()
 
 @router.post("/rbac/assign", response_model=Dict[str, Any])
+@router.post("/permissions/assign", response_model=Dict[str, Any])
 async def assign_permission(req: AssignPermissionRequest):
     """Assign a route permission to a user."""
     try:
