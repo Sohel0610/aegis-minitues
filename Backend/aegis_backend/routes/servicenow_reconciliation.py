@@ -4,11 +4,17 @@ from typing import List, Optional, Dict, Any
 import logging
 import os
 import json
+import psycopg2
+import psycopg2.pool
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 from routes.servicenow_ingestion import run_ingestion
-from utils.pgsql_service import get_pg_connection, get_pg_cursor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Load .env explicitly so DB_* vars are available when this module is imported
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 # Resolve the path to servicenow_data.json (project root)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))                      # routes/
@@ -17,14 +23,42 @@ _BACKEND_DIR = os.path.dirname(_BACKEND_APP_DIR)                             # B
 _PROJECT_ROOT = os.path.dirname(_BACKEND_DIR)                                # AEGIS_Servicenow/
 SN_JSON_PATH = os.path.join(_PROJECT_ROOT, "servicenow_data.json")
 
-INSIDER_DB = "aegis_insider"
+# ── Dedicated local connection pool for aegis_insider (uses DB_* vars, not POSTGRES_*) ──
+_sn_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _sn_pool
+    if _sn_pool is None:
+        _sn_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            host=os.getenv('DB_HOST', '192.168.0.56'),
+            port=int(os.getenv('DB_PORT', '5436')),
+            dbname=os.getenv('DB_NAME', 'aegis_insider'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres'),
+            sslmode=os.getenv('DB_SSLMODE', 'disable'),
+            connect_timeout=10,
+        )
+        logger.info(f"ServiceNow pool initialized: {os.getenv('DB_NAME','aegis_insider')} @ {os.getenv('DB_HOST','192.168.0.56')}:{os.getenv('DB_PORT','5436')}")
+    return _sn_pool
 
 def get_conn():
-    """Get a pooled connection to aegis_insider from the shared ThreadedConnectionPool."""
-    conn = get_pg_connection(database=INSIDER_DB)
-    if conn is None:
+    """Get a pooled connection to aegis_insider (local DB_* credentials)."""
+    try:
+        conn = _get_pool().getconn()
+        conn.cursor_factory = RealDictCursor
+        return conn
+    except Exception as e:
+        logger.error(f"ServiceNow pool error: {e}")
         raise HTTPException(status_code=503, detail="aegis_insider database unavailable")
-    return conn
+
+def _return_conn(conn):
+    """Return a connection back to the pool."""
+    try:
+        _get_pool().putconn(conn)
+    except Exception:
+        pass
 
 # ── Response models ──
 class ServiceNowSummaryResponse(BaseModel):
@@ -161,8 +195,9 @@ async def sync_servicenow_data():
 async def get_servicenow_summary():
     """Get high level metrics on declarations, tickets, and detected violations"""
     try:
+        conn = None
         conn = get_conn()
-        cur = get_pg_cursor(conn)
+        cur = conn.cursor()
 
         # Count master declarations
         cur.execute("SELECT COUNT(*) FROM public.servicenow_declarations")
@@ -224,7 +259,6 @@ async def get_servicenow_summary():
         """)
         holding_discrepancy_count = cur.fetchone()['count'] or 0
 
-        conn.close()
         return {
             "total_declarations": total_dec,
             "total_holdings": total_hold,
@@ -236,6 +270,9 @@ async def get_servicenow_summary():
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow summary: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+    finally:
+        if conn:
+            _return_conn(conn)
 
 @router.get("/servicenow/violations")
 async def get_servicenow_violations(
@@ -245,8 +282,9 @@ async def get_servicenow_violations(
 ):
     """Fetch list of detected violations of a specific category"""
     try:
+        conn = None
         conn = get_conn()
-        cur = get_pg_cursor(conn)
+        cur = conn.cursor()
         violations = []
 
         if type.upper() == "UNSANCTIONED":
@@ -409,8 +447,10 @@ async def get_servicenow_violations(
                     "fiscal_year": r['fiscal_year']
                 })
 
-        conn.close()
         return {"violations": violations, "count": len(violations)}
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow violations: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+    finally:
+        if conn:
+            _return_conn(conn)
