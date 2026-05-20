@@ -56,12 +56,6 @@ export const InsiderTradingFilterProvider: React.FC<{ children: React.ReactNode 
         try {
           const data = JSON.parse(cached);
           setFilterOptions(data);
-          setFilters((prev) => ({
-            ...prev,
-            batch: prev.batch || (data.batches?.[0]?.batch_name || ""),
-            company: prev.company || (data.companies?.[0] || ""),
-            depository: prev.depository || (data.depositories?.[0] || ""),
-          }));
           setLoading(false);
           return;
         } catch (e) {
@@ -80,14 +74,6 @@ export const InsiderTradingFilterProvider: React.FC<{ children: React.ReactNode 
           };
           setFilterOptions(options);
           sessionStorage.setItem('insiderTradingFilterOptions', JSON.stringify(options));
-
-          // Auto-select defaults if none selected
-          setFilters((prev) => ({
-            ...prev,
-            batch: prev.batch || (options.batches?.[0]?.batch_name || ""),
-            company: prev.company || (options.companies?.[0] || ""),
-            depository: prev.depository || (options.depositories?.[0] || ""),
-          }));
         }
       } catch (err) {
         console.error("Failed to fetch filter options:", err);
@@ -102,16 +88,8 @@ export const InsiderTradingFilterProvider: React.FC<{ children: React.ReactNode 
   const setBatch = useCallback((v: string) => setFilters((p) => ({ ...p, batch: v })), []);
   const setDepository = useCallback((v: string) => setFilters((p) => ({ ...p, depository: v })), []);
   const clearFilters = useCallback(() => {
-    if (filterOptions) {
-      setFilters({
-        batch: filterOptions.batches?.[0]?.batch_name || "",
-        company: filterOptions.companies?.[0] || "",
-        depository: filterOptions.depositories?.[0] || "",
-      });
-    } else {
-      setFilters(defaultFilters);
-    }
-  }, [filterOptions]);
+    setFilters(defaultFilters);
+  }, []);
 
   const buildQuery = useCallback(
     (extra?: Record<string, string | number>) => {
