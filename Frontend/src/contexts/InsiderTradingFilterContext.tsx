@@ -50,22 +50,43 @@ export const InsiderTradingFilterProvider: React.FC<{ children: React.ReactNode 
   // Fetch filter options once on mount
   useEffect(() => {
     const fetchOptions = async () => {
-      try {
-        const res = await fetch("/api/insider-trading/filter-options");
-        if (res.ok) {
-          const data = await res.json();
-          setFilterOptions({
-            companies: data.companies || [],
-            depositories: data.depositories || [],
-            batches: data.batches || [],
-          });
-
-          // Auto-select defaults if none selected
+      // Check for cached options to prevent repetitive API calls
+      const cached = sessionStorage.getItem('insiderTradingFilterOptions');
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          setFilterOptions(data);
           setFilters((prev) => ({
             ...prev,
             batch: prev.batch || (data.batches?.[0]?.batch_name || ""),
             company: prev.company || (data.companies?.[0] || ""),
             depository: prev.depository || (data.depositories?.[0] || ""),
+          }));
+          setLoading(false);
+          return;
+        } catch (e) {
+          console.error("Failed to parse cached options", e);
+        }
+      }
+
+      try {
+        const res = await fetch("/api/insider-trading/filter-options");
+        if (res.ok) {
+          const data = await res.json();
+          const options = {
+            companies: data.companies || [],
+            depositories: data.depositories || [],
+            batches: data.batches || [],
+          };
+          setFilterOptions(options);
+          sessionStorage.setItem('insiderTradingFilterOptions', JSON.stringify(options));
+
+          // Auto-select defaults if none selected
+          setFilters((prev) => ({
+            ...prev,
+            batch: prev.batch || (options.batches?.[0]?.batch_name || ""),
+            company: prev.company || (options.companies?.[0] || ""),
+            depository: prev.depository || (options.depositories?.[0] || ""),
           }));
         }
       } catch (err) {
