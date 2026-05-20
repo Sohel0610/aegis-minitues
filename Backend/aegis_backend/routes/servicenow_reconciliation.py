@@ -5,16 +5,11 @@ import logging
 import os
 import json
 import psycopg2
-import psycopg2.pool
 from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
 from routes.servicenow_ingestion import run_ingestion
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Load .env explicitly so DB_* vars are available when this module is imported
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 # Resolve the path to servicenow_data.json (project root)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))                      # routes/
@@ -24,22 +19,20 @@ _PROJECT_ROOT = os.path.dirname(_BACKEND_DIR)                                # A
 SN_JSON_PATH = os.path.join(_PROJECT_ROOT, "servicenow_data.json")
 
 def get_conn():
-    """Get a direct connection to aegis_insider without pooling."""
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('DB_HOST', '192.168.0.56'),
-            port=int(os.getenv('DB_PORT', '5436')),
-            dbname=os.getenv('DB_NAME', 'aegis_insider'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', 'postgres'),
-            sslmode=os.getenv('DB_SSLMODE', 'disable'),
-            connect_timeout=10,
-            cursor_factory=RealDictCursor
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"ServiceNow connection error: {e}")
-        raise HTTPException(status_code=503, detail="aegis_insider database unavailable")
+    db_host = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or '192.168.0.56'
+    db_port = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5436'
+    db_name = os.getenv('POSTGRES_DATABASE_INSIDER') or os.getenv('DB_NAME') or 'aegis_insider'
+    db_user = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or 'postgres'
+    db_password = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD') or 'postgres'
+    
+    return psycopg2.connect(
+        host=db_host,
+        port=db_port,
+        dbname=db_name,
+        user=db_user,
+        password=db_password,
+        cursor_factory=RealDictCursor
+    )
 
 # ── Response models ──
 class ServiceNowSummaryResponse(BaseModel):
@@ -176,7 +169,6 @@ async def sync_servicenow_data():
 async def get_servicenow_summary():
     """Get high level metrics on declarations, tickets, and detected violations"""
     try:
-        conn = None
         conn = get_conn()
         cur = conn.cursor()
 
@@ -222,24 +214,19 @@ async def get_servicenow_summary():
         """)
         volume_breach_count = cur.fetchone()['count'] or 0
 
-        # Count Holding Discrepancies — use DISTINCT ON to take only the latest batch per PAN+company
+        # Count Holding Discrepancies
         cur.execute("""
-            WITH latest_sr AS (
-                SELECT DISTINCT ON (pangir, company_id)
-                    pangir, company_id, position_latest
-                FROM public.shareholder_records
-                ORDER BY pangir, company_id, batch_id DESC
-            )
             SELECT COUNT(*) AS count
             FROM public.servicenow_holdings sh
             JOIN public.servicenow_declarations sd ON sh.ritm_number = sd.ritm_number
-            JOIN latest_sr sr ON sh.pan_card = sr.pangir AND sh.company_id = sr.company_id
+            JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sh.company_id = sr.company_id
             WHERE 
                 sd.state = 'Closed Complete'
                 AND sh.declared_quantity != sr.position_latest
         """)
         holding_discrepancy_count = cur.fetchone()['count'] or 0
 
+        conn.close()
         return {
             "total_declarations": total_dec,
             "total_holdings": total_hold,
@@ -251,9 +238,6 @@ async def get_servicenow_summary():
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow summary: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
-    finally:
-        if conn:
-            conn.close()
 
 @router.get("/servicenow/violations")
 async def get_servicenow_violations(
@@ -263,53 +247,39 @@ async def get_servicenow_violations(
 ):
     """Fetch list of detected violations of a specific category"""
     try:
-        conn = None
         conn = get_conn()
         cur = conn.cursor()
         violations = []
 
         if type.upper() == "UNSANCTIONED":
             cur.execute("""
-                WITH latest_sr AS (
-                    SELECT DISTINCT ON (pangir, company_id)
-                        pangir, company_id, position_difference, name, email, batch_id
-                    FROM public.shareholder_records
-                    ORDER BY pangir, company_id, batch_id DESC
-                ),
-                latest_rb AS (
-                    SELECT DISTINCT ON (sr.pangir, sr.company_id)
-                        sr.pangir, sr.company_id, rb.batch_name, rb.latest_date
-                    FROM public.shareholder_records sr
-                    JOIN public.result_batches rb ON sr.batch_id = rb.id
-                    ORDER BY sr.pangir, sr.company_id, sr.batch_id DESC
-                )
                 SELECT 
-                    lsr.name AS shareholder_name,
-                    lsr.pangir AS pan,
+                    sr.name AS shareholder_name,
+                    sr.pangir AS pan,
                     c.company_name,
-                    lsr.position_difference AS shares_traded,
-                    lrb.batch_name,
-                    lrb.latest_date AS transaction_date,
+                    sr.position_difference AS shares_traded,
+                    rb.batch_name,
+                    rb.latest_date AS transaction_date,
                     COALESCE(
-                        (SELECT requested_for FROM public.servicenow_declarations WHERE email = lsr.email LIMIT 1),
-                        (SELECT requested_for FROM public.servicenow_preclearances WHERE email = lsr.email LIMIT 1),
+                        (SELECT requested_for FROM public.servicenow_declarations WHERE email = sr.email LIMIT 1),
+                        (SELECT requested_for FROM public.servicenow_preclearances WHERE email = sr.email LIMIT 1),
                         'Insider Employee'
                     ) AS employee_name,
-                    lsr.email AS employee_email
-                FROM latest_sr lsr
-                JOIN public.companies c ON lsr.company_id = c.id
-                JOIN latest_rb lrb ON lsr.pangir = lrb.pangir AND lsr.company_id = lrb.company_id
+                    sr.email AS employee_email
+                FROM public.shareholder_records sr
+                JOIN public.companies c ON sr.company_id = c.id
+                JOIN public.result_batches rb ON sr.batch_id = rb.id
                 JOIN (
                     SELECT DISTINCT pan_card FROM public.servicenow_holdings WHERE pan_card != ''
                     UNION
                     SELECT DISTINCT pan_card FROM public.servicenow_preclearance_details WHERE pan_card != ''
-                ) dp ON lsr.pangir = dp.pan_card
-                LEFT JOIN public.servicenow_preclearance_details pd ON lsr.pangir = pd.pan_card
+                ) dp ON sr.pangir = dp.pan_card
+                LEFT JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
                 LEFT JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number AND pc.state = 'Closed Complete'
                 WHERE 
-                    lsr.position_difference != 0
+                    sr.position_difference != 0
                     AND pc.ritm_number IS NULL
-                ORDER BY lrb.latest_date DESC, lsr.name
+                ORDER BY rb.latest_date DESC, sr.name
                 LIMIT %s OFFSET %s
             """, (limit, offset))
             rows = cur.fetchall()
@@ -327,41 +297,28 @@ async def get_servicenow_violations(
 
         elif type.upper() == "VOLUME_BREACH":
             cur.execute("""
-                WITH latest_sr AS (
-                    SELECT DISTINCT ON (pangir, company_id)
-                        pangir, company_id, position_difference, name, email, batch_id
-                    FROM public.shareholder_records
-                    ORDER BY pangir, company_id, batch_id DESC
-                ),
-                latest_rb AS (
-                    SELECT DISTINCT ON (sr.pangir, sr.company_id)
-                        sr.pangir, sr.company_id, rb.batch_name, rb.latest_date
-                    FROM public.shareholder_records sr
-                    JOIN public.result_batches rb ON sr.batch_id = rb.id
-                    ORDER BY sr.pangir, sr.company_id, sr.batch_id DESC
-                )
                 SELECT 
-                    lsr.name AS shareholder_name,
-                    lsr.pangir AS pan,
+                    sr.name AS shareholder_name,
+                    sr.pangir AS pan,
                     c.company_name,
-                    lsr.position_difference AS shares_traded,
+                    sr.position_difference AS shares_traded,
                     pd.approved_quantity AS approved_volume,
-                    (ABS(lsr.position_difference) - pd.approved_quantity) AS excess_volume,
-                    lrb.batch_name,
-                    lrb.latest_date AS transaction_date,
+                    (ABS(sr.position_difference) - pd.approved_quantity) AS excess_volume,
+                    rb.batch_name,
+                    rb.latest_date AS transaction_date,
                     pc.requested_for AS employee_name,
                     pc.email AS employee_email,
                     pc.ritm_number AS preclearance_ritm
-                FROM latest_sr lsr
-                JOIN public.companies c ON lsr.company_id = c.id
-                JOIN latest_rb lrb ON lsr.pangir = lrb.pangir AND lsr.company_id = lrb.company_id
-                JOIN public.servicenow_preclearance_details pd ON lsr.pangir = pd.pan_card
+                FROM public.shareholder_records sr
+                JOIN public.companies c ON sr.company_id = c.id
+                JOIN public.result_batches rb ON sr.batch_id = rb.id
+                JOIN public.servicenow_preclearance_details pd ON sr.pangir = pd.pan_card
                 JOIN public.servicenow_preclearances pc ON pd.ritm_number = pc.ritm_number
                 WHERE 
-                    lsr.position_difference != 0
+                    sr.position_difference != 0
                     AND pc.state = 'Closed Complete'
-                    AND ABS(lsr.position_difference) > pd.approved_quantity
-                ORDER BY lrb.latest_date DESC, lsr.name
+                    AND ABS(sr.position_difference) > pd.approved_quantity
+                ORDER BY rb.latest_date DESC, sr.name
                 LIMIT %s OFFSET %s
             """, (limit, offset))
             rows = cur.fetchall()
@@ -382,12 +339,6 @@ async def get_servicenow_violations(
 
         elif type.upper() == "HOLDING_MISMATCH":
             cur.execute("""
-                WITH latest_sr AS (
-                    SELECT DISTINCT ON (pangir, company_id)
-                        pangir, company_id, position_latest
-                    FROM public.shareholder_records
-                    ORDER BY pangir, company_id, batch_id DESC
-                )
                 SELECT 
                     sd.requested_for AS employee,
                     sd.email AS employee_email,
@@ -396,18 +347,18 @@ async def get_servicenow_violations(
                     sh.pan_card AS pan,
                     c.company_name,
                     sh.declared_quantity,
-                    lsr.position_latest AS depository_quantity,
-                    (lsr.position_latest - sh.declared_quantity) AS difference,
+                    sr.position_latest AS depository_quantity,
+                    (sr.position_latest - sh.declared_quantity) AS difference,
                     sd.ritm_number AS declaration_ritm,
                     sd.phase,
                     sd.fiscal_year
                 FROM public.servicenow_holdings sh
                 JOIN public.servicenow_declarations sd ON sh.ritm_number = sd.ritm_number
-                JOIN latest_sr lsr ON sh.pan_card = lsr.pangir AND sh.company_id = lsr.company_id
+                JOIN public.shareholder_records sr ON sh.pan_card = sr.pangir AND sh.company_id = sr.company_id
                 JOIN public.companies c ON sh.company_id = c.id
                 WHERE 
                     sd.state = 'Closed Complete'
-                    AND sh.declared_quantity != lsr.position_latest
+                    AND sh.declared_quantity != sr.position_latest
                 ORDER BY sd.requested_for, c.company_name
                 LIMIT %s OFFSET %s
             """, (limit, offset))
@@ -428,10 +379,8 @@ async def get_servicenow_violations(
                     "fiscal_year": r['fiscal_year']
                 })
 
+        conn.close()
         return {"violations": violations, "count": len(violations)}
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow violations: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
-    finally:
-        if conn:
-            conn.close()

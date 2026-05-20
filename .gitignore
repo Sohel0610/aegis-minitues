@@ -142,4 +142,3 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 */venv
-servicenow_data.json
