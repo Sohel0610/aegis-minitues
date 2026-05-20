@@ -121,7 +121,7 @@ const EnhancedInsiderTradingAnalytics = () => {
   // ── Loading / Error states ──────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Poppins, sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Adani, sans-serif" }}>
         <div style={{ textAlign: "center" }}>
           <Loader2 size={40} color={C.orange} style={{ animation: "spin 1s linear infinite", marginBottom: 12 }} />
           <p style={{ color: C.text, fontSize: 14 }}>Loading analytics...</p>
@@ -132,12 +132,12 @@ const EnhancedInsiderTradingAnalytics = () => {
 
   if (error) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Poppins, sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Adani, sans-serif" }}>
         <div style={{ textAlign: "center", maxWidth: 400 }}>
           <AlertCircle size={40} color={C.red} style={{ marginBottom: 12 }} />
           <h2 style={{ fontSize: 18, fontWeight: 600, color: C.text, marginBottom: 8 }}>Error Loading Analytics</h2>
           <p style={{ fontSize: 14, color: C.sub, marginBottom: 16 }}>{error}</p>
-          <button onClick={fetchData} style={{ padding: "8px 18px", borderRadius: 8, background: C.orange, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Poppins" }}>Retry</button>
+          <button onClick={fetchData} style={{ padding: "8px 18px", borderRadius: 8, background: C.orange, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Adani" }}>Retry</button>
         </div>
       </div>
     );
@@ -163,7 +163,7 @@ const EnhancedInsiderTradingAnalytics = () => {
   );
 
   return (
-    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Adani, sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
         <div style={{ width: 46, height: 46, borderRadius: 13, background: "linear-gradient(135deg, #0057B8, #003087)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(0,87,184,0.4)", flexShrink: 0 }}>
@@ -275,7 +275,7 @@ const EnhancedInsiderTradingAnalytics = () => {
                   cursor: "pointer",
                   fontSize: 12,
                   fontWeight: 700,
-                  fontFamily: "Poppins",
+                  fontFamily: "Adani",
                   background: activeTab === t.id ? t.color : "rgba(255,255,255,0.05)",
                   color: activeTab === t.id ? "#fff" : C.muted,
                   boxShadow: activeTab === t.id ? `0 4px 14px ${t.color}44` : "none",
@@ -303,7 +303,7 @@ const EnhancedInsiderTradingAnalytics = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by PAN or name…"
-            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: C.text, flex: 1, fontFamily: "Poppins" }}
+            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: C.text, flex: 1, fontFamily: "Adani" }}
           />
           {search && (
             <button onClick={() => setSearch("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: C.muted, fontSize: 16 }}>×</button>

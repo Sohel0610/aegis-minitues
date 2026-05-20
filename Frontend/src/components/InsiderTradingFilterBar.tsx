@@ -49,7 +49,7 @@ function FilterDropdown({
           color: isPlaceholder ? C.muted : C.orange,
           fontSize: 12,
           fontWeight: 600,
-          fontFamily: "Poppins",
+          fontFamily: "Adani",
           whiteSpace: "nowrap",
           maxWidth: 240,
         }}
@@ -98,7 +98,7 @@ function FilterDropdown({
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                fontFamily: "Poppins",
+                fontFamily: "Adani",
               }}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -216,7 +216,7 @@ const InsiderTradingFilterBar = () => {
           cursor: "pointer",
           color: C.sub,
           fontSize: 12,
-          fontFamily: "Poppins",
+          fontFamily: "Adani",
         }}
       >
         <X size={13} /> Clear

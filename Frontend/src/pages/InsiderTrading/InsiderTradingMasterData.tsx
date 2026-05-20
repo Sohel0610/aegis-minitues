@@ -152,7 +152,7 @@ const InsiderTradingMasterData = () => {
   ];
 
   return (
-    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Adani, sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -188,7 +188,7 @@ const InsiderTradingMasterData = () => {
                 textAlign: "left",
                 transition: "all 0.15s",
                 boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
-                fontFamily: "Poppins, sans-serif",
+                fontFamily: "Adani, sans-serif",
               }}
             >
               <div style={{ fontSize: 26, color: cfg.color, fontWeight: 800, letterSpacing: "-0.03em" }}>{sb.count.toLocaleString()}</div>
@@ -218,7 +218,7 @@ const InsiderTradingMasterData = () => {
                     cursor: "pointer",
                     fontSize: 11,
                     fontWeight: 700,
-                    fontFamily: "Poppins",
+                    fontFamily: "Adani",
                     background: isActive ? (sb.key === "" ? "rgba(255,255,255,0.1)" : statusCfg[sb.key]?.bg || "transparent") : "transparent",
                     color: cfg.color,
                     textTransform: "capitalize",
@@ -235,7 +235,7 @@ const InsiderTradingMasterData = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search by PAN or name…"
-              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Poppins" }}
+              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Adani" }}
             />
           </div>
         </div>
@@ -249,7 +249,7 @@ const InsiderTradingMasterData = () => {
           <div style={{ textAlign: "center", padding: "40px 0" }}>
             <AlertCircle size={32} color={C.red} style={{ marginBottom: 8 }} />
             <p style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</p>
-            <button onClick={fetchRecords} style={{ padding: "6px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.card, cursor: "pointer", fontSize: 12, fontFamily: "Poppins", color: C.text }}>Retry</button>
+            <button onClick={fetchRecords} style={{ padding: "6px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.card, cursor: "pointer", fontSize: 12, fontFamily: "Adani", color: C.text }}>Retry</button>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -309,7 +309,7 @@ const InsiderTradingMasterData = () => {
                 onClick={() => setOffset(Math.max(0, offset - RECORDS_PER_PAGE))}
                 style={{
                   padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`,
-                  cursor: offset === 0 ? "default" : "pointer", fontSize: 12, fontFamily: "Poppins",
+                  cursor: offset === 0 ? "default" : "pointer", fontSize: 12, fontFamily: "Adani",
                   background: C.card, color: offset === 0 ? C.muted : C.text, fontWeight: 600,
                   opacity: offset === 0 ? 0.5 : 1,
                 }}
@@ -321,7 +321,7 @@ const InsiderTradingMasterData = () => {
                 onClick={() => setOffset(offset + RECORDS_PER_PAGE)}
                 style={{
                   padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`,
-                  cursor: offset + RECORDS_PER_PAGE >= total ? "default" : "pointer", fontSize: 12, fontFamily: "Poppins",
+                  cursor: offset + RECORDS_PER_PAGE >= total ? "default" : "pointer", fontSize: 12, fontFamily: "Adani",
                   background: C.card, color: offset + RECORDS_PER_PAGE >= total ? C.muted : C.text, fontWeight: 600,
                   opacity: offset + RECORDS_PER_PAGE >= total ? 0.5 : 1,
                 }}

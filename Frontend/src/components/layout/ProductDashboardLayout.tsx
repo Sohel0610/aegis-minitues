@@ -1,24 +1,26 @@
 import { ReactNode, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  Mail,
   ChevronLeft,
   ChevronRight,
   Menu,
-  Bell,
-  Globe,
-  Database,
-  BarChart3,
-  Shield,
-  FileText,
-  Receipt,
-  BookOpen, // Import BookOpen icon
-  LucideIcon
+  Wifi,
+  LucideIcon,
+  X,
 } from "lucide-react";
-import UserManualModal from "../UserManualModal"; // Import UserManualModal
+import UserManualModal from "../UserManualModal";
 
+// Adani theme color constants — same as outside design
+const A = {
+  navy: "#FFFFFF",
+  navyMid: "#F8FAFB",
+  orange: "#0066B3",
+  orangeLight: "#0080D6",
+  blue: "#0057B8",
+  text: "#323232",
+  muted: "#64748B",
+  border: "rgba(0,0,0,0.08)",
+};
 
 interface ProductDashboardLayoutProps {
   children: ReactNode;
@@ -39,250 +41,455 @@ const ProductDashboardLayout = ({
   children,
   productName,
   productRoute,
-  navigationItems
+  navigationItems,
 }: ProductDashboardLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isUserManualOpen, setIsUserManualOpen] = useState(false); // Add state for manual modal
+  const [isUserManualOpen, setIsUserManualOpen] = useState(false);
   const navigate = useNavigate();
-
   const location = useLocation();
 
   const handleNavigation = (item: NavigationItem): void => {
-    if (item.id === 'manual') {
+    if (item.id === "manual") {
       setIsUserManualOpen(true);
       if (isMobileOpen) setIsMobileOpen(false);
       return;
     }
     navigate(item.href);
+    if (isMobileOpen) setIsMobileOpen(false);
   };
 
+  const sidebarWidth = isCollapsed ? 68 : 238;
 
-  const sidebarVariants = {
-    expanded: { width: "280px" },
-    collapsed: { width: "64px" }
-  };
+  // Separate main nav items and resource items
+  const mainNavItems = navigationItems.filter(
+    (item) =>
+      !["documentation", "user-guide", "servicenow-guide"].includes(item.id)
+  );
+  const resourceItems = navigationItems.filter((item) =>
+    ["documentation", "user-guide", "servicenow-guide"].includes(item.id)
+  );
 
-  const contentVariants = {
-    expanded: { marginLeft: "0" },
-    collapsed: { marginLeft: "0" }
-  };
-
-  // Fixed margins for stable layout
-  const getContentMargin = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      return "0"; // No margin on mobile/tablet
-    }
-    return isCollapsed ? "64px" : "280px";
+  const renderNavButton = (item: NavigationItem, collapsed: boolean) => {
+    const IconComponent = item.icon;
+    const active = item.isActive || false;
+    return (
+      <button
+        key={item.id}
+        onClick={() => handleNavigation(item)}
+        title={collapsed ? item.label : undefined}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: collapsed ? "10px 0" : "10px 12px",
+          borderRadius: 9,
+          border: "none",
+          cursor: "pointer",
+          width: "100%",
+          justifyContent: collapsed ? "center" : "flex-start",
+          background: active ? "rgba(0,102,179,0.08)" : "transparent",
+          borderLeft: active
+            ? `3px solid ${A.orange}`
+            : "3px solid transparent",
+          transition: "all 0.15s ease",
+          position: "relative",
+          fontFamily: "'Adani', sans-serif",
+        }}
+      >
+        <IconComponent
+          size={17}
+          color={active ? A.orange : A.muted}
+          strokeWidth={active ? 2.5 : 2}
+          style={{ flexShrink: 0 }}
+        />
+        {!collapsed && (
+          <span
+            style={{
+              fontSize: 13.5,
+              color: active ? A.text : A.muted,
+              fontWeight: active ? 600 : 400,
+            }}
+          >
+            {item.label}
+          </span>
+        )}
+        {active && !collapsed && (
+          <div
+            style={{
+              position: "absolute",
+              right: 10,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: A.orange,
+            }}
+          />
+        )}
+      </button>
+    );
   };
 
   return (
-    <div className="min-h-screen relative" style={{
-      background: "#ffffff",
-      overflow: "hidden" // Prevent horizontal scroll
-    }}>
-
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        overflow: "hidden",
+        fontFamily: "'Adani', -apple-system, BlinkMacSystemFont, sans-serif",
+        background: "#F8FAFB",
+        color: "#323232",
+      }}
+    >
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg transition-colors"
         style={{
-          backgroundColor: 'rgba(30, 64, 175, 0.1)',
-          border: '1px solid rgba(30, 64, 175, 0.3)',
-          color: '#1E40AF'
+          display: "none",
+          position: "fixed",
+          top: 16,
+          left: 16,
+          zIndex: 50,
+          padding: 8,
+          borderRadius: 8,
+          background: "rgba(0,102,179,0.1)",
+          border: `1px solid ${A.border}`,
+          cursor: "pointer",
+          color: A.orange,
         }}
+        className="mobile-menu-btn"
       >
         <Menu size={20} />
       </button>
 
-      {/* Sidebar */}
-      <motion.aside
-        variants={sidebarVariants}
-        animate={isCollapsed ? "collapsed" : "expanded"}
-        className="fixed left-0 top-0 h-full z-40 border-r transition-all duration-300 hidden lg:block"
+      {/* Desktop Sidebar */}
+      <aside
         style={{
-          background: "#ffffff",
-          borderColor: "rgba(0, 0, 0, 0.3)",
-          boxShadow: 'none',
-          border: '2px solid rgba(0, 0, 0, 0.3)'
+          width: sidebarWidth,
+          minWidth: sidebarWidth,
+          transition:
+            "width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1)",
+          background: "#FFFFFF",
+          borderRight: `1px solid ${A.border}`,
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+          boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
         }}
       >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
-          <div className="flex items-center justify-between">
-            {!isCollapsed && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex items-center gap-2"
-              >
-                <div className="w-10 h-10 flex items-center justify-center">
-                  <img
-                    src="/adani.svg"
-                    alt="AGEIS Logo"
-                    className="w-8 h-8 object-contain"
-                  />
-                </div>
-                <h2 className="font-bold text-lg" style={{ color: '#000000' }}>
-                  {productName}
-                </h2>
-              </motion.div>
-            )}
-            <button
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-1 rounded transition-colors"
-              style={{ color: '#000000' }}
-            >
-              {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
-          </div>
-        </div>
+        {/* Blue accent top bar */}
+        <div
+          style={{
+            height: 3,
+            background: `linear-gradient(90deg, ${A.orange}, ${A.orangeLight}, transparent)`,
+            flexShrink: 0,
+          }}
+        />
 
-        {/* Navigation Items */}
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <ul className="space-y-2">
-            {navigationItems.map((item) => {
-              const IconComponent = item.icon;
-              return (
-                <li key={item.id}>
-                  <button
-                    onClick={() => handleNavigation(item)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group ${item.isActive ? 'shadow-lg' : 'hover:shadow-md'
-                      }`}
-                    style={{
-                      backgroundColor: item.isActive
-                        ? 'rgba(30, 64, 175, 0.1)'
-                        : 'transparent',
-                      color: item.isActive ? '#000000' : '#000000',
-                      border: item.isActive
-                        ? '1px solid rgba(30, 64, 175, 0.3)'
-                        : '1px solid transparent'
-                    }}
-                  >
-                    {IconComponent && (
-                      <IconComponent
-                        size={20}
-                        className={`flex-shrink-0 transition-colors ${item.isActive ? 'text-[#000000]' : 'text-[#000000] group-hover:text-[#000000]'
-                          }`}
-                      />
-                    )}
-                    <AnimatePresence>
-                      {!isCollapsed && (
-                        <motion.span
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -10 }}
-                          className="font-medium whitespace-nowrap overflow-visible"
-                        >
-                          {item.label}
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
+        {/* Logo */}
+        <div
+          style={{
+            padding: isCollapsed ? "18px 0" : "18px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            justifyContent: isCollapsed ? "center" : "flex-start",
+            borderBottom: `1px solid ${A.border}`,
+            minHeight: 70,
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src="/adani.svg"
+            alt="Adani"
+            style={{
+              height: isCollapsed ? 28 : 32,
+              width: "auto",
+              flexShrink: 0,
+            }}
+          />
           {!isCollapsed && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-xs "
-              style={{ color: 'rgba(0, 0, 0, 0.7)' }}
-            >
-            </motion.div>
+            <div style={{ overflow: "hidden" }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: A.text,
+                  fontWeight: 700,
+                  marginTop: 2,
+                }}
+              >
+                {productName}
+              </div>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  color: A.muted,
+                  fontWeight: 400,
+                  letterSpacing: "0.03em",
+                }}
+              >
+                AEGIS Surveillance
+              </div>
+            </div>
           )}
         </div>
-      </motion.aside>
 
-      {/* Mobile Sidebar Overlay */}
-      <AnimatePresence>
-        {isMobileOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="lg:hidden fixed inset-0 z-30 bg-black bg-opacity-50"
-            onClick={() => setIsMobileOpen(false)}
-          >
-            <motion.aside
-              initial={{ x: "-100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-100%" }}
-              className="w-64 h-full border-r"
+        {/* Main nav */}
+        <nav
+          style={{
+            flex: 1,
+            padding: "14px 8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            overflowY: "auto",
+          }}
+        >
+          {!isCollapsed && (
+            <div
               style={{
-                background: "linear-gradient(180deg, #ffffff 0%, #ffffff 50%, #ffffff 100%)",
-                borderColor: "rgba(0, 0, 0, 0.3)"
+                fontSize: 9.5,
+                color: A.muted,
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                fontWeight: 700,
+                padding: "4px 10px 8px",
               }}
-              onClick={(e) => e.stopPropagation()}
             >
-              {/* Mobile Sidebar Content - Same as desktop */}
-              <div className="p-4 border-b" style={{ borderColor: "rgba(0, 0, 0, 0.2)" }}>
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 flex items-center justify-center">
-                    <img
-                      src="/adani.svg"
-                      alt="AGEIS Logo"
-                      className="w-8 h-8 object-contain"
-                    />
-                  </div>
-                  <h2 className="font-bold text-lg" style={{ color: '#000000' }}>
-                    {productName}
-                  </h2>
+              Main Menu
+            </div>
+          )}
+          {mainNavItems.map((item) => renderNavButton(item, isCollapsed))}
+
+          <div style={{ flex: 1 }} />
+
+          {resourceItems.length > 0 && (
+            <>
+              {!isCollapsed && (
+                <div
+                  style={{
+                    fontSize: 9.5,
+                    color: A.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    fontWeight: 700,
+                    padding: "8px 10px 6px",
+                  }}
+                >
+                  Resources
+                </div>
+              )}
+              {resourceItems.map((item) => renderNavButton(item, isCollapsed))}
+            </>
+          )}
+        </nav>
+
+        {/* Live status */}
+        {!isCollapsed && (
+          <div
+            style={{
+              padding: "12px 14px",
+              borderTop: `1px solid ${A.border}`,
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "9px 12px",
+                borderRadius: 9,
+                background: "rgba(0,201,138,0.08)",
+                border: "1px solid rgba(0,201,138,0.18)",
+              }}
+            >
+              <Wifi size={13} color="#00C98A" />
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{ fontSize: 11, color: "#00C98A", fontWeight: 700 }}
+                >
+                  Live Sync Active
+                </div>
+                <div style={{ fontSize: 10, color: A.muted }}>
+                  Last sync: 2 min ago
                 </div>
               </div>
-
-              <nav className="flex-1 p-4">
-                <ul className="space-y-2">
-                  {navigationItems.map((item) => {
-                    const IconComponent = item.icon;
-                    return (
-                      <li key={item.id}>
-                        <button
-                          onClick={() => {
-                            handleNavigation(item);
-                            setIsMobileOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${item.isActive ? 'shadow-lg' : 'hover:shadow-md'
-                            }`}
-                          style={{
-                            backgroundColor: item.isActive
-                              ? 'rgba(30, 64, 175, 0.1)'
-                              : 'transparent',
-                            color: item.isActive ? '#000000' : '#000000',
-                            border: item.isActive
-                              ? '1px solid rgba(30, 64, 175, 0.3)'
-                              : '1px solid transparent'
-                          }}
-                        >
-                          {IconComponent && <IconComponent size={20} className="flex-shrink-0" />}
-                          <span className="font-medium">{item.label}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </nav>
-            </motion.aside>
-          </motion.div>
+              <div
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: "#00C98A",
+                  boxShadow: "0 0 8px #00C98A",
+                }}
+              />
+            </div>
+          </div>
         )}
-      </AnimatePresence>
 
-      {/* Main Content - Fixed positioning layout */}
+        {/* Collapse toggle */}
+        <div
+          style={{
+            padding: "16px 0",
+            display: "flex",
+            justifyContent: "center",
+            borderTop: isCollapsed ? "none" : `1px solid ${A.border}`,
+            marginTop: "auto",
+          }}
+        >
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: "rgba(0,102,179,0.05)",
+              border: `1px solid ${A.border}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: A.orange,
+              transition: "all 0.2s ease",
+            }}
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile Sidebar Overlay */}
+      {isMobileOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            background: "rgba(0,0,0,0.5)",
+          }}
+          onClick={() => setIsMobileOpen(false)}
+        >
+          <aside
+            style={{
+              width: 260,
+              height: "100%",
+              background: "#FFFFFF",
+              borderRight: `1px solid ${A.border}`,
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "2px 0 12px rgba(0,0,0,0.1)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                height: 3,
+                background: `linear-gradient(90deg, ${A.orange}, ${A.orangeLight}, transparent)`,
+                flexShrink: 0,
+              }}
+            />
+            <div
+              style={{
+                padding: "18px 20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: `1px solid ${A.border}`,
+                minHeight: 70,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <img
+                  src="/adani.svg"
+                  alt="Adani"
+                  style={{ height: 32, width: "auto" }}
+                />
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: A.text,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {productName}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9.5,
+                      color: A.muted,
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    AEGIS Surveillance
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsMobileOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: A.muted,
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <nav
+              style={{
+                flex: 1,
+                padding: "14px 8px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                overflowY: "auto",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9.5,
+                  color: A.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  fontWeight: 700,
+                  padding: "4px 10px 8px",
+                }}
+              >
+                Main Menu
+              </div>
+              {mainNavItems.map((item) => renderNavButton(item, false))}
+              <div style={{ flex: 1 }} />
+              {resourceItems.length > 0 && (
+                <>
+                  <div
+                    style={{
+                      fontSize: 9.5,
+                      color: A.muted,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                      fontWeight: 700,
+                      padding: "8px 10px 6px",
+                    }}
+                  >
+                    Resources
+                  </div>
+                  {resourceItems.map((item) => renderNavButton(item, false))}
+                </>
+              )}
+            </nav>
+          </aside>
+        </div>
+      )}
+
+      {/* Main Content */}
       <main
-        className="transition-all duration-300"
         style={{
-          marginLeft: getContentMargin(),
-          minHeight: "100vh",
-          width: `calc(100% - ${getContentMargin()})`,
-          position: "relative",
-          overflowX: "hidden", // Prevent horizontal overflow
-          overflowY: "auto",    // Allow vertical scrolling
-          paddingTop: "0"      // No global notification bar
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
         }}
       >
         {children}
@@ -292,11 +499,14 @@ const ProductDashboardLayout = ({
       <UserManualModal
         isOpen={isUserManualOpen}
         onClose={() => setIsUserManualOpen(false)}
-        initialAgent={productName === "Generate Minutes" ? "Generate Minutes Agent" : undefined}
+        initialAgent={
+          productName === "Generate Minutes"
+            ? "Generate Minutes Agent"
+            : undefined
+        }
       />
     </div>
   );
 };
-
 
 export default ProductDashboardLayout;

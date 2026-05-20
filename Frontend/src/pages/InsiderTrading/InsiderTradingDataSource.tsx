@@ -124,7 +124,7 @@ const InsiderTradingDataSource = () => {
   // ── Loading / Error states ──────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Poppins, sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Adani, sans-serif" }}>
         <div style={{ textAlign: "center" }}>
           <Loader2 size={40} color={C.orange} style={{ animation: "spin 1s linear infinite", marginBottom: 12 }} />
           <p style={{ color: C.text, fontSize: 14 }}>Loading data sources...</p>
@@ -135,19 +135,19 @@ const InsiderTradingDataSource = () => {
 
   if (error) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Poppins, sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Adani, sans-serif" }}>
         <div style={{ textAlign: "center", maxWidth: 400 }}>
           <AlertCircle size={40} color={C.red} style={{ marginBottom: 12 }} />
           <h2 style={{ fontSize: 18, fontWeight: 600, color: C.text, marginBottom: 8 }}>Error Loading Data</h2>
           <p style={{ fontSize: 14, color: C.sub, marginBottom: 16 }}>{error}</p>
-          <button onClick={fetchData} style={{ padding: "8px 18px", borderRadius: 8, background: C.orange, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Poppins" }}>Retry</button>
+          <button onClick={fetchData} style={{ padding: "8px 18px", borderRadius: 8, background: C.orange, color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Adani" }}>Retry</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Adani, sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -159,7 +159,7 @@ const InsiderTradingDataSource = () => {
             <p style={{ color: C.sub, margin: "3px 0 0", fontSize: 13 }}>Summary of insider trading data per company, batch, and depository</p>
           </div>
         </div>
-        <button onClick={fetchData} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 9, background: "rgba(0,201,138,0.1)", border: "1px solid rgba(0,201,138,0.25)", cursor: "pointer", color: C.green, fontSize: 12, fontWeight: 700, fontFamily: "Poppins" }}>
+        <button onClick={fetchData} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 9, background: "rgba(0,201,138,0.1)", border: "1px solid rgba(0,201,138,0.25)", cursor: "pointer", color: C.green, fontSize: 12, fontWeight: 700, fontFamily: "Adani" }}>
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -197,7 +197,7 @@ const InsiderTradingDataSource = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search companies…"
-              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 160, fontFamily: "Poppins" }}
+              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 160, fontFamily: "Adani" }}
             />
           </div>
         </div>

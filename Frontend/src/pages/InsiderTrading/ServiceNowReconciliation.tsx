@@ -192,7 +192,7 @@ const ServiceNowReconciliation = () => {
   };
 
   return (
-    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Poppins, sans-serif" }}>
+    <div style={{ padding: "28px 32px", background: C.bg, minHeight: "100%", fontFamily: "Adani, sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -212,7 +212,7 @@ const ServiceNowReconciliation = () => {
             background: syncing ? "rgba(148,163,184,0.1)" : "rgba(0,102,179,0.1)",
             border: syncing ? "1px solid rgba(148,163,184,0.25)" : "1px solid rgba(0,102,179,0.25)",
             cursor: syncing ? "not-allowed" : "pointer",
-            color: syncing ? C.muted : C.orange, fontSize: 12, fontWeight: 700, fontFamily: "Poppins",
+            color: syncing ? C.muted : C.orange, fontSize: 12, fontWeight: 700, fontFamily: "Adani",
             opacity: syncing ? 0.7 : 1,
           }}
         >
@@ -288,7 +288,7 @@ const ServiceNowReconciliation = () => {
                 onClick={() => setActiveTab(t.id)}
                 style={{
                   padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-                  fontSize: 12, fontWeight: 700, fontFamily: "Poppins",
+                  fontSize: 12, fontWeight: 700, fontFamily: "Adani",
                   background: activeTab === t.id ? t.color : "rgba(255,255,255,0.05)",
                   color: activeTab === t.id ? "#fff" : C.muted,
                   boxShadow: activeTab === t.id ? `0 4px 14px ${t.color}44` : "none",
