@@ -313,3 +313,180 @@ async def get_servicenow_violations(
     except Exception as e:
         logger.error(f"Failed to fetch ServiceNow violations: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+
+@router.get("/servicenow/ledger")
+async def get_servicenow_ledger(
+    search: Optional[str] = Query(None),
+    limit: int = Query(100),
+    offset: int = Query(0)
+):
+    """
+    Get a aggregated list of all unique employees who have ServiceNow compliance submissions.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Base query to get aggregated employee compliance history
+        query = """
+            WITH decls AS (
+                SELECT 
+                    email, 
+                    MAX(requested_for) as name, 
+                    MAX(employee_code) as code, 
+                    MAX(designation) as designation,
+                    COUNT(*) as decl_count
+                FROM public.servicenow_declarations
+                GROUP BY email
+            ),
+            preclears AS (
+                SELECT 
+                    email, 
+                    MAX(requested_for) as name, 
+                    MAX(employee_code) as code, 
+                    MAX(designation) as designation,
+                    COUNT(*) as pc_count
+                FROM public.servicenow_preclearances
+                GROUP BY email
+            )
+            SELECT 
+                COALESCE(d.email, p.email) as email,
+                COALESCE(d.name, p.name) as name,
+                COALESCE(d.code, p.code) as employee_code,
+                COALESCE(d.designation, p.designation) as designation,
+                COALESCE(d.decl_count, 0) as declarations_count,
+                COALESCE(p.pc_count, 0) as preclearances_count
+            FROM decls d
+            FULL OUTER JOIN preclears p ON d.email = p.email
+        """
+        
+        params = []
+        if search:
+            query += " WHERE d.name ILIKE %s OR p.name ILIKE %s OR d.email ILIKE %s OR p.email ILIKE %s OR d.code ILIKE %s OR p.code ILIKE %s"
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param, search_param, search_param, search_param])
+            
+        # Get total count of matching employees
+        count_query = f"SELECT COUNT(*) as count FROM ({query}) AS temp"
+        cur.execute(count_query, params)
+        total = cur.fetchone()['count']
+        
+        # Paginate results
+        query += " ORDER BY name ASC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        conn.close()
+        
+        return {"employees": rows, "count": total}
+    except Exception as e:
+        logger.error(f"Failed to fetch compliance ledger: {e}")
+        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+
+@router.get("/servicenow/ledger/details")
+async def get_servicenow_ledger_details(email: str = Query(...)):
+    """
+    Get detailed timeline of all ServiceNow declarations and preclearances for a specific employee.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        email_clean = email.strip().lower()
+        
+        # 1. Fetch Declarations
+        cur.execute("""
+            SELECT ritm_number, declaration_date, phase, fiscal_year, state
+            FROM public.servicenow_declarations
+            WHERE email = %s
+            ORDER BY declaration_date DESC, ritm_number DESC
+        """, (email_clean,))
+        decls = cur.fetchall()
+        
+        # Fetch holdings for each declaration RITM
+        company_names = {
+            1: 'AESL',
+            2: 'AEL',
+            3: 'AGEL',
+            4: 'APSEZL',
+            5: 'ACL / Ambuja',
+            6: 'Sanghi'
+        }
+        
+        declarations_detailed = []
+        for d in decls:
+            ritm = d['ritm_number']
+            cur.execute("""
+                SELECT name, relationship, pan_card, company_id, declared_quantity
+                FROM public.servicenow_holdings
+                WHERE ritm_number = %s
+            """, (ritm,))
+            holdings = cur.fetchall()
+            
+            holdings_list = []
+            for h in holdings:
+                holdings_list.append({
+                    "name": h['name'],
+                    "relationship": h['relationship'],
+                    "pan_card": h['pan_card'],
+                    "company_name": company_names.get(h['company_id'], f"Company {h['company_id']}"),
+                    "declared_quantity": h['declared_quantity']
+                })
+                
+            declarations_detailed.append({
+                "ritm_number": d['ritm_number'],
+                "declaration_date": str(d['declaration_date']) if d['declaration_date'] else None,
+                "phase": d['phase'],
+                "fiscal_year": d['fiscal_year'],
+                "state": d['state'],
+                "holdings": holdings_list
+            })
+            
+        # 2. Fetch Preclearances
+        cur.execute("""
+            SELECT ritm_number, phase, fiscal_year, state
+            FROM public.servicenow_preclearances
+            WHERE email = %s
+            ORDER BY ritm_number DESC
+        """, (email_clean,))
+        pcs = cur.fetchall()
+        
+        preclearances_detailed = []
+        for pc in pcs:
+            ritm = pc['ritm_number']
+            cur.execute("""
+                SELECT name, relationship, pan_card, approved_quantity
+                FROM public.servicenow_preclearance_details
+                WHERE ritm_number = %s
+            """, (ritm,))
+            details = cur.fetchall()
+            
+            details_list = []
+            for det in details:
+                details_list.append({
+                    "name": det['name'],
+                    "relationship": det['relationship'],
+                    "pan_card": det['pan_card'],
+                    "approved_quantity": det['approved_quantity']
+                })
+                
+            preclearances_detailed.append({
+                "ritm_number": pc['ritm_number'],
+                "phase": pc['phase'],
+                "fiscal_year": pc['fiscal_year'],
+                "state": pc['state'],
+                "details": details_list
+            })
+            
+        conn.close()
+        
+        return {
+            "email": email_clean,
+            "declarations": declarations_detailed,
+            "preclearances": preclearances_detailed
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch employee details for {email}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Database, BarChart3, FileText, BookOpen, Home, ShieldAlert } from "lucide-react";
+import { Database, BarChart3, FileText, BookOpen, Home, ShieldAlert, Contact } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { InsiderTradingFilterProvider } from "@/contexts/InsiderTradingFilterContext";
@@ -11,9 +11,9 @@ import InsiderTradingDocumentation from "./InsiderTrading/InsiderTradingDocument
 import InsiderTradingUserGuide from "./InsiderTradingUserGuide";
 import ServiceNowReconciliation from "./InsiderTrading/ServiceNowReconciliation";
 import ServiceNowUserGuide from "./InsiderTrading/ServiceNowUserGuide";
+import EmployeeComplianceLedger from "./InsiderTrading/EmployeeComplianceLedger";
 
-
-type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide';
+type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide' | 'servicenow-ledger';
 
 const InsiderTrading = () => {
   const navigate = useNavigate();
@@ -76,7 +76,14 @@ const InsiderTrading = () => {
         label: 'ServiceNow Compliance',
         icon: ShieldAlert,
         href: '/insider-trading/servicenow',
-        isActive: currentPath.endsWith('/servicenow') && !currentPath.endsWith('/servicenow-guide')
+        isActive: currentPath.endsWith('/servicenow') && !currentPath.endsWith('/servicenow-guide') && !currentPath.endsWith('/servicenow-ledger')
+      },
+      {
+        id: 'servicenow-ledger',
+        label: 'Compliance Ledger',
+        icon: Contact,
+        href: '/insider-trading/servicenow-ledger',
+        isActive: currentPath.endsWith('/servicenow-ledger')
       },
       {
         id: 'servicenow-guide',
@@ -107,6 +114,8 @@ const InsiderTrading = () => {
       return <InsiderTradingUserGuide />;
     } else if (location.pathname.endsWith('/servicenow')) {
       return <ServiceNowReconciliation />;
+    } else if (location.pathname.endsWith('/servicenow-ledger')) {
+      return <EmployeeComplianceLedger />;
     } else if (location.pathname.endsWith('/servicenow-guide')) {
       return <ServiceNowUserGuide />;
     } else {
