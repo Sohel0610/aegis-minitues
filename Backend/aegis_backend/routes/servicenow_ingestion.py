@@ -32,10 +32,19 @@ def run_ingestion():
     db_user = os.getenv('DB_USER') or 'postgres'
     db_password = os.getenv('DB_PASSWORD') or 'postgres'
 
-    # Resolve JSON path dynamically (two levels up from routes/ -> aegis_backend/ -> Backend/ -> project root)
+    # Resolve JSON path dynamically (check both project root and Backend/ folder)
     _routes_dir = os.path.dirname(os.path.abspath(__file__))
-    _project_root = os.path.dirname(os.path.dirname(os.path.dirname(_routes_dir)))
-    json_path = os.path.join(_project_root, 'servicenow_data.json')
+    _backend_dir = os.path.dirname(_routes_dir)
+    _project_root = os.path.dirname(_backend_dir)
+    _true_root = os.path.dirname(_project_root)
+
+    default_json = os.path.join(_true_root, 'servicenow_data.json')
+    backend_json = os.path.join(_project_root, 'servicenow_data.json')
+    
+    json_path = default_json
+    if os.path.exists(backend_json):
+        if not os.path.exists(default_json) or os.path.getsize(backend_json) > os.path.getsize(default_json):
+            json_path = backend_json
 
     if not os.path.exists(json_path):
         print(f"ServiceNow JSON file not found at: {json_path}")
