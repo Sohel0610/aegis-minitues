@@ -490,3 +490,93 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
         logger.error(f"Failed to fetch employee details for {email}: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
+@router.get("/servicenow/raw-feed")
+async def get_servicenow_raw_feed(
+    search: Optional[str] = Query(None),
+    type: str = Query("ALL"),
+    limit: int = Query(50),
+    offset: int = Query(0)
+):
+    """
+    Get a flat chronological feed of all ServiceNow tickets (declarations and preclearances).
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Build queries based on type filter
+        queries = []
+        
+        dec_query = """
+            SELECT 
+                'Declaration' as ticket_type,
+                ritm_number,
+                requested_for as name,
+                email,
+                employee_code,
+                designation,
+                state,
+                fiscal_year,
+                phase,
+                declaration_date::text as date
+            FROM public.servicenow_declarations
+        """
+        
+        pc_query = """
+            SELECT 
+                'Pre-clearance' as ticket_type,
+                ritm_number,
+                requested_for as name,
+                email,
+                employee_code,
+                designation,
+                state,
+                fiscal_year,
+                phase,
+                NULL as date
+            FROM public.servicenow_preclearances
+        """
+        
+        if type.upper() == "DECLARATION":
+            queries.append(dec_query)
+        elif type.upper() == "PRECLEARANCE":
+            queries.append(pc_query)
+        else:
+            queries.extend([dec_query, pc_query])
+            
+        combined_query = " UNION ALL ".join(queries)
+        
+        params = []
+        final_query = f"SELECT * FROM ({combined_query}) AS raw_feed"
+        
+        if search:
+            final_query += """ WHERE 
+                ritm_number ILIKE %s OR 
+                name ILIKE %s OR 
+                email ILIKE %s OR 
+                employee_code ILIKE %s OR 
+                designation ILIKE %s OR 
+                state ILIKE %s
+            """
+            search_param = f"%{search}%"
+            params.extend([search_param] * 6)
+            
+        # Get count
+        count_query = f"SELECT COUNT(*) as count FROM ({final_query}) AS temp"
+        cur.execute(count_query, params)
+        total = cur.fetchone()['count']
+        
+        # Add order and pagination (RITM number sorting gives chronological order)
+        final_query += " ORDER BY ritm_number DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        
+        cur.execute(final_query, params)
+        rows = cur.fetchall()
+        conn.close()
+        
+        return {"tickets": rows, "count": total}
+    except Exception as e:
+        logger.error(f"Failed to fetch ServiceNow raw feed: {e}")
+        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+
+
