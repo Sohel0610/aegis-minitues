@@ -310,12 +310,12 @@ const EnhancedInsiderTradingAnalytics = () => {
           )}
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ overflowX: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead>
               <tr style={{ background: "rgba(0,87,184,0.04)" }}>
                 {["PAN/GIR", "Name", "Pos. Older", "Pos. Latest", "Difference", "Email", "Source"].map((h) => (
-                  <th key={h} style={{ padding: "10px 16px", textAlign: ["Pos. Older", "Pos. Latest", "Difference"].includes(h) ? "right" : "left", fontSize: 10, color: "#334155", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}` }}>
+                  <th key={h} style={{ padding: "10px 8px", textAlign: ["Pos. Older", "Pos. Latest", "Difference"].includes(h) ? "right" : "left", fontSize: 9, color: "#334155", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}`, overflow: "hidden", textOverflow: "ellipsis" }}>
                     {h}
                   </th>
                 ))}
@@ -325,18 +325,18 @@ const EnhancedInsiderTradingAnalytics = () => {
               {filtered.length > 0 ? (
                 filtered.map((r, i) => (
                   <tr key={r.pangir || i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg, cursor: "pointer" }}>
-                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pangir?.trim() || "N/A"}</td>
-                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(r)}</td>
-                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub, textAlign: "right", whiteSpace: "nowrap" }}>{(r.position_older ?? 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>{(r.position_latest ?? 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: (r.position_difference ?? 0) >= 0 ? C.green : C.red, display: "inline-flex", alignItems: "center", gap: 2 }}>
-                        {(r.position_difference ?? 0) >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                    <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pangir?.trim() || "N/A"}</td>
+                    <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(r)}</td>
+                    <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub, textAlign: "right", whiteSpace: "nowrap" }}>{(r.position_older ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>{(r.position_latest ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: (r.position_difference ?? 0) >= 0 ? C.green : C.red, display: "inline-flex", alignItems: "center", gap: 2 }}>
+                        {(r.position_difference ?? 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
                         {(r.position_difference ?? 0) >= 0 ? "+" : ""}{(r.position_difference ?? 0).toLocaleString()}
                       </span>
                     </td>
-                    <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email?.trim() || "N/A"}</td>
-                    <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displaySource(r)}</td>
+                    <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email?.trim() || "N/A"}</td>
+                    <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displaySource(r)}</td>
                   </tr>
                 ))
               ) : (

@@ -199,8 +199,13 @@ const InsiderTradingDataSource = () => {
           </div>
         </div>
 
+<<<<<<< HEAD
         <div style={{ overflowX: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+=======
+        <div style={{ overflowX: "auto", width: "100%" }}>
+          <table style={{ width: "100%", minWidth: "900px", borderCollapse: "collapse" }}>
+>>>>>>> 223947e (insider)
             <thead>
               <tr style={{ background: "rgba(0,87,184,0.04)" }}>
                 {[
@@ -244,8 +249,13 @@ const InsiderTradingDataSource = () => {
                   const d = depStyle[r.depository] || depStyle.Physical || depStyle.PHY;
                   return (
                     <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg }}>
+<<<<<<< HEAD
                       <td style={{ padding: "10px 8px", fontSize: 12, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.company}</td>
                       <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.batch}</td>
+=======
+                      <td style={{ padding: "10px 8px", fontSize: 12, color: C.text, fontWeight: 600, whiteSpace: "nowrap" }}>{r.company}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub, whiteSpace: "nowrap" }}>{r.batch}</td>
+>>>>>>> 223947e (insider)
                       <td style={{ padding: "10px 8px" }}>
                         <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: d?.bg, color: d?.color, border: `1px solid ${d?.border}`, fontWeight: 700 }}>{r.depository}</span>
                       </td>

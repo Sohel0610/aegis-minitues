@@ -118,7 +118,7 @@ const InsiderTrading = () => {
   return (
     <InsiderTradingFilterProvider>
       <ProductDashboardLayout
-        productName="Insider Trading"
+        productName="Insider Trading Agent"
         productRoute="/insider-trading"
         navigationItems={navigationItems}
       >
