@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Filter,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Database
 } from "lucide-react";
 
 // ── Color palette ──
