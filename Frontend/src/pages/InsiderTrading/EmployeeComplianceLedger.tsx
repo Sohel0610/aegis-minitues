@@ -11,11 +11,9 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  Database,
-  ShieldCheck,
-  CheckCircle2,
-  Clock,
-  Filter
+  Filter,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 // ── Color palette ──
@@ -111,6 +109,11 @@ const EmployeeComplianceLedger = () => {
   const [loadingRaw, setLoadingRaw] = useState(false);
   const limitPerPage = 20;
 
+  // Raw feed row expansion states
+  const [expandedRitm, setExpandedRitm] = useState<string | null>(null);
+  const [ritmDetails, setRitmDetails] = useState<any>(null);
+  const [loadingRitm, setLoadingRitm] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   // Fetch employee list for Audited Ledger when tab active & search changes
@@ -139,6 +142,8 @@ const EmployeeComplianceLedger = () => {
   // Reset pagination when search or filters change on Raw Feed
   useEffect(() => {
     setRawPage(1);
+    setExpandedRitm(null);
+    setRitmDetails(null);
   }, [rawSearch, rawFilterType]);
 
   const fetchEmployees = async () => {
@@ -195,6 +200,28 @@ const EmployeeComplianceLedger = () => {
       setError("Failed to load raw ServiceNow feed.");
     } finally {
       setLoadingRaw(false);
+    }
+  };
+
+  const handleRowClick = async (ritm: string) => {
+    if (expandedRitm === ritm) {
+      setExpandedRitm(null);
+      setRitmDetails(null);
+      return;
+    }
+    setExpandedRitm(ritm);
+    setLoadingRitm(true);
+    setRitmDetails(null);
+    try {
+      const res = await fetch(`/api/servicenow/ticket/details?ritm=${encodeURIComponent(ritm)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRitmDetails(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingRitm(false);
     }
   };
 
@@ -491,7 +518,7 @@ const EmployeeComplianceLedger = () => {
                                 <span style={{ fontSize: 11, color: C.muted, fontWeight: 700 }}>#{idx + 1}</span>
                                 <span style={{ fontWeight: 700, fontSize: 12, color: C.orange }}>{pc.ritm_number}</span>
                                 <span style={{ fontSize: 10, color: C.sub }}>
-                                  {pc.fiscal_year ? `${pc.fiscal_year}` : ""} {pc.phase ? `(${pc.phase})` : ""}
+                                  {pc.fiscal_year ? `${pc.fiscal_year}` : ""}
                                 </span>
                               </div>
                               <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 8px", borderRadius: 12, background: getStatusStyle(pc.state).bg, color: getStatusStyle(pc.state).color }}>
@@ -552,7 +579,7 @@ const EmployeeComplianceLedger = () => {
                                 <span style={{ fontSize: 11, color: C.muted, fontWeight: 700 }}>#{idx + 1}</span>
                                 <span style={{ fontWeight: 700, fontSize: 12, color: C.green }}>{dec.ritm_number}</span>
                                 <span style={{ fontSize: 10, color: C.sub }}>
-                                  {dec.fiscal_year ? `${dec.fiscal_year}` : ""} {dec.phase ? `(${dec.phase})` : ""}
+                                  {dec.fiscal_year ? `${dec.fiscal_year}` : ""}
                                 </span>
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -711,10 +738,10 @@ const EmployeeComplianceLedger = () => {
                 <thead>
                   <tr style={{ background: "rgba(0,102,179,0.03)", borderBottom: `1px solid ${C.border}` }}>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 50 }}>SR</th>
-                    <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 120 }}>RITM Number</th>
+                    <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 150 }}>RITM Number</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 140 }}>Ticket Type</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left" }}>Employee Details</th>
-                    <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 150 }}>Fiscal Year / Phase</th>
+                    <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 120 }}>Fiscal Year</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 140 }}>State</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 130 }}>Date Ingested</th>
                   </tr>
@@ -722,70 +749,158 @@ const EmployeeComplianceLedger = () => {
                 <tbody>
                   {rawTickets.map((ticket, index) => {
                     const srNo = (rawPage - 1) * limitPerPage + index + 1;
+                    const isExpanded = expandedRitm === ticket.ritm_number;
+                    
                     return (
-                      <tr key={ticket.ritm_number} style={{ borderBottom: `1px solid ${C.border}`, background: index % 2 === 0 ? "#FFFFFF" : C.bg }} className="hover:bg-slate-50">
-                        {/* Serial No */}
-                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub }}>{srNo}</td>
-                        
-                        {/* RITM Number */}
-                        <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 700, color: C.orange }}>
-                          {ticket.ritm_number}
-                        </td>
-                        
-                        {/* Ticket Type */}
-                        <td style={{ padding: "12px 14px" }}>
-                          <span style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: "3px 8px",
-                            borderRadius: 6,
-                            background: ticket.ticket_type === "Declaration" ? "rgba(0,199,138,0.08)" : "rgba(99,102,241,0.08)",
-                            color: ticket.ticket_type === "Declaration" ? C.green : C.red
-                          }}>
-                            {ticket.ticket_type}
-                          </span>
-                        </td>
-                        
-                        {/* Employee details */}
-                        <td style={{ padding: "12px 14px" }}>
-                          <div style={{ fontWeight: 700, fontSize: 12, color: C.text }}>{ticket.name || "N/A"}</div>
-                          <div style={{ fontSize: 10, color: C.sub }}>{ticket.email}</div>
-                          {ticket.designation && (
-                            <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>
-                              {ticket.designation} {ticket.employee_code ? `(Code: ${ticket.employee_code})` : ""}
+                      <React.Fragment key={ticket.ritm_number}>
+                        {/* Parent Row */}
+                        <tr 
+                          onClick={() => handleRowClick(ticket.ritm_number)}
+                          style={{ 
+                            borderBottom: isExpanded ? "none" : `1px solid ${C.border}`, 
+                            background: isExpanded ? "rgba(0,102,179,0.03)" : (index % 2 === 0 ? "#FFFFFF" : C.bg),
+                            cursor: "pointer"
+                          }} 
+                          className="hover:bg-slate-100 transition-colors"
+                        >
+                          {/* Serial No */}
+                          <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub }}>{srNo}</td>
+                          
+                          {/* RITM Number */}
+                          <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 700, color: C.orange }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {isExpanded ? <ChevronUp size={14} color={C.orange} /> : <ChevronDown size={14} color={C.orange} />}
+                              {ticket.ritm_number}
                             </div>
-                          )}
-                        </td>
-                        
-                        {/* Fiscal Year / Phase */}
-                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.text }}>
-                          {ticket.fiscal_year ? ticket.fiscal_year : "N/A"}
-                          {ticket.phase && <span style={{ fontSize: 10, color: C.sub, marginLeft: 4 }}>({ticket.phase})</span>}
-                        </td>
-                        
-                        {/* State */}
-                        <td style={{ padding: "12px 14px" }}>
-                          <span style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            textTransform: "uppercase",
-                            padding: "2px 8px",
-                            borderRadius: 12,
-                            background: getStatusStyle(ticket.state).bg,
-                            color: getStatusStyle(ticket.state).color
-                          }}>
-                            {ticket.state || "Ingested"}
-                          </span>
-                        </td>
-                        
-                        {/* Date Ingested */}
-                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub, whiteSpace: "nowrap" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                            <Calendar size={11} color={C.muted} />
-                            <span>{ticket.date ? ticket.date.split(" ")[0] : "N/A"}</span>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          
+                          {/* Ticket Type */}
+                          <td style={{ padding: "12px 14px" }}>
+                            <span style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              padding: "3px 8px",
+                              borderRadius: 6,
+                              background: ticket.ticket_type === "Declaration" ? "rgba(0,199,138,0.08)" : "rgba(99,102,241,0.08)",
+                              color: ticket.ticket_type === "Declaration" ? C.green : C.red
+                            }}>
+                              {ticket.ticket_type}
+                            </span>
+                          </td>
+                          
+                          {/* Employee details */}
+                          <td style={{ padding: "12px 14px" }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, color: C.text }}>{ticket.name || "N/A"}</div>
+                            <div style={{ fontSize: 10, color: C.sub }}>{ticket.email}</div>
+                            {ticket.designation && (
+                              <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>
+                                {ticket.designation} {ticket.employee_code ? `(Code: ${ticket.employee_code})` : ""}
+                              </div>
+                            )}
+                          </td>
+                          
+                          {/* Fiscal Year */}
+                          <td style={{ padding: "12px 14px", fontSize: 11, color: C.text }}>
+                            {ticket.fiscal_year ? ticket.fiscal_year : "N/A"}
+                          </td>
+                          
+                          {/* State */}
+                          <td style={{ padding: "12px 14px" }}>
+                            <span style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              padding: "2px 8px",
+                              borderRadius: 12,
+                              background: getStatusStyle(ticket.state).bg,
+                              color: getStatusStyle(ticket.state).color
+                            }}>
+                              {ticket.state || "Ingested"}
+                            </span>
+                          </td>
+                          
+                          {/* Date Ingested */}
+                          <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub, whiteSpace: "nowrap" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                              <Calendar size={11} color={C.muted} />
+                              <span>{ticket.date ? ticket.date.split(" ")[0] : "N/A"}</span>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expandable Child Row */}
+                        {isExpanded && (
+                          <tr style={{ background: "rgba(0,102,179,0.015)", borderBottom: `1px solid ${C.border}` }}>
+                            <td colSpan={7} style={{ padding: "12px 24px 20px" }}>
+                              <div style={{
+                                padding: "16px",
+                                border: `1px solid ${C.border}`,
+                                borderRadius: 10,
+                                background: "#FFFFFF",
+                                boxShadow: "inset 0 1px 3px rgba(0,0,0,0.02)"
+                              }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                                  <Database size={13} color={C.orange} />
+                                  <span>ServiceNow Raw Holdings / Details payload for {ticket.ritm_number}</span>
+                                </div>
+
+                                {loadingRitm ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0" }}>
+                                    <Loader2 size={16} color={C.orange} style={{ animation: "spin 1s linear infinite" }} />
+                                    <span style={{ fontSize: 11, color: C.sub }}>Loading ticket items...</span>
+                                  </div>
+                                ) : !ritmDetails || !ritmDetails.details || ritmDetails.details.length === 0 ? (
+                                  <div style={{ fontSize: 11, color: C.muted, padding: "6px 0" }}>
+                                    No details or holdings found for this transaction.
+                                  </div>
+                                ) : (
+                                  <div style={{ overflowX: "auto" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                      <thead>
+                                        <tr style={{ background: "rgba(0,0,0,0.02)", borderBottom: `1px solid ${C.border}` }}>
+                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left", width: 50 }}>SR</th>
+                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>Beneficiary</th>
+                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>Relationship</th>
+                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>PAN Card</th>
+                                          {ticket.ticket_type === "Declaration" && (
+                                            <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>Company</th>
+                                          )}
+                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "right" }}>
+                                            {ticket.ticket_type === "Declaration" ? "Declared Quantity" : "Approved Quantity"}
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {ritmDetails.details.map((row: any, rIdx: number) => (
+                                          <tr key={rIdx} style={{ borderBottom: rIdx === ritmDetails.details.length - 1 ? "none" : `1px solid ${C.border}` }}>
+                                            <td style={{ padding: "8px 12px", fontSize: 10, color: C.muted }}>{rIdx + 1}</td>
+                                            <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 600 }}>{row.name}</td>
+                                            <td style={{ padding: "8px 12px", fontSize: 10, color: C.sub, textTransform: "capitalize" }}>{row.relationship}</td>
+                                            <td style={{ padding: "8px 12px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{row.pan_card || "N/A"}</td>
+                                            {ticket.ticket_type === "Declaration" && (
+                                              <td style={{ padding: "8px 12px" }}>
+                                                <span style={{ fontSize: 9, background: "rgba(0,102,179,0.06)", color: C.orange, padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                                                  {row.company_name}
+                                                </span>
+                                              </td>
+                                            )}
+                                            <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 700, textAlign: "right", color: C.text }}>
+                                              {ticket.ticket_type === "Declaration" 
+                                                ? (row.declared_quantity ? parseInt(String(row.declared_quantity)).toLocaleString() : "0")
+                                                : (row.approved_quantity ? parseInt(String(row.approved_quantity)).toLocaleString() : "0")
+                                              }
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

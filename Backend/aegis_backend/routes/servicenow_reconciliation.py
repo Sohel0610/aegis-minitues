@@ -579,4 +579,77 @@ async def get_servicenow_raw_feed(
         logger.error(f"Failed to fetch ServiceNow raw feed: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
+@router.get("/servicenow/ticket/details")
+async def get_servicenow_ticket_details(ritm: str = Query(...)):
+    """
+    Get detailed holdings or preclearance details for a single RITM ticket.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        ritm_clean = ritm.strip().upper()
+        
+        # Check if it's a declaration
+        cur.execute("SELECT * FROM public.servicenow_declarations WHERE ritm_number = %s", (ritm_clean,))
+        decl = cur.fetchone()
+        
+        if decl:
+            company_names = {
+                1: 'AESL',
+                2: 'AEL',
+                3: 'AGEL',
+                4: 'APSEZL',
+                5: 'ACL / Ambuja',
+                6: 'Sanghi'
+            }
+            cur.execute("""
+                SELECT name, relationship, pan_card, company_id, declared_quantity
+                FROM public.servicenow_holdings
+                WHERE ritm_number = %s
+            """, (ritm_clean,))
+            holdings = cur.fetchall()
+            
+            holdings_list = []
+            for h in holdings:
+                holdings_list.append({
+                    "name": h['name'],
+                    "relationship": h['relationship'],
+                    "pan_card": h['pan_card'],
+                    "company_name": company_names.get(h['company_id'], f"Company {h['company_id']}"),
+                    "declared_quantity": h['declared_quantity']
+                })
+            conn.close()
+            return {"type": "Declaration", "ritm": ritm_clean, "details": holdings_list}
+            
+        # Check if it's a preclearance
+        cur.execute("SELECT * FROM public.servicenow_preclearances WHERE ritm_number = %s", (ritm_clean,))
+        pc = cur.fetchone()
+        
+        if pc:
+            cur.execute("""
+                SELECT name, relationship, pan_card, approved_quantity
+                FROM public.servicenow_preclearance_details
+                WHERE ritm_number = %s
+            """, (ritm_clean,))
+            details = cur.fetchall()
+            
+            details_list = []
+            for det in details:
+                details_list.append({
+                    "name": det['name'],
+                    "relationship": det['relationship'],
+                    "pan_card": det['pan_card'],
+                    "approved_quantity": det['approved_quantity']
+                })
+            conn.close()
+            return {"type": "Pre-clearance", "ritm": ritm_clean, "details": details_list}
+            
+        conn.close()
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    except Exception as e:
+        logger.error(f"Failed to fetch ticket details for {ritm}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+
+
 
