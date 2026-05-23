@@ -70,6 +70,17 @@ const InsiderTradingMasterData = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [counts, setCounts] = useState<Record<string, number>>({ ADDED: 0, REMOVED: 0, CHANGED: 0, UNCHANGED: 0, TOTAL: 0 });
 
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Debounce search input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setOffset(0);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   // Refetch whenever global filters or status changes
   useEffect(() => {
     setOffset(0);
@@ -78,7 +89,7 @@ const InsiderTradingMasterData = () => {
 
   useEffect(() => {
     fetchRecords();
-  }, [filters.company, filters.batch, filters.depository, statusFilter, offset]);
+  }, [filters.company, filters.batch, filters.depository, statusFilter, offset, debouncedSearch]);
 
   const fetchCounts = async () => {
     try {
@@ -100,6 +111,7 @@ const InsiderTradingMasterData = () => {
 
       const extra: Record<string, string | number> = { limit: RECORDS_PER_PAGE, offset };
       if (statusFilter) extra.status = statusFilter;
+      if (debouncedSearch) extra.search = debouncedSearch;
 
       const qs = buildQuery(extra);
       const res = await fetch(`/api/insider-trading/records${qs}`);
@@ -128,17 +140,8 @@ const InsiderTradingMasterData = () => {
     return statusCfg[status?.toUpperCase()] || statusCfg.UNCHANGED;
   };
 
-  // Search filtering (client-side on current page)
-  const displayedRecords = records.filter((r) => {
-    if (!searchTerm) return true;
-    const q = searchTerm.toLowerCase();
-    return (
-      r.pangir?.toLowerCase().includes(q) ||
-      r.name?.toLowerCase().includes(q) ||
-      r.email?.toLowerCase().includes(q) ||
-      r.company?.toLowerCase().includes(q)
-    );
-  });
+  // Backend already filters by search term, so we just use the returned records
+  const displayedRecords = records;
 
   const totalPages = Math.ceil(total / RECORDS_PER_PAGE);
   const currentPage = Math.floor(offset / RECORDS_PER_PAGE) + 1;

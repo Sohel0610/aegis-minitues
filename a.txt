@@ -1,0 +1,19 @@
+Since the data is only updated once a week, Option 1 (Pre-calculated Cache Table) is an excellent architectural choice.
+
+Here is why your reasoning is solid and how we should structure it:
+
+Why Option 1 is perfect for your scenario:
+Zero Overhead: The heavy lifting (joins, counts, and aggregations) is done exactly once a week during the data sync/upload window.
+Instant Dashboard Loads: When users visit the dashboard during the week, the APIs don't run any calculations. They just do a simple SELECT * FROM cache_table, which returns in milliseconds.
+Database Stability: By avoiding runtime aggregations, there is no risk of multiple users refreshing the page at the same time and overloading the database.
+The Complete Production Architecture:
+To make this work flawlessly, we combine your pre-calculated approach with database indexes:
+
+The Ingestion Sync Script (Once a Week):
+Processes the raw data.
+Inserts the records into shareholder_records.
+Calculates the filters/metrics (companies list, batch details, and summary counts) and writes them to a dashboard_cache table.
+The Dashboard APIs (During the Week):
+/api/insider-trading/filter-options and /api/insider-trading/summary read directly from the dashboard_cache table.
+Database Indexes (Still Required):
+We still keep the indexes on shareholder_records. This is because once the user selects a filter, the API still needs to fetch the actual detailed shareholder records (names, positions, PANs) from the main table. The index ensures this pagination is instant.

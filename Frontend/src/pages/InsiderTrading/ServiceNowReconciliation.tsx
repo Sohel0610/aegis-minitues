@@ -185,9 +185,9 @@ const ServiceNowReconciliation = () => {
       case "UNSANCTIONED":
         return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Qty", "Batch Period", "Date"];
       case "VOLUME_BREACH":
-        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Vol", "Approved Vol", "Excess Vol", "RITM Ticket", "Date"];
+        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Vol", "Approved Vol", "Excess Vol", "RITM Ticket", "Batch Period", "Date"];
       case "HOLDING_MISMATCH":
-        return ["Employee Name", "Declared Shareholder", "Relationship", "PAN", "Company", "Declared Qty", "Depository Qty", "Difference", "Ticket", "Period"];
+        return ["Employee Name", "Declared Shareholder", "Relationship", "PAN", "Company", "Declared Qty", "Depository Qty", "Difference", "Ticket", "Batch Period", "Period"];
     }
   };
 
@@ -340,6 +340,7 @@ const ServiceNowReconciliation = () => {
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>{record.approved_volume?.toLocaleString()}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>+{record.excess_volume?.toLocaleString()}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.batch_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.transaction_date}</td>
                         </>
                       )}
@@ -359,6 +360,7 @@ const ServiceNowReconciliation = () => {
                             {record.difference && record.difference > 0 ? "+" : ""}{record.difference?.toLocaleString()}
                           </td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.batch_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>
                             {record.fiscal_year} — {record.phase}
                           </td>

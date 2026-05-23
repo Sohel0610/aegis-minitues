@@ -7,13 +7,14 @@ import { InsiderTradingFilterProvider } from "@/contexts/InsiderTradingFilterCon
 import EnhancedInsiderTradingAnalytics from "./InsiderTrading/EnhancedInsiderTradingAnalytics";
 import InsiderTradingDataSource from "./InsiderTrading/InsiderTradingDataSource";
 import InsiderTradingMasterData from "./InsiderTrading/InsiderTradingMasterData";
+import ServiceNowMasterData from "./InsiderTrading/ServiceNowMasterData";
 import InsiderTradingDocumentation from "./InsiderTrading/InsiderTradingDocumentation";
 import InsiderTradingUserGuide from "./InsiderTradingUserGuide";
 import ServiceNowReconciliation from "./InsiderTrading/ServiceNowReconciliation";
 import ServiceNowUserGuide from "./InsiderTrading/ServiceNowUserGuide";
 
 
-type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide';
+type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide' | 'servicenow-masterdata';
 
 const InsiderTrading = () => {
   const navigate = useNavigate();
@@ -65,19 +66,27 @@ const InsiderTrading = () => {
         isActive: currentPath.endsWith('/master-data')
       },
       {
+        id: 'servicenow',
+        label: 'ServiceNow Alerts',
+        icon: ShieldAlert,
+        href: '/insider-trading/servicenow',
+        isActive: currentPath.endsWith('/servicenow')
+      },
+      {
+        id: 'servicenow-masterdata',
+        label: 'ServiceNow Master Data',
+        icon: Database,
+        href: '/insider-trading/servicenow-masterdata',
+        isActive: currentPath.endsWith('/servicenow-masterdata')
+      },
+      {
         id: 'documentation',
         label: 'Documentation',
         icon: BookOpen,
         href: '/insider-trading/documentation',
         isActive: currentPath.endsWith('/documentation')
       },
-      {
-        id: 'servicenow',
-        label: 'ServiceNow Compliance',
-        icon: ShieldAlert,
-        href: '/insider-trading/servicenow',
-        isActive: currentPath.endsWith('/servicenow') && !currentPath.endsWith('/servicenow-guide')
-      },
+
       {
         id: 'servicenow-guide',
         label: 'ServiceNow Guide',
@@ -105,7 +114,11 @@ const InsiderTrading = () => {
       return <InsiderTradingDocumentation />;
     } else if (location.pathname.endsWith('/user-guide')) {
       return <InsiderTradingUserGuide />;
-    } else if (location.pathname.endsWith('/servicenow')) {
+    }
+    if (location.pathname.endsWith('/servicenow-masterdata')) {
+      return <ServiceNowMasterData />;
+    }
+    if (location.pathname.endsWith('/servicenow')) {
       return <ServiceNowReconciliation />;
     } else if (location.pathname.endsWith('/servicenow-guide')) {
       return <ServiceNowUserGuide />;

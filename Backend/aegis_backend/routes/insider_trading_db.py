@@ -99,7 +99,7 @@ def fetch_record_counts(company_name=None, batch_name=None, depository_type=None
         r = cur.fetchone()
         return {"ADDED": r['added'] or 0, "REMOVED": r['removed'] or 0, "CHANGED": r['changed'] or 0, "UNCHANGED": r['unchanged'] or 0, "TOTAL": r['total'] or 0}
 
-def fetch_records(status=None, company_name=None, batch_name=None, depository_type=None, limit=15, offset=0, cursor=None) -> Dict[str, Any]:
+def fetch_records(status=None, company_name=None, batch_name=None, depository_type=None, search=None, limit=15, offset=0, cursor=None) -> Dict[str, Any]:
     with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return {"records": []}
         c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
@@ -112,9 +112,13 @@ def fetch_records(status=None, company_name=None, batch_name=None, depository_ty
         if c_id: where.append("company_id = %s"); params.append(c_id)
         if b_id: where.append("batch_id = %s"); params.append(b_id)
         if d_id: where.append("depository_id = %s"); params.append(d_id)
+        if search:
+            search_pattern = f"%{search}%"
+            where.append("(sr.pangir ILIKE %s OR sr.name ILIKE %s)")
+            params.extend([search_pattern, search_pattern])
         
         where_clause = (" WHERE " + " AND ".join(where)) if where else ""
-        cur.execute(f"SELECT COUNT(*) as cnt FROM shareholder_records {where_clause}", params)
+        cur.execute(f"SELECT COUNT(*) as cnt FROM shareholder_records sr {where_clause}", params)
         total = cur.fetchone()['cnt']
         
         q = f"SELECT sr.id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, sr.pangir, sr.name, sr.email, sr.position_latest, sr.position_older, sr.position_difference, sr.status FROM shareholder_records sr JOIN companies c ON sr.company_id = c.id JOIN result_batches rb ON sr.batch_id = rb.id JOIN depository_types dt ON sr.depository_id = dt.id {where_clause} ORDER BY sr.id LIMIT %s OFFSET %s"

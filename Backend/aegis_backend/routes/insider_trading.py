@@ -183,12 +183,13 @@ async def get_records(
     company: str = Query(None),
     batch: str = Query(None),
     depository: str = Query(None),
+    search: str = Query(None),
     limit: int = Query(15),
     offset: int = Query(0),
     cursor: int = Query(None),
 ):
     def _fetch():
-        return pg_fetch_records(status, company, batch, depository, limit, offset, cursor)
+        return pg_fetch_records(status, company, batch, depository, search, limit, offset, cursor)
     
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(thread_pool, _fetch)
@@ -227,9 +228,9 @@ async def get_enhanced_insider_trading_details(
                     "source": f"{r.get('company', '')} - {r.get('depository', '')}",
                 }
 
-            added = pg_fetch_records("ADDED", company, batch, depository, 15, 0)
-            removed = pg_fetch_records("REMOVED", company, batch, depository, 15, 0)
-            changed_all = pg_fetch_records("CHANGED", company, batch, depository, 30, 0)
+            added = pg_fetch_records("ADDED", company, batch, depository, None, 15, 0)
+            removed = pg_fetch_records("REMOVED", company, batch, depository, None, 15, 0)
+            changed_all = pg_fetch_records("CHANGED", company, batch, depository, None, 30, 0)
             buyers = [r for r in changed_all.get('records', []) if r.get('position_difference', 0) > 0][:15]
             sellers = [r for r in changed_all.get('records', []) if r.get('position_difference', 0) < 0][:15]
 
