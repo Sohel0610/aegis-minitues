@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   Award,
   AlertTriangle,
+  Search,
 } from "lucide-react";
 
 // ── Color palette (same as all other pages) ───────────────────────
@@ -89,6 +90,7 @@ const ServiceNowReconciliation = () => {
   const [syncPhase, setSyncPhase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     fetchSummary();
@@ -179,6 +181,19 @@ const ServiceNowReconciliation = () => {
     { label: "Holding Mismatches", value: summary?.holding_discrepancies_count ?? 0, sub: "Form vs Depository", color: "#D97706", icon: RefreshCw },
   ];
 
+  // Filter violations based on search term
+  const filteredViolations = violations.filter((record) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (record.shareholder_name || "").toLowerCase().includes(term) ||
+      (record.employee_name || "").toLowerCase().includes(term) ||
+      (record.declarant_name || "").toLowerCase().includes(term) ||
+      (record.pan || "").toLowerCase().includes(term) ||
+      (record.company_name || "").toLowerCase().includes(term)
+    );
+  });
+
   // Table headers per tab
   const getHeaders = () => {
     switch (activeTab) {
@@ -266,24 +281,37 @@ const ServiceNowReconciliation = () => {
             <div style={{ fontSize: 14, color: C.text, fontWeight: 700 }}>Compliance Check Details</div>
             <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>Select a violation type to inspect matched records and discrepancies</div>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {tabConfig.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                title={t.tooltip}
-                style={{
-                  padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-                  fontSize: 12, fontWeight: 700, fontFamily: "Adani",
-                  background: activeTab === t.id ? t.color : "rgba(255,255,255,0.05)",
-                  color: activeTab === t.id ? "#fff" : C.muted,
-                  boxShadow: activeTab === t.id ? `0 4px 14px ${t.color}44` : "none",
-                  transition: "all 0.18s",
-                }}
-              >
-                {t.label} ({getTabCount(t.id)})
-              </button>
-            ))}
+
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              {tabConfig.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  title={t.tooltip}
+                  style={{
+                    padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                    fontSize: 12, fontWeight: 700, fontFamily: "Adani",
+                    background: activeTab === t.id ? t.color : "rgba(255,255,255,0.05)",
+                    color: activeTab === t.id ? "#fff" : C.muted,
+                    boxShadow: activeTab === t.id ? `0 4px 14px ${t.color}44` : "none",
+                    transition: "all 0.18s",
+                  }}
+                >
+                  {t.label} ({getTabCount(t.id)})
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+              <Search size={13} color={C.muted} />
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by name or PAN…"
+                style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 180, fontFamily: "Adani" }}
+              />
+            </div>
+
           </div>
         </div>
 
@@ -293,8 +321,8 @@ const ServiceNowReconciliation = () => {
             <p style={{ color: C.sub, fontSize: 13 }}>Calculating compliance metrics...</p>
           </div>
         ) : (
-          <div style={{ overflowX: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          <div style={{ overflowX: "auto", width: "100%" }}>
+            <table style={{ width: "100%", minWidth: "1200px", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "rgba(0,87,184,0.04)" }}>
                   {getHeaders().map((h) => (
@@ -308,33 +336,33 @@ const ServiceNowReconciliation = () => {
                 </tr>
               </thead>
               <tbody>
-                {violations.length > 0 ? (
-                  violations.map((record, index) => (
+                {filteredViolations.length > 0 ? (
+                  filteredViolations.map((record, index) => (
                     <tr key={index} style={{ borderBottom: `1px solid ${C.border}`, background: index % 2 === 0 ? "#FFFFFF" : C.bg }}>
                       {activeTab === "UNSANCTIONED" && (
                         <>
-                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.shareholder_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, whiteSpace: "nowrap" }}>{record.shareholder_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
-                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.company_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, whiteSpace: "nowrap" }}>{record.company_name}</td>
                           <td style={{ padding: "10px 8px" }}>
-                            <div style={{ fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_name}</div>
-                            <div style={{ fontSize: 9, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_email}</div>
+                            <div style={{ fontSize: 11, color: C.text, whiteSpace: "nowrap" }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 9, color: C.muted, whiteSpace: "nowrap" }}>{record.employee_email}</div>
                           </td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>
                             {record.shares_traded && record.shares_traded > 0 ? "+" : ""}{record.shares_traded?.toLocaleString()}
                           </td>
-                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.batch_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.batch_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.transaction_date}</td>
                         </>
                       )}
                       {activeTab === "VOLUME_BREACH" && (
                         <>
-                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.shareholder_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, whiteSpace: "nowrap" }}>{record.shareholder_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
-                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.company_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, whiteSpace: "nowrap" }}>{record.company_name}</td>
                           <td style={{ padding: "10px 8px" }}>
-                            <div style={{ fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_name}</div>
-                            <div style={{ fontSize: 9, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_email}</div>
+                            <div style={{ fontSize: 11, color: C.text, whiteSpace: "nowrap" }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 9, color: C.muted, whiteSpace: "nowrap" }}>{record.employee_email}</div>
                           </td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 700 }}>{record.shares_traded?.toLocaleString()}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>{record.approved_volume?.toLocaleString()}</td>
@@ -347,13 +375,13 @@ const ServiceNowReconciliation = () => {
                       {activeTab === "HOLDING_MISMATCH" && (
                         <>
                           <td style={{ padding: "10px 8px" }}>
-                            <div style={{ fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_name}</div>
-                            <div style={{ fontSize: 9, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.employee_email}</div>
+                            <div style={{ fontSize: 11, color: C.text, fontWeight: 600, whiteSpace: "nowrap" }}>{record.employee_name}</div>
+                            <div style={{ fontSize: 9, color: C.muted, whiteSpace: "nowrap" }}>{record.employee_email}</div>
                           </td>
-                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.declarant_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 600, whiteSpace: "nowrap" }}>{record.declarant_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.sub, textTransform: "capitalize" }}>{record.relationship}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700 }}>{record.pan}</td>
-                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.company_name}</td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.text, whiteSpace: "nowrap" }}>{record.company_name}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>{record.declared_quantity?.toLocaleString()}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 700 }}>{record.depository_quantity?.toLocaleString()}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.amber, fontWeight: 800 }}>
@@ -385,7 +413,7 @@ const ServiceNowReconciliation = () => {
         )}
 
         <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg }}>
-          <span style={{ fontSize: 12, color: C.muted }}>Showing {violations.length} records</span>
+          <span style={{ fontSize: 12, color: C.muted }}>Showing {filteredViolations.length} records</span>
           <span style={{ fontSize: 11, color: C.muted }}>🔒 SEBI PIT Compliance Audit</span>
         </div>
       </div>

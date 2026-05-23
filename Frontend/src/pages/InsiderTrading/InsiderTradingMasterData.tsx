@@ -27,9 +27,9 @@ const C = {
 };
 
 const statusCfg: Record<string, { color: string; bg: string; border: string; icon: any; label: string }> = {
-  ADDED:     { color: C.green, bg: "rgba(0,201,138,0.1)",  border: "rgba(0,201,138,0.25)",  icon: CheckCircle,   label: "Added" },
-  REMOVED:   { color: C.red,   bg: "rgba(99,102,241,0.1)",  border: "rgba(99,102,241,0.25)",  icon: AlertTriangle, label: "Removed" },
-  CHANGED:   { color: C.amber, bg: "rgba(247,148,29,0.1)", border: "rgba(247,148,29,0.25)", icon: Clock,         label: "Changed" },
+  ADDED: { color: C.green, bg: "rgba(0,201,138,0.1)", border: "rgba(0,201,138,0.25)", icon: CheckCircle, label: "Added" },
+  REMOVED: { color: C.red, bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)", icon: AlertTriangle, label: "Removed" },
+  CHANGED: { color: C.amber, bg: "rgba(247,148,29,0.1)", border: "rgba(247,148,29,0.25)", icon: Clock, label: "Changed" },
   UNCHANGED: { color: C.muted, bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.25)", icon: CheckCircle, label: "Unchanged" },
 };
 
@@ -255,12 +255,12 @@ const InsiderTradingMasterData = () => {
             <button onClick={fetchRecords} style={{ padding: "6px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.card, cursor: "pointer", fontSize: 12, fontFamily: "Adani", color: C.text }}>Retry</button>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={{ overflowX: "auto", width: "100%" }}>
+            <table style={{ width: "100%", minWidth: "1000px", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "rgba(0,87,184,0.04)" }}>
                   {["PAN/GIR", "Name", "Pos. Older", "Pos. Latest", "Difference", "Status", "Company", "Depository"].map((h) => (
-                    <th key={h} style={{ padding: "10px 16px", textAlign: ["Pos. Older", "Pos. Latest", "Difference"].includes(h) ? "right" : "left", fontSize: 10, color: "#334155", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                    <th key={h} style={{ padding: "10px 8px", textAlign: ["Pos. Older", "Pos. Latest", "Difference"].includes(h) ? "right" : "left", fontSize: 9, color: "#334155", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}` }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -271,22 +271,22 @@ const InsiderTradingMasterData = () => {
                     const Icon = cfg.icon;
                     return (
                       <tr key={r.pangir || i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg }}>
-                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pangir?.trim() || "N/A"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(r)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub, textAlign: "right" }}>{(r.position_older ?? 0).toLocaleString()}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, fontWeight: 700, textAlign: "right" }}>{(r.position_latest ?? 0).toLocaleString()}</td>
-                        <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: (r.position_difference ?? 0) > 0 ? C.green : (r.position_difference ?? 0) < 0 ? C.red : C.muted }}>
+                        <td style={{ padding: "10px 8px", fontSize: 11, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pangir?.trim() || "N/A"}</td>
+                        <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, whiteSpace: "nowrap" }}>{displayName(r)}</td>
+                        <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub, textAlign: "right" }}>{(r.position_older ?? 0).toLocaleString()}</td>
+                        <td style={{ padding: "10px 8px", fontSize: 11, color: C.text, fontWeight: 700, textAlign: "right" }}>{(r.position_latest ?? 0).toLocaleString()}</td>
+                        <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: (r.position_difference ?? 0) > 0 ? C.green : (r.position_difference ?? 0) < 0 ? C.red : C.muted }}>
                             {(r.position_difference ?? 0) > 0 ? "+" : ""}{(r.position_difference ?? 0).toLocaleString()}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 9px", borderRadius: 12, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, fontWeight: 700, whiteSpace: "nowrap" }}>
-                            <Icon size={11} />{cfg.label}
+                        <td style={{ padding: "10px 8px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, padding: "2px 7px", borderRadius: 12, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            <Icon size={10} />{cfg.label}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.company || "—"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{r.depository || "—"}</td>
+                        <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{r.company || "—"}</td>
+                        <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{r.depository || "—"}</td>
                       </tr>
                     );
                   })

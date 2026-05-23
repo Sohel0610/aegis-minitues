@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Database, BarChart3, FileText, BookOpen, Home, ShieldAlert } from "lucide-react";
+import { Database, BarChart3, FileText, BookOpen, Home, ShieldAlert, Contact } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { InsiderTradingFilterProvider } from "@/contexts/InsiderTradingFilterContext";
@@ -12,9 +12,14 @@ import InsiderTradingDocumentation from "./InsiderTrading/InsiderTradingDocument
 import InsiderTradingUserGuide from "./InsiderTradingUserGuide";
 import ServiceNowReconciliation from "./InsiderTrading/ServiceNowReconciliation";
 import ServiceNowUserGuide from "./InsiderTrading/ServiceNowUserGuide";
+import EmployeeComplianceLedger from "./InsiderTrading/EmployeeComplianceLedger";
 
+<<<<<<< HEAD
 
 type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide' | 'servicenow-masterdata';
+=======
+type TabType = 'analytics' | 'datasource' | 'masterdata' | 'documentation' | 'home' | 'servicenow' | 'servicenow-guide' | 'servicenow-ledger';
+>>>>>>> aa96551dbe90ead73a5a2944b0d02ebc1075f059
 
 const InsiderTrading = () => {
   const navigate = useNavigate();
@@ -86,7 +91,24 @@ const InsiderTrading = () => {
         href: '/insider-trading/documentation',
         isActive: currentPath.endsWith('/documentation')
       },
+<<<<<<< HEAD
 
+=======
+      {
+        id: 'servicenow',
+        label: 'ServiceNow Compliance',
+        icon: ShieldAlert,
+        href: '/insider-trading/servicenow',
+        isActive: currentPath.endsWith('/servicenow') && !currentPath.endsWith('/servicenow-guide') && !currentPath.endsWith('/servicenow-ledger')
+      },
+      {
+        id: 'servicenow-ledger',
+        label: 'Compliance Ledger',
+        icon: Contact,
+        href: '/insider-trading/servicenow-ledger',
+        isActive: currentPath.endsWith('/servicenow-ledger')
+      },
+>>>>>>> aa96551dbe90ead73a5a2944b0d02ebc1075f059
       {
         id: 'servicenow-guide',
         label: 'ServiceNow Guide',
@@ -120,6 +142,8 @@ const InsiderTrading = () => {
     }
     if (location.pathname.endsWith('/servicenow')) {
       return <ServiceNowReconciliation />;
+    } else if (location.pathname.endsWith('/servicenow-ledger')) {
+      return <EmployeeComplianceLedger />;
     } else if (location.pathname.endsWith('/servicenow-guide')) {
       return <ServiceNowUserGuide />;
     } else {
@@ -131,7 +155,7 @@ const InsiderTrading = () => {
   return (
     <InsiderTradingFilterProvider>
       <ProductDashboardLayout
-        productName="Insider Trading"
+        productName="Insider Trading Agent"
         productRoute="/insider-trading"
         navigationItems={navigationItems}
       >

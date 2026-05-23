@@ -89,9 +89,6 @@ const ProductDashboardLayout = ({
           width: "100%",
           justifyContent: collapsed ? "center" : "flex-start",
           background: active ? "rgba(0,102,179,0.08)" : "transparent",
-          borderLeft: active
-            ? `3px solid ${A.orange}`
-            : "3px solid transparent",
           transition: "all 0.15s ease",
           position: "relative",
           fontFamily: "'Adani', sans-serif",
