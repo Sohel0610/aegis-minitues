@@ -366,9 +366,23 @@ async def get_servicenow_ledger(
         
         params = []
         if search:
-            query += " WHERE d.name ILIKE %s OR p.name ILIKE %s OR d.email ILIKE %s OR p.email ILIKE %s OR d.code ILIKE %s OR p.code ILIKE %s"
+            query += """ WHERE 
+                d.name ILIKE %s OR p.name ILIKE %s OR 
+                d.email ILIKE %s OR p.email ILIKE %s OR 
+                d.code ILIKE %s OR p.code ILIKE %s OR
+                EXISTS (
+                    SELECT 1 FROM public.servicenow_declarations sd
+                    JOIN public.servicenow_holdings sh ON sd.id = sh.declaration_id
+                    WHERE sd.email = COALESCE(d.email, p.email) AND sh.pan_card ILIKE %s
+                ) OR
+                EXISTS (
+                    SELECT 1 FROM public.servicenow_preclearances sp
+                    JOIN public.servicenow_preclearance_details spd ON sp.id = spd.preclearance_id
+                    WHERE sp.email = COALESCE(d.email, p.email) AND spd.pan_card ILIKE %s
+                )
+            """
             search_param = f"%{search}%"
-            params.extend([search_param, search_param, search_param, search_param, search_param, search_param])
+            params.extend([search_param] * 8)
             
         # Get total count of matching employees
         count_query = f"SELECT COUNT(*) as count FROM ({query}) AS temp"
@@ -403,42 +417,47 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
         
         # 1. Fetch Declarations
         cur.execute("""
-            SELECT ritm_number, declaration_date, NULL as phase, fiscal_year, state
+            SELECT id, ritm_number, declaration_date, NULL as phase, fiscal_year, state
             FROM public.servicenow_declarations
-            WHERE email = %s
+            WHERE email ILIKE %s
             ORDER BY declaration_date DESC, ritm_number DESC
         """, (email_clean,))
         decls = cur.fetchall()
         
-        # Fetch holdings for each declaration RITM
-        company_names = {
-            1: 'AESL',
-            2: 'AEL',
-            3: 'AGEL',
-            4: 'APSEZL',
-            5: 'ACL / Ambuja',
-            6: 'Sanghi'
-        }
-        
         declarations_detailed = []
         for d in decls:
-            ritm = d['ritm_number']
             cur.execute("""
-                SELECT name, relationship, pan_card, company_id, declared_quantity
+                SELECT name, relationship, pan_card, 
+                       aesl_qty, ael_qty, apl_qty, agel_qty, atgl_qty, apsezl_qty, 
+                       acc_qty, acl_qty, ndtv_qty, sanghi_qty, ocl_qty, itd_qty, psp_qty
                 FROM public.servicenow_holdings
-                WHERE ritm_number = %s
-            """, (ritm,))
+                WHERE declaration_id = %s
+            """, (d['id'],))
             holdings = cur.fetchall()
             
             holdings_list = []
             for h in holdings:
-                holdings_list.append({
-                    "name": h['name'],
-                    "relationship": h['relationship'],
-                    "pan_card": h['pan_card'],
-                    "company_name": company_names.get(h['company_id'], f"Company {h['company_id']}"),
-                    "declared_quantity": h['declared_quantity']
-                })
+                companies = [
+                    ('AESL', h['aesl_qty']), ('AEL', h['ael_qty']), ('APL', h['apl_qty']),
+                    ('AGEL', h['agel_qty']), ('ATGL', h['atgl_qty']), ('APSEZL', h['apsezl_qty']),
+                    ('ACC', h['acc_qty']), ('ACL / Ambuja', h['acl_qty']), ('NDTV', h['ndtv_qty']),
+                    ('Sanghi', h['sanghi_qty']), ('OCL', h['ocl_qty']), ('ITD', h['itd_qty']),
+                    ('PSP', h['psp_qty'])
+                ]
+                for comp_name, qty in companies:
+                    # In some cases the db might store qty as string or None, handle gracefully
+                    try:
+                        q_val = float(qty) if qty is not None else 0
+                    except:
+                        q_val = 0
+                    if q_val > 0:
+                        holdings_list.append({
+                            "name": h['name'],
+                            "relationship": h['relationship'],
+                            "pan_card": h['pan_card'],
+                            "company_name": comp_name,
+                            "declared_quantity": int(q_val)
+                        })
                 
             declarations_detailed.append({
                 "ritm_number": d['ritm_number'],
@@ -451,21 +470,20 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
             
         # 2. Fetch Preclearances
         cur.execute("""
-            SELECT ritm_number, declaration_phase as phase, fiscal_year, state
+            SELECT id, ritm_number, declaration_phase as phase, fiscal_year, state
             FROM public.servicenow_preclearances
-            WHERE email = %s
+            WHERE email ILIKE %s
             ORDER BY ritm_number DESC
         """, (email_clean,))
         pcs = cur.fetchall()
         
         preclearances_detailed = []
         for pc in pcs:
-            ritm = pc['ritm_number']
             cur.execute("""
-                SELECT name, relationship, pan_card, approved_quantity
+                SELECT name, relationship, pan_card, quantity as approved_quantity
                 FROM public.servicenow_preclearance_details
-                WHERE ritm_number = %s
-            """, (ritm,))
+                WHERE preclearance_id = %s
+            """, (pc['id'],))
             details = cur.fetchall()
             
             details_list = []
