@@ -451,7 +451,7 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
             
         # 2. Fetch Preclearances
         cur.execute("""
-            SELECT ritm_number, phase, fiscal_year, state
+            SELECT ritm_number, declaration_phase as phase, fiscal_year, state
             FROM public.servicenow_preclearances
             WHERE email = %s
             ORDER BY ritm_number DESC
@@ -540,7 +540,7 @@ async def get_servicenow_raw_feed(
                 designation,
                 state,
                 fiscal_year,
-                phase,
+                declaration_phase as phase,
                 NULL as date
             FROM public.servicenow_preclearances
         """
