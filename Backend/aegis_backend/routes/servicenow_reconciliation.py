@@ -382,10 +382,12 @@ async def get_servicenow_ledger(
         
         cur.execute(query, params)
         rows = cur.fetchall()
-        conn.close()
+        release_conn(conn)
         
         return {"employees": rows, "count": total}
     except Exception as e:
+        if 'conn' in locals():
+            release_conn(conn)
         logger.error(f"Failed to fetch compliance ledger: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
@@ -402,7 +404,7 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
         
         # 1. Fetch Declarations
         cur.execute("""
-            SELECT ritm_number, declaration_date, phase, fiscal_year, state
+            SELECT ritm_number, declaration_date, NULL as phase, fiscal_year, state
             FROM public.servicenow_declarations
             WHERE email = %s
             ORDER BY declaration_date DESC, ritm_number DESC
@@ -484,7 +486,7 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
                 "details": details_list
             })
             
-        conn.close()
+        release_conn(conn)
         
         return {
             "email": email_clean,
@@ -492,6 +494,8 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
             "preclearances": preclearances_detailed
         }
     except Exception as e:
+        if 'conn' in locals():
+            release_conn(conn)
         logger.error(f"Failed to fetch employee details for {email}: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
@@ -522,7 +526,7 @@ async def get_servicenow_raw_feed(
                 designation,
                 state,
                 fiscal_year,
-                phase,
+                NULL as phase,
                 declaration_date::text as date
             FROM public.servicenow_declarations
         """
@@ -577,10 +581,12 @@ async def get_servicenow_raw_feed(
         
         cur.execute(final_query, params)
         rows = cur.fetchall()
-        conn.close()
+        release_conn(conn)
         
         return {"tickets": rows, "count": total}
     except Exception as e:
+        if 'conn' in locals():
+            release_conn(conn)
         logger.error(f"Failed to fetch ServiceNow raw feed: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
@@ -624,7 +630,7 @@ async def get_servicenow_ticket_details(ritm: str = Query(...)):
                     "company_name": company_names.get(h['company_id'], f"Company {h['company_id']}"),
                     "declared_quantity": h['declared_quantity']
                 })
-            conn.close()
+            release_conn(conn)
             return {"type": "Declaration", "ritm": ritm_clean, "details": holdings_list}
             
         # Check if it's a preclearance
@@ -647,12 +653,14 @@ async def get_servicenow_ticket_details(ritm: str = Query(...)):
                     "pan_card": det['pan_card'],
                     "approved_quantity": det['approved_quantity']
                 })
-            conn.close()
+            release_conn(conn)
             return {"type": "Pre-clearance", "ritm": ritm_clean, "details": details_list}
             
-        conn.close()
+        release_conn(conn)
         raise HTTPException(status_code=404, detail="Ticket not found")
     except Exception as e:
+        if 'conn' in locals():
+            release_conn(conn)
         logger.error(f"Failed to fetch ticket details for {ritm}: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
