@@ -16,7 +16,6 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))                      # ro
 _BACKEND_APP_DIR = os.path.dirname(_THIS_DIR)                                # aegis_backend/
 _BACKEND_DIR = os.path.dirname(_BACKEND_APP_DIR)                             # Backend/
 _PROJECT_ROOT = os.path.dirname(_BACKEND_DIR)                                # AEGIS_Servicenow/
-SN_JSON_PATH = os.path.join(_PROJECT_ROOT, "servicenow_data.json")
 
 # Global connection pool
 _db_pool = None

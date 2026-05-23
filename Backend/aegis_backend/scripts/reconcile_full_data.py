@@ -24,47 +24,47 @@ def print_header():
 def run_reconciliation():
     print_header()
 
-    # 1. Locate the JSON file
-    default_json = os.path.join(_PROJECT_ROOT, "servicenow_data.json")
-    backend_json = os.path.join(_BACKEND_DIR, "servicenow_data.json")
+    # 1. Fetch data directly from DB instead of JSON
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
     
-    selected_json = None
-    if os.path.exists(default_json):
-        selected_json = default_json
-    elif os.path.exists(backend_json):
-        selected_json = backend_json
+    def get_servicenow_data():
+        """Fetches ServiceNow data from DB instead of JSON file using .env credentials"""
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "localhost"),
+            port=os.getenv("DB_PORT", "5436"),
+            database=os.getenv("DB_NAME", "aegis_insider"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "postgres")
+        )
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Fetch Declarations and their Holdings
+        cur.execute("SELECT * FROM servicenow_declarations")
+        declarations = cur.fetchall()
+        for decl in declarations:
+            cur.execute("SELECT * FROM servicenow_holdings WHERE ritm_number = %s", (decl['ritm_number'],))
+            decl['holdings'] = [dict(row) for row in cur.fetchall()]
+            
+        # Fetch Preclearances and their Details
+        cur.execute("SELECT * FROM servicenow_preclearances")
+        preclearances = cur.fetchall()
+        for precl in preclearances:
+            cur.execute("SELECT * FROM servicenow_preclearance_details WHERE ritm_number = %s", (precl['ritm_number'],))
+            precl['details'] = [dict(row) for row in cur.fetchall()]
+            
+        conn.close()
+        
+        return {
+            "declarations": [dict(d) for d in declarations],
+            "preclearances": [dict(p) for p in preclearances]
+        }
 
-    if not selected_json:
-        print(f"[ERROR] Could not find 'servicenow_data.json'.")
-        print(f"Please export your full ServiceNow dataset as a JSON file and place it at:")
-        print(f"  {default_json}")
-        print("\nAborting reconciliation.")
-        sys.exit(1)
-        
-    print(f"[OK] Found dataset JSON at: {selected_json}")
-    file_size_mb = os.path.getsize(selected_json) / (1024 * 1024)
-    print(f"     File size: {file_size_mb:.2f} MB")
-    
-    # 2. Run Database Ingestion
-    print("\n[STEP 1/2] Running database ingestion parser...")
-    print("This reads the JSON dataset and upserts records into PostgreSQL.")
-    print("-" * 60)
-    
-    # Make sure we are in Backend/aegis_backend directory so paths resolve correctly
     try:
-        # Import run_ingestion
-        sys.path.insert(0, _BACKEND_DIR)
-        from routes.servicenow_ingestion import run_ingestion
-        
-        success = run_ingestion()
-        if not success:
-            print("[ERROR] Database Ingestion engine reported failure.")
-            sys.exit(1)
-        print("[SUCCESS] Data successfully ingested into the database tables.")
+        servicenow_data = get_servicenow_data()
+        print(f"[OK] Fetched {len(servicenow_data['declarations'])} declarations and {len(servicenow_data['preclearances'])} preclearances directly from Postgres DB!")
     except Exception as e:
-        print(f"[ERROR] Failed to run ingestion: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"[ERROR] Failed to fetch data from Postgres DB: {e}")
         sys.exit(1)
 
     # 3. Run Compliance Pre-calculation
