@@ -118,7 +118,12 @@ def fetch_records(status=None, company_name=None, batch_name=None, depository_ty
             params.extend([search_pattern, search_pattern])
         
         where_clause = (" WHERE " + " AND ".join(where)) if where else ""
-        cur.execute(f"SELECT COUNT(*) as cnt FROM shareholder_records sr {where_clause}", params)
+        if search:
+            # Full table scan when explicitly searching
+            cur.execute(f"SELECT COUNT(*) as cnt FROM shareholder_records sr {where_clause}", params)
+        else:
+            # Cap at 200 to prevent massive latency and timeout on load
+            cur.execute(f"SELECT COUNT(*) as cnt FROM (SELECT 1 FROM shareholder_records sr {where_clause} LIMIT 200) AS temp", params)
         total = cur.fetchone()['cnt']
         
         q = f"SELECT sr.id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, sr.pangir, sr.name, sr.email, sr.position_latest, sr.position_older, sr.position_difference, sr.status FROM shareholder_records sr JOIN companies c ON sr.company_id = c.id JOIN result_batches rb ON sr.batch_id = rb.id JOIN depository_types dt ON sr.depository_id = dt.id {where_clause} ORDER BY sr.id LIMIT %s OFFSET %s"

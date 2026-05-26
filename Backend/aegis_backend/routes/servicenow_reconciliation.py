@@ -444,6 +444,7 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
                     ('Sanghi', h['sanghi_qty']), ('OCL', h['ocl_qty']), ('ITD', h['itd_qty']),
                     ('PSP', h['psp_qty'])
                 ]
+                has_any_holdings = False
                 for comp_name, qty in companies:
                     # In some cases the db might store qty as string or None, handle gracefully
                     try:
@@ -451,6 +452,7 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
                     except:
                         q_val = 0
                     if q_val > 0:
+                        has_any_holdings = True
                         holdings_list.append({
                             "name": h['name'],
                             "relationship": h['relationship'],
@@ -458,6 +460,16 @@ async def get_servicenow_ledger_details(email: str = Query(...)):
                             "company_name": comp_name,
                             "declared_quantity": int(q_val)
                         })
+                
+                # If family member has 0 holdings for all companies, still include them in the UI
+                if not has_any_holdings:
+                    holdings_list.append({
+                        "name": h['name'],
+                        "relationship": h['relationship'],
+                        "pan_card": h['pan_card'],
+                        "company_name": "-",
+                        "declared_quantity": 0
+                    })
                 
             declarations_detailed.append({
                 "ritm_number": d['ritm_number'],

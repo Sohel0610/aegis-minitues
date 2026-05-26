@@ -97,6 +97,8 @@ const EmployeeComplianceLedger = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeLedgerItem | null>(null);
   const [detailData, setDetailData] = useState<EmployeeDetailResponse | null>(null);
   const [ledgerSearch, setLedgerSearch] = useState("");
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerTotalCount, setLedgerTotalCount] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [detailTab, setDetailTab] = useState<"PRECLEARANCE" | "DECLARATION">("PRECLEARANCE");
@@ -117,12 +119,16 @@ const EmployeeComplianceLedger = () => {
 
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setLedgerPage(1);
+  }, [ledgerSearch]);
+
   // Fetch employee list for Audited Ledger when tab active & search changes
   useEffect(() => {
     if (activeMainTab === "AUDITED_LEDGER") {
-      fetchEmployees();
+      fetchEmployees(ledgerPage);
     }
-  }, [ledgerSearch, activeMainTab]);
+  }, [ledgerSearch, ledgerPage, activeMainTab]);
 
   // Fetch selected employee details
   useEffect(() => {
@@ -147,17 +153,25 @@ const EmployeeComplianceLedger = () => {
     setRitmDetails(null);
   }, [rawSearch, rawFilterType]);
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (page = 1) => {
     try {
       setLoadingList(true);
+      const limit = 50;
+      const offset = (page - 1) * limit;
       const url = ledgerSearch 
-        ? `/api/servicenow/ledger?search=${encodeURIComponent(ledgerSearch)}&limit=100`
-        : `/api/servicenow/ledger?limit=100`;
+        ? `/api/servicenow/ledger?search=${encodeURIComponent(ledgerSearch)}&limit=${limit}&offset=${offset}`
+        : `/api/servicenow/ledger?limit=${limit}&offset=${offset}`;
       
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch employee list");
       const data = await res.json();
-      setEmployees(data.employees || []);
+      
+      if (page === 1) {
+        setEmployees(data.employees || []);
+      } else {
+        setEmployees(prev => [...prev, ...(data.employees || [])]);
+      }
+      setLedgerTotalCount(data.count || 0);
     } catch (err) {
       console.error(err);
       setError("Failed to load employees list.");
@@ -333,8 +347,18 @@ const EmployeeComplianceLedger = () => {
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px" }}>
-              {loadingList ? (
+            <div 
+              style={{ flex: 1, overflowY: "auto", padding: "10px 14px" }}
+              onScroll={(e) => {
+                const target = e.target as HTMLDivElement;
+                if (target.scrollHeight - target.scrollTop - target.clientHeight < 20) {
+                  if (!loadingList && employees.length < ledgerTotalCount) {
+                    setLedgerPage(p => p + 1);
+                  }
+                }
+              }}
+            >
+              {loadingList && employees.length === 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%" }}>
                   <Loader2 size={24} color={C.orange} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
                   <span style={{ fontSize: 12, color: C.sub }}>Loading directory...</span>
@@ -396,6 +420,12 @@ const EmployeeComplianceLedger = () => {
                   );
                 })
               )}
+                
+                {loadingList && employees.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "center", padding: "10px 0" }}>
+                    <Loader2 size={16} color={C.orange} style={{ animation: "spin 1s linear infinite" }} />
+                  </div>
+                )}
             </div>
           </div>
 
