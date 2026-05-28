@@ -597,9 +597,6 @@ const DirectorsDisclosureAnalytics = () => {
 
       {/* Footer */}
       <div className="mt-8 text-center">
-        <p className="text-gray-600 text-sm">
-          📊 Data based on Form MBP-1 documents | Analysis for {directors.length} directors
-        </p>
       </div>
     </div>
   );

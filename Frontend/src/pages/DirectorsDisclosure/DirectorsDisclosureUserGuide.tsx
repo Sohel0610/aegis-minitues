@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, CheckCircle2, AlertCircle, HelpCircle, 
   ArrowRight, Download, RefreshCw, Layers
 } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Brand Colors
 const COLORS = {

@@ -230,7 +230,7 @@ const DirectorsDisclosureDataSource = () => {
                   Disclosure Repository
                 </CardTitle>
                 <CardDescription className="text-gray-500 font-medium">
-                  Central archives of all statutory filings, AI summaries, and registry snapshots
+                  Central archives of all statutory filings
                 </CardDescription>
               </div>
             </div>

@@ -158,7 +158,7 @@ const DirectorRegistryIntelligence = () => {
                <Globe className="text-[#0B74B0] h-8 w-8" />
                Director registry intelligence
             </h1>
-            <p className="text-gray-500 font-medium ml-11">Governance & overboarding analysis | Registry V2.1</p>
+            <p className="text-gray-500 font-medium ml-11">Governance & overboarding analysis</p>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="text-gray-500 font-bold px-4 py-1 border-gray-200">MCA live ecosystem</Badge>
