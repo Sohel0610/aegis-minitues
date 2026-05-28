@@ -753,13 +753,8 @@ async def get_director_image(din: str):
     for ext in ['.jpg', '.jpeg', '.png', '.webp']:
         p = os.path.join(images_dir, f"{din}{ext}")
         if os.path.exists(p): return FileResponse(p)
-    
-    # Silent Fallback to default avatar to clean up terminal logs
-    default_avatar = os.path.join(os.path.dirname(__file__), "..", "..", "..", "Frontend", "public", "avatar.jpg")
-    if os.path.exists(default_avatar):
-        return FileResponse(default_avatar)
         
-    raise HTTPException(status_code=404)
+    raise HTTPException(status_code=404, detail="Image not found")
 
 @router.get("/directors-disclosures/templates/{template_name}")
 async def download_template(template_name: str):
