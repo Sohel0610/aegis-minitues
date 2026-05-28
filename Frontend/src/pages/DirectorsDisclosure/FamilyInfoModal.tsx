@@ -6,12 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 
 interface FamilyMember {
   relationship: string;
@@ -127,17 +127,17 @@ const FamilyInfoModal = ({ directorName, din, isOpen, onClose }: FamilyInfoModal
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="bg-white sm:max-w-3xl md:max-w-4xl w-full h-full flex flex-col p-0 overflow-y-auto">
-        <SheetHeader className="p-6 pb-2 bg-white sticky top-0 z-10 border-b">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+        <DialogHeader className="p-6 pb-2 bg-white sticky top-0 z-10 border-b">
           <div className="flex justify-between items-center">
             <div>
-              <SheetTitle className="text-2xl font-black tracking-tight" style={{ color: "#000000" }}>
+              <DialogTitle className="text-2xl font-black tracking-tight" style={{ color: "#000000" }}>
                 FAMILY INFORMATION
-              </SheetTitle>
-              <SheetDescription className="font-medium text-gray-500">
+              </DialogTitle>
+              <DialogDescription className="font-medium text-gray-500">
                 {directorName} (DIN: {din})
-              </SheetDescription>
+              </DialogDescription>
             </div>
             <div className="flex gap-2">
               {!isEditing ? (
@@ -158,7 +158,7 @@ const FamilyInfoModal = ({ directorName, din, isOpen, onClose }: FamilyInfoModal
               )}
             </div>
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
         <div className="flex-grow overflow-y-auto p-6 bg-gray-50/50">
           {loading ? (
@@ -286,8 +286,8 @@ const FamilyInfoModal = ({ directorName, din, isOpen, onClose }: FamilyInfoModal
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 };
 
