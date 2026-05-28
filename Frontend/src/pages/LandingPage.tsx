@@ -151,7 +151,7 @@ const products: Product[] = [
   },
   {
     id: '5',
-    title: "Directors' Disclosure Agent",
+    title: "Directors' Disclosure",
     description: "Comprehensive tracking and analysis of directors' disclosure reports.",
     icon: <FileText className="h-6 w-6" />,
     color: "dark-lavender", // Using new color
