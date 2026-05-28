@@ -3,14 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Users, Building2, Network, ShieldCheck, Search, 
   Calendar, Award, Filter, ArrowRight, ExternalLink, 
-  User, CheckCircle2, AlertCircle, TrendingUp, Briefcase,
-  Globe, Shield, Cpu, LayoutDashboard, Share2, ChevronDown, Loader2, Info, RefreshCw
+  User, CheckCircle2, TrendingUp, Briefcase,
+  Globe, Shield, Cpu, Share2, ChevronDown, Loader2, Info, RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
-  Legend, PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, LabelList
-} from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -131,30 +127,7 @@ const DirectorRegistryIntelligence = () => {
     );
   }, [directors, searchQuery]);
 
-  const loadDistributionData = useMemo(() => {
-    const bins = new Map();
-    if (!Array.isArray(directors) || directors.length === 0) return [];
-    directors.forEach(d => {
-      const count = d.external_board_count || 0;
-      const bin = count >= 10 ? "10+" : count.toString();
-      bins.set(bin, (bins.get(bin) || 0) + 1);
-    });
-    // Sort bins numerically then 10+
-    return Array.from(bins, ([name, count]) => ({ name, count })).sort((a,b) => {
-      if (a.name === '10+') return 1;
-      if (b.name === '10+') return -1;
-      return parseInt(a.name) - parseInt(b.name);
-    });
-  }, [directors]);
 
-  const stats = useMemo(() => {
-    if (!Array.isArray(directors) || directors.length === 0) return { median: 0, peak: 0, threshold: 15 };
-    const counts = directors.map(d => d.external_board_count || 0).sort((a, b) => a - b);
-    const mid = Math.floor(counts.length / 2);
-    const median = counts.length % 2 !== 0 ? counts[mid] : (counts[mid - 1] + counts[mid]) / 2;
-    const peak = Math.max(...counts);
-    return { median: median.toFixed(1), peak, threshold: 15 };
-  }, [directors]);
 
   const getStatusInfo = (lastUpdated?: string) => {
     if (!lastUpdated) return { label: "Stale", color: "#EF4444", bg: "bg-red-50", text: "text-red-700" };
@@ -455,14 +428,7 @@ const DirectorRegistryIntelligence = () => {
 
 
 
-        {/* Global Registry Compliance Disclaimer */}
-        <div className="mt-12 p-6 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex items-start gap-4">
-           <AlertCircle className="text-blue-500 mt-1" size={20} />
-           <div className="text-blue-900 text-xs leading-relaxed">
-              <span className="font-bold">System advisory:</span> Data aggregates from live Falconebiz MCA Registry Proxy. Seat counts and Overboarding Risks are subject to dynamic updates and may reflect external associations outside the primary corporate group. 
-              Always verify against latest MBP-1 disclosures before final statutory filing.
-           </div>
-        </div>
+
         {/* Institutional Footer */}
         <footer className="mt-20 pt-10 border-t border-gray-100 text-center opacity-30">
           <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Aegis Institutional Risk &amp; Compliance Terminal</span>
