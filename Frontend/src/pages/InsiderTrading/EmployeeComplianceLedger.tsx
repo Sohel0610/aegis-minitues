@@ -240,13 +240,28 @@ const EmployeeComplianceLedger = () => {
     }
   };
 
+  const formatState = (state: string | null) => {
+    if (!state) return "Submitted";
+    const s = state.toString().trim();
+    if (s === "1") return "Open";
+    if (s === "2") return "Work In Progress";
+    if (s === "3") return "Closed Complete";
+    if (s === "4") return "Closed Incomplete";
+    if (s === "7") return "Closed Skipped";
+    if (s === "8") return "Cancelled";
+    return state;
+  };
+
   const getStatusStyle = (state: string | null) => {
-    const s = (state || "").toLowerCase();
+    const s = formatState(state).toLowerCase();
     if (s.includes("complete") || s.includes("approved")) {
       return { bg: "rgba(0,201,138,0.1)", color: C.green };
     }
-    if (s.includes("progress") || s.includes("pending")) {
+    if (s.includes("progress") || s.includes("pending") || s.includes("open")) {
       return { bg: "rgba(247,148,29,0.1)", color: C.amber };
+    }
+    if (s.includes("cancel") || s.includes("incomplete") || s.includes("skipped")) {
+      return { bg: "rgba(239,68,68,0.1)", color: "#EF4444" };
     }
     return { bg: "rgba(148,163,184,0.1)", color: C.sub };
   };
@@ -553,7 +568,7 @@ const EmployeeComplianceLedger = () => {
                                 </span>
                               </div>
                               <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 8px", borderRadius: 12, background: getStatusStyle(pc.state).bg, color: getStatusStyle(pc.state).color }}>
-                                {pc.state || "Pending"}
+                                {formatState(pc.state)}
                               </span>
                             </div>
 
@@ -621,7 +636,7 @@ const EmployeeComplianceLedger = () => {
                                   </span>
                                 )}
                                 <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 8px", borderRadius: 12, background: getStatusStyle(dec.state).bg, color: getStatusStyle(dec.state).color }}>
-                                  {dec.state || "Submitted"}
+                                  {formatState(dec.state)}
                                 </span>
                               </div>
                             </div>

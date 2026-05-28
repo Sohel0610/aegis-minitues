@@ -113,9 +113,9 @@ def fetch_records(status=None, company_name=None, batch_name=None, depository_ty
         if b_id: where.append("batch_id = %s"); params.append(b_id)
         if d_id: where.append("depository_id = %s"); params.append(d_id)
         if search:
-            search_pattern = f"%{search}%"
-            where.append("(sr.pangir ILIKE %s OR sr.name ILIKE %s)")
-            params.extend([search_pattern, search_pattern])
+            search_prefix = f"{search.lower()}%"
+            where.append("(lower(sr.name) LIKE %s OR lower(sr.email) LIKE %s OR lower(sr.pangir) LIKE %s)")
+            params.extend([search_prefix, search_prefix, search_prefix])
         
         where_clause = (" WHERE " + " AND ".join(where)) if where else ""
         if search:

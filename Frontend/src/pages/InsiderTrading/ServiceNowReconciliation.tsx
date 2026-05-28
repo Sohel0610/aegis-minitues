@@ -57,6 +57,8 @@ interface ViolationRecord {
   difference?: number;
   phase?: string;
   fiscal_year?: string;
+  state?: string;
+  declaration_date?: string;
 }
 
 interface SyncStep {
@@ -91,19 +93,41 @@ const ServiceNowReconciliation = () => {
   const [error, setError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [batches, setBatches] = useState<string[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<string>("");
 
   useEffect(() => {
-    fetchSummary();
+    fetchBatches();
   }, []);
+
+  const fetchBatches = async () => {
+    try {
+      const res = await fetch("/api/servicenow/batches");
+      if (res.ok) {
+        const data = await res.json();
+        setBatches(data.batches || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch batches", err);
+    }
+  };
 
   useEffect(() => {
     fetchViolations();
-  }, [activeTab]);
+  }, [activeTab, selectedBatch]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [selectedBatch]);
 
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
-      const res = await fetch("/api/servicenow/summary");
+      let url = "/api/servicenow/summary";
+      if (selectedBatch) {
+        url += `?batch=${encodeURIComponent(selectedBatch)}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch ServiceNow summary metadata");
       const data = await res.json();
       setSummary(data);
@@ -118,7 +142,11 @@ const ServiceNowReconciliation = () => {
     try {
       setLoadingViolations(true);
       setError(null);
-      const res = await fetch(`/api/servicenow/violations?type=${activeTab}&limit=100`);
+      let url = `/api/servicenow/violations?type=${activeTab}&limit=100`;
+      if (selectedBatch) {
+        url += `&batch=${encodeURIComponent(selectedBatch)}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch violations records");
       const data = await res.json();
       setViolations(data.violations || []);
@@ -171,6 +199,32 @@ const ServiceNowReconciliation = () => {
     }
   };
 
+  const formatState = (state: string | null) => {
+    if (!state) return "Submitted";
+    const s = state.toString().trim();
+    if (s === "1") return "Open";
+    if (s === "2") return "Work In Progress";
+    if (s === "3") return "Closed Complete";
+    if (s === "4") return "Closed Incomplete";
+    if (s === "7") return "Closed Skipped";
+    if (s === "8") return "Cancelled";
+    return state;
+  };
+
+  const getStatusStyle = (state: string | null) => {
+    const s = formatState(state).toLowerCase();
+    if (s.includes("complete") || s.includes("approved")) {
+      return { bg: "rgba(0,201,138,0.1)", color: C.green };
+    }
+    if (s.includes("progress") || s.includes("pending") || s.includes("open")) {
+      return { bg: "rgba(247,148,29,0.1)", color: C.amber };
+    }
+    if (s.includes("cancel") || s.includes("incomplete") || s.includes("skipped")) {
+      return { bg: "rgba(239,68,68,0.1)", color: "#EF4444" };
+    }
+    return { bg: "rgba(148,163,184,0.1)", color: C.sub };
+  };
+
   // KPI card data
   const kpiCards = [
     { label: "Declarations", value: summary?.total_declarations ?? 0, sub: "Submitted Forms", color: C.blue, icon: FileSpreadsheet },
@@ -198,11 +252,11 @@ const ServiceNowReconciliation = () => {
   const getHeaders = () => {
     switch (activeTab) {
       case "UNSANCTIONED":
-        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Qty", "Batch Period", "Date"];
+        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Qty", "Approved Qty", "Ticket", "Batch", "State"];
       case "VOLUME_BREACH":
-        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Vol", "Approved Vol", "Excess Vol", "RITM Ticket", "Batch Period", "Date"];
+        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Vol", "Approved Vol", "Excess Vol", "Ticket", "Batch", "State"];
       case "HOLDING_MISMATCH":
-        return ["Employee Name", "Declared Shareholder", "Relationship", "PAN", "Company", "Declared Qty", "Depository Qty", "Difference", "Ticket", "Batch Period", "Period"];
+        return ["Employee Name", "Declared Shareholder", "Relationship", "PAN", "Company", "Declared Qty", "Depository Qty", "Difference", "Ticket", "Batch", "State", "Decl. Date"];
     }
   };
 
@@ -311,6 +365,22 @@ const ServiceNowReconciliation = () => {
                 style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 180, fontFamily: "Adani" }}
               />
             </div>
+            
+            {/* Batch Filter Dropdown */}
+            {batches.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+                <select
+                  value={selectedBatch}
+                  onChange={(e) => setSelectedBatch(e.target.value)}
+                  style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, fontFamily: "Adani", cursor: "pointer" }}
+                >
+                  <option value="">All Batches</option>
+                  {batches.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
           </div>
         </div>
@@ -351,8 +421,18 @@ const ServiceNowReconciliation = () => {
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>
                             {record.shares_traded && record.shares_traded > 0 ? "+" : ""}{record.shares_traded?.toLocaleString()}
                           </td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>
+                            {record.approved_volume?.toLocaleString() || "0"}
+                          </td>
+                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>
+                            {record.ritm_number || "—"}
+                          </td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.batch_name}</td>
-                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.transaction_date}</td>
+                          <td style={{ padding: "10px 8px" }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 8px", borderRadius: 12, background: getStatusStyle(record.state || "").bg, color: getStatusStyle(record.state || "").color, whiteSpace: "nowrap" }}>
+                              {formatState(record.state || "")}
+                            </span>
+                          </td>
                         </>
                       )}
                       {activeTab === "VOLUME_BREACH" && (
@@ -369,7 +449,11 @@ const ServiceNowReconciliation = () => {
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>+{record.excess_volume?.toLocaleString()}</td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.batch_name}</td>
-                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.transaction_date}</td>
+                          <td style={{ padding: "10px 8px" }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 8px", borderRadius: 12, background: getStatusStyle(record.state || "").bg, color: getStatusStyle(record.state || "").color, whiteSpace: "nowrap" }}>
+                              {formatState(record.state || "")}
+                            </span>
+                          </td>
                         </>
                       )}
                       {activeTab === "HOLDING_MISMATCH" && (
@@ -389,9 +473,12 @@ const ServiceNowReconciliation = () => {
                           </td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{record.ritm_number}</td>
                           <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.batch_name}</td>
-                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>
-                            {record.fiscal_year} — {record.phase}
+                          <td style={{ padding: "10px 8px" }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 8px", borderRadius: 12, background: getStatusStyle(record.state || "").bg, color: getStatusStyle(record.state || "").color, whiteSpace: "nowrap" }}>
+                              {formatState(record.state || "")}
+                            </span>
                           </td>
+                          <td style={{ padding: "10px 8px", fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{record.declaration_date}</td>
                         </>
                       )}
                     </tr>

@@ -60,6 +60,25 @@ const ServiceNowMasterData = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [batches, setBatches] = useState<string[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<string>("");
+  const [showUnchanged, setShowUnchanged] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchBatches();
+  }, []);
+
+  const fetchBatches = async () => {
+    try {
+      const res = await fetch("/api/servicenow/batches");
+      if (res.ok) {
+        const data = await res.json();
+        setBatches(data.batches || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch batches", err);
+    }
+  };
 
   // Debounce search input
   useEffect(() => {
@@ -72,7 +91,7 @@ const ServiceNowMasterData = () => {
 
   useEffect(() => {
     fetchRecords();
-  }, [offset, debouncedSearch]);
+  }, [offset, debouncedSearch, selectedBatch, showUnchanged]);
 
   const fetchRecords = async () => {
     try {
@@ -84,6 +103,8 @@ const ServiceNowMasterData = () => {
         offset: offset.toString()
       });
       if (debouncedSearch) qs.append("search", debouncedSearch);
+      if (selectedBatch) qs.append("batch", selectedBatch);
+      if (showUnchanged) qs.append("show_unchanged", "true");
 
       const res = await fetch(`/api/servicenow/all-records?${qs.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch records");
@@ -123,14 +144,42 @@ const ServiceNowMasterData = () => {
           <div style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>
             Total Records: {total.toLocaleString()}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
-            <Search size={13} color={C.muted} />
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by PAN or name…"
-              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Adani" }}
-            />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+              <Search size={13} color={C.muted} />
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by PAN or name…"
+                style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Adani" }}
+              />
+            </div>
+            
+            {/* Batch Filter Dropdown */}
+            {batches.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+                <select
+                  value={selectedBatch}
+                  onChange={(e) => { setSelectedBatch(e.target.value); setOffset(0); }}
+                  style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, fontFamily: "Adani", cursor: "pointer" }}
+                >
+                  <option value="">All Batches</option>
+                  {batches.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* Show Unchanged Toggle */}
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: C.text, fontWeight: 500, fontFamily: "Adani" }}>
+              <input
+                type="checkbox"
+                checked={showUnchanged}
+                onChange={(e) => { setShowUnchanged(e.target.checked); setOffset(0); }}
+                style={{ cursor: "pointer", accentColor: C.orange }}
+              />
+              Show Unchanged
+            </label>
           </div>
         </div>
 
@@ -163,7 +212,14 @@ const ServiceNowMasterData = () => {
                     return (
                       <tr key={r.id || i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : C.bg }}>
                         <td style={{ padding: "12px 16px", fontSize: 12, color: C.blue, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{r.pan_card?.trim() || "N/A"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 12, color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.declared_name || r.shareholder_name || "—"}</td>
+                        <td style={{ padding: "10px 16px" }}>
+                          <div style={{ fontSize: 12, color: C.text, fontWeight: 600, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {r.declared_name || "—"}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.sub, marginTop: 2, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {r.shareholder_name || "—"}
+                          </div>
+                        </td>
                         <td style={{ padding: "12px 16px", fontSize: 11, color: C.muted, textTransform: "capitalize" }}>{r.source_type}</td>
                         <td style={{ padding: "12px 16px", fontSize: 11, color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.batch_name || "—"}</td>
                         <td style={{ padding: "12px 16px", fontSize: 12, color: C.sub, textAlign: "right" }}>

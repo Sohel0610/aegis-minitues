@@ -50,19 +50,6 @@ export const InsiderTradingFilterProvider: React.FC<{ children: React.ReactNode 
   // Fetch filter options once on mount
   useEffect(() => {
     const fetchOptions = async () => {
-      // Check for cached options to prevent repetitive API calls
-      const cached = sessionStorage.getItem('insiderTradingFilterOptions');
-      if (cached) {
-        try {
-          const data = JSON.parse(cached);
-          setFilterOptions(data);
-          setLoading(false);
-          return;
-        } catch (e) {
-          console.error("Failed to parse cached options", e);
-        }
-      }
-
       try {
         const res = await fetch("/api/insider-trading/filter-options");
         if (res.ok) {
@@ -73,7 +60,6 @@ export const InsiderTradingFilterProvider: React.FC<{ children: React.ReactNode 
             batches: data.batches || [],
           };
           setFilterOptions(options);
-          sessionStorage.setItem('insiderTradingFilterOptions', JSON.stringify(options));
         }
       } catch (err) {
         console.error("Failed to fetch filter options:", err);
