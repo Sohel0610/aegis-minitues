@@ -53,10 +53,10 @@ async def get_intelligence_summary():
             SELECT d.din_status, COUNT(DISTINCT d.din) as count 
             FROM directors_master.directors d
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE d.last_api_sync IS NOT NULL 
-            AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
-            AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
-            AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
+            AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
+            AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
             GROUP BY d.din_status
         """)
         status_breakdown = cur.fetchall()
@@ -66,11 +66,11 @@ async def get_intelligence_summary():
             SELECT d.gender, COUNT(DISTINCT d.din) as count 
             FROM directors_master.directors d
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE d.last_api_sync IS NOT NULL 
             AND UPPER(d.gender) IN ('MALE', 'FEMALE')
-            AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
-            AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
-            AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
+            AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
+            AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
             GROUP BY 1
         """)
         gender_breakdown = cur.fetchall()
@@ -80,10 +80,10 @@ async def get_intelligence_summary():
             SELECT COALESCE(d.dir3_kyc, 'Pending') as status, COUNT(DISTINCT d.din) as count 
             FROM directors_master.directors d
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE d.last_api_sync IS NOT NULL
-            AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
-            AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
-            AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
+            AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
+            AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
             GROUP BY 1
         """)
         kyc_breakdown = cur.fetchall()
@@ -91,10 +91,10 @@ async def get_intelligence_summary():
         # 5. Total Associations tracked (Excluding Amalgamated/Resigned)
         cur.execute("""
             SELECT COUNT(*) as total 
-            FROM directors_master.external_board_members 
-            WHERE COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%'
-              AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%'
-              AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
+            FROM directors_master.external_board_members ea
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+            WHERE (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
+              AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
         """)
         assoc_count = cur.fetchone()
 
@@ -130,18 +130,18 @@ async def get_enriched_directors():
                 d.dir3_kyc,
                 d.last_api_sync,
                 d.last_mca_updated,
-                COUNT(CASE 
-                    WHEN (ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None') THEN 1
-                    WHEN ebm.status ILIKE 'Active%' THEN 1
-                    ELSE NULL 
-                END) as external_board_count
+                COALESCE(eb_counts.cnt, 0) as external_board_count
             FROM directors_master.directors d
-            LEFT JOIN directors_master.external_board_members ebm ON d.din = ebm.din
+            LEFT JOIN (
+                SELECT ea.din, COUNT(*) as cnt
+                FROM directors_master.external_board_members ea
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE ea.din IS NOT NULL
+                  AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
+                  AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+                GROUP BY ea.din
+            ) eb_counts ON d.din = eb_counts.din
             WHERE d.last_api_sync IS NOT NULL
-            AND COALESCE(UPPER(ebm.status), '') NOT LIKE 'RESIGNED%'
-            AND COALESCE(UPPER(ebm.status), '') NOT LIKE 'INACTIVE%'
-            AND COALESCE(UPPER(ebm.status), '') != 'AMALGAMATED'
-            GROUP BY d.din, d.name, d.din_status, d.gender, d.nationality, d.dir3_kyc, d.last_api_sync, d.last_mca_updated
             ORDER BY d.name
         """)
         return cur.fetchall()

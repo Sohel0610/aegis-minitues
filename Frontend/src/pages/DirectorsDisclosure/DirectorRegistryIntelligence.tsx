@@ -277,52 +277,37 @@ const DirectorRegistryIntelligence = () => {
 
         {/* Global Director Statistics Context */}
         <div className="mb-10">
-           <div className="bg-white border border-gray-100/80 rounded-[2rem] p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] relative overflow-hidden">
-              <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-12">
-                 <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">KYC validation status</p>
-                    <p className="text-xl font-black text-gray-900">{selectedDirector?.dir3_kyc}</p>
-                 </div>
-                 <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Registry gender</p>
-                    <p className="text-xl font-black text-gray-900">{selectedDirector?.gender}</p>
-                 </div>
-                 <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nationality</p>
-                    <p className="text-xl font-black text-gray-900">{selectedDirector?.nationality || 'Indian'}</p>
-                 </div>
-                 <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Seat index reach</p>
-                    <p className="text-xl font-black text-[#0B74B0] flex items-center gap-2">
-                       <TrendingUp size={20} className="text-green-500" />
-                       {selectedDirector?.external_board_count} boards
-                    </p>
-                 </div>
-                 <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last registry sync</p>
-                    <p className="text-xs font-black text-gray-900">
-                       {selectedDirector?.last_api_sync 
-                         ? new Date(selectedDirector.last_api_sync).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) 
-                         : 'N/A'}
-                    </p>
-                 </div>
-                 <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Source Updated (MCA)</p>
-                    <div className="flex items-center gap-2">
-                       <p className="text-xs font-black text-[#0B74B0]">
-                          {selectedDirector?.last_mca_updated 
-                            ? new Date(selectedDirector.last_mca_updated).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) 
-                            : 'Pending Refresh'}
-                       </p>
-                       {selectedDirector && (
-                         <Badge className={`${getStatusInfo(selectedDirector.last_mca_updated).bg} ${getStatusInfo(selectedDirector.last_mca_updated).text} text-[8px] px-1.5 py-0 rounded-md border-0`}>
-                           {getStatusInfo(selectedDirector.last_mca_updated).label}
-                         </Badge>
-                       )}
-                    </div>
-                 </div>
-              </div>
-           </div>
+            <div className="bg-white border border-gray-100/80 rounded-[2rem] p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] relative overflow-hidden">
+               <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-12">
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">KYC validation status</p>
+                     <p className="text-xl font-black text-gray-900">{selectedDirector?.dir3_kyc}</p>
+                  </div>
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Registry gender</p>
+                     <p className="text-xl font-black text-gray-900">{selectedDirector?.gender}</p>
+                  </div>
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nationality</p>
+                     <p className="text-xl font-black text-gray-900">{selectedDirector?.nationality || 'Indian'}</p>
+                  </div>
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Seat index reach</p>
+                     <p className="text-xl font-black text-[#0B74B0] flex items-center gap-2">
+                        <TrendingUp size={20} className="text-green-500" />
+                        {associations.length > 0 ? associations.length : (selectedDirector?.external_board_count || 0)} boards
+                     </p>
+                  </div>
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Last registry sync</p>
+                     <p className="text-xs font-black text-gray-900">
+                        {selectedDirector?.last_api_sync 
+                          ? new Date(selectedDirector.last_api_sync).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) 
+                          : 'N/A'}
+                     </p>
+                  </div>
+               </div>
+            </div>
         </div>
 
         {/* Network Intelligence Grid */}

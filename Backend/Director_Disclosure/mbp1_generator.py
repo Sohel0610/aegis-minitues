@@ -1013,6 +1013,27 @@ def build_document(dd: DirectorData, include_annexure: bool = True) -> Document:
 # CLI entrypoint
 # ---------------------------------------------------------------------------
 
+def get_director_group_companies(din: str) -> list[str]:
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT DISTINCT ea.cin 
+            FROM directors_master.external_board_members ea
+            JOIN directors_data.companies c ON ea.cin = c.cin
+            WHERE ea.din = %s 
+              AND ea.cin IS NOT NULL
+              AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'Active%%')
+        """, (din,))
+        rows = cur.fetchall()
+        return [r['cin'] for r in rows]
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch director group companies: {e}")
+        return []
+    finally:
+        conn.close()
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate Form MBP-1 Word documents from Azure PostgreSQL Database."
@@ -1031,14 +1052,39 @@ def main() -> None:
     args = parser.parse_args()
 
     pairs = []
+    overall_pairs = {}
     if args.all:
         print("[BATCH] Fetching all Director-Company pairs from DB...")
-        pairs = get_all_pairs_from_db()
+        db_pairs = get_all_pairs_from_db()
+        # To keep current logic, generate individual company MBP-1s
+        pairs = [(din, [cin]) for din, cin in db_pairs]
+        # Also group them for overall MBP-1s
+        for din, cin in db_pairs:
+            if din not in overall_pairs:
+                overall_pairs[din] = []
+            if cin not in overall_pairs[din]:
+                overall_pairs[din].append(cin)
     elif args.din and args.cin:
         # Split CINs if multiple provided
         cins = [c.strip() for c in args.cin.split(",")]
-        # For multi-company mode, we treat them as one set
-        pairs = [(args.din, cins)]
+        # To keep current logic, generate individual company MBP-1s for each cin
+        pairs = [(args.din, [cin]) for cin in cins]
+        
+        # Conditionally populate overall_pairs only if 'Select All' or multiple companies are selected
+        # representing all group company associations for the director.
+        is_all = False
+        if len(cins) > 1:
+            all_group_cins = get_director_group_companies(args.din)
+            if all_group_cins:
+                is_all = set(all_group_cins).issubset(set(cins))
+            else:
+                # Fallback if DB offline/no association found, assume all since > 1
+                is_all = True
+        
+        if is_all:
+            overall_pairs = {args.din: cins}
+        else:
+            overall_pairs = {}
     elif args.input:
         # Legacy mode
         input_path = Path(args.input)
@@ -1054,20 +1100,35 @@ def main() -> None:
         parser.print_help()
         return
 
-    print(f"[INFO] Found {len(pairs)} pairs to process.")
+    print(f"[INFO] Found {len(pairs)} company-specific pairs to process.")
     
-    total = len(pairs)
+    total = len(pairs) + len(overall_pairs)
     total_generated = 0
-    for i, (din, cin_data) in enumerate(pairs, 1):
-        # cin_data can be a single string or a list
-        cins = cin_data if isinstance(cin_data, list) else [cin_data]
+    current_index = 0
+    
+    # 1. Process company-specific documents (keeps existing functionality completely intact)
+    for din, cins in pairs:
+        current_index += 1
         dd = fetch_full_data_from_db(din, cins, args.date)
         if dd:
-            report_progress(i, total, f"Generating for {dd.name}")
+            report_progress(current_index, total, f"Generating for {dd.name} ({dd.primary_company})")
             _process_single(dd, args.year, not args.no_annexure)
             total_generated += 1
         else:
-            report_progress(i, total, f"Skipping DIN {din} (Not Found)")
+            report_progress(current_index, total, f"Skipping DIN {din} (Not Found)")
+
+    # 2. Process combined/overall documents (saves under OVERALL folder listing all company boards)
+    if overall_pairs:
+        print(f"[INFO] Generating combined/overall MBP-1 documents for {len(overall_pairs)} directors...")
+        for din, cins in overall_pairs.items():
+            current_index += 1
+            dd = fetch_full_data_from_db(din, cins, args.date)
+            if dd:
+                report_progress(current_index, total, f"Generating overall for {dd.name}")
+                _process_single(dd, args.year, not args.no_annexure, folder_name="OVERALL")
+                total_generated += 1
+            else:
+                report_progress(current_index, total, f"Skipping overall DIN {din} (Not Found)")
 
     report_progress(total, total, "Complete")
     print(f"\n[FINISH] Total {total_generated} document(s) generated.")
@@ -1097,13 +1158,16 @@ def register_document_in_db(dd: DirectorData, file_path: str):
     finally:
         conn.close()
 
-def _process_single(dd: DirectorData, year: str, include_annexure: bool):
+def _process_single(dd: DirectorData, year: str, include_annexure: bool, folder_name: Optional[str] = None):
     base_output = Path("Output_Disclosures") / year
     
     doc = build_document(dd, include_annexure)
     
     # Clean names for folder/file
-    clean_company = "".join(c if c.isalnum() else "_" for c in dd.primary_company).strip("_")
+    if folder_name:
+        clean_company = folder_name
+    else:
+        clean_company = "".join(c if c.isalnum() else "_" for c in dd.primary_company).strip("_")
     clean_director = "".join(c if c.isalnum() else "_" for c in dd.name).strip("_")
     
     # Directory structure: Output/Year/Company/MBP-1/
@@ -1116,10 +1180,6 @@ def _process_single(dd: DirectorData, year: str, include_annexure: bool):
     doc.save(str(out_path))
     register_document_in_db(dd, str(out_path))
     print(f"  [OK] {clean_company} -> {clean_director}")
-
-if __name__ == "__main__":
-    main()
-
 
 if __name__ == "__main__":
     main()

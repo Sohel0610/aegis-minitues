@@ -862,8 +862,8 @@ def main() -> None:
     elif args.din and args.cin:
         # Split CINs if multiple provided
         cins = [c.strip() for c in args.cin.split(",")]
-        # For multi-company mode, we treat them as one set
-        pairs = [(args.din, cins)]
+        # For DIR-8, we generate a separate company-wise document for each CIN
+        pairs = [(args.din, [cin]) for cin in cins]
     elif args.input:
         # Legacy mode
         input_path = Path(args.input)
