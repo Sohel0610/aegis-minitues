@@ -296,8 +296,9 @@ const DirectorsDisclosureDataSource = () => {
             <div className="mb-4 text-sm" style={{ color: '#666666' }}>
               Showing {filteredDisclosures.length} of {disclosures.length} disclosures
             </div>
-            <div className="rounded-[1.5rem] border border-gray-100 overflow-hidden shadow-sm">
-              <Table>
+            <div className="overflow-x-auto rounded-[1.5rem] border border-gray-100 shadow-sm">
+              <div className="min-w-[900px] xl:min-w-full">
+                <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50 active:bg-gray-50">
                     <TableHead className="py-5 pl-8 text-[10px] font-black text-gray-900 uppercase tracking-widest w-[60px]">#</TableHead>
@@ -385,6 +386,7 @@ const DirectorsDisclosureDataSource = () => {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </div>
           </CardContent>
         </Card>
