@@ -885,7 +885,7 @@ const DirectorsDisclosureMasterData = () => {
                             {!failedImages.has(director.din) ? (
                               <div className="h-10 w-10 rounded-full overflow-hidden border flex items-center justify-center bg-gray-50">
                                 <img
-                                  src={`/api/directors-profile/${director.din}/image`}
+                                  src={`/api/directors-profile/${director.din}/image?cb=1`}
                                   alt={director.name}
                                   className="h-full w-full object-cover"
                                   onError={() => {
@@ -1148,7 +1148,7 @@ const DirectorsDisclosureMasterData = () => {
                 <div className="mx-auto relative w-32 h-32 mb-4">
                   {!failedImages.has(selectedDirectorProfile.din) ? (
                     <img
-                      src={uploadedImage || `/api/directors-profile/${selectedDirectorProfile.din}/image`}
+                      src={uploadedImage || `/api/directors-profile/${selectedDirectorProfile.din}/image?cb=1`}
                       alt={selectedDirectorProfile.name}
                       className="w-32 h-32 rounded-full border-4 border-white object-cover"
                       onError={() => {
