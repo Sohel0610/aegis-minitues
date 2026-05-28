@@ -14,14 +14,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   Table,
   TableBody,
   TableCell,
@@ -1026,15 +1018,15 @@ const DirectorsDisclosureMasterData = () => {
         </Card>
       </motion.div>
 
-      {/* Add Director Sheet */}
-      <Sheet open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <SheetContent className="bg-white sm:max-w-md w-full overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle style={{ color: '#75479C' }}>Add New Director</SheetTitle>
-            <SheetDescription>
+      {/* Add Director Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle style={{ color: '#75479C' }}>Add New Director</DialogTitle>
+            <DialogDescription>
               Enter the details of the new director below.
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="add-name">Director Name *</Label>
@@ -1056,7 +1048,7 @@ const DirectorsDisclosureMasterData = () => {
               />
             </div>
           </div>
-          <SheetFooter className="mt-6">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setIsAddDialogOpen(false)}
@@ -1071,19 +1063,19 @@ const DirectorsDisclosureMasterData = () => {
             >
               {submitting ? 'Adding...' : 'Add Director'}
             </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Edit Director Sheet */}
-      <Sheet open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <SheetContent className="bg-white sm:max-w-md w-full overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle style={{ color: '#0B74B0' }}>Edit Director</SheetTitle>
-            <SheetDescription>
+      {/* Edit Director Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle style={{ color: '#0B74B0' }}>Edit Director</DialogTitle>
+            <DialogDescription>
               Update the director's information below.
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="edit-name">Director Name *</Label>
@@ -1115,7 +1107,7 @@ const DirectorsDisclosureMasterData = () => {
               />
             </div>
           </div>
-          <SheetFooter className="mt-6">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setIsEditDialogOpen(false)}
@@ -1130,12 +1122,12 @@ const DirectorsDisclosureMasterData = () => {
             >
               {submitting ? 'Updating...' : 'Update Director'}
             </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Director Profile Sheet */}
-      <Sheet open={isProfileModalOpen} onOpenChange={(open) => {
+      {/* Director Profile Modal */}
+      <Dialog open={isProfileModalOpen} onOpenChange={(open) => {
         setIsProfileModalOpen(open);
         if (!open) {
           // Clear image upload state when closing modal
@@ -1144,13 +1136,13 @@ const DirectorsDisclosureMasterData = () => {
           setIsEditingProfile(false);
         }
       }}>
-        <SheetContent className="bg-white sm:max-w-2xl md:max-w-3xl w-full h-full overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle style={{ color: '#75479C' }}>Director Profile</SheetTitle>
-            <SheetDescription>
+        <DialogContent className="bg-white max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle style={{ color: '#75479C' }}>Director Profile</DialogTitle>
+            <DialogDescription>
               Detailed information about the director
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
 
           {selectedDirectorProfile && (
             <div className="space-y-6 py-4">
@@ -1339,16 +1331,16 @@ const DirectorsDisclosureMasterData = () => {
             </div>
           )}
 
-          <SheetFooter className="mt-4 border-t pt-4">
+          <DialogFooter className="mt-4 border-t pt-4">
             <Button
               variant="outline"
               onClick={() => setIsProfileModalOpen(false)}
             >
               Close
             </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Image Crop Modal */}
       <Dialog open={showCropModal} onOpenChange={(open) => {
