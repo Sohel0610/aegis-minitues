@@ -188,14 +188,6 @@ const DirectorRegistryIntelligence = () => {
             <p className="text-gray-500 font-medium ml-11">Governance & overboarding analysis | Registry V2.1</p>
           </div>
           <div className="flex items-center gap-3">
-            <button 
-              onClick={handleRefresh}
-              disabled={isRefreshing || !selectedDirector}
-              className="flex items-center gap-2 px-4 py-2 bg-[#0B74B0]/10 text-[#0B74B0] rounded-xl font-bold text-xs hover:bg-[#0B74B0]/20 transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              {isRefreshing ? 'Triggering...' : 'Refresh from MCA'}
-            </button>
             <Badge variant="outline" className="text-gray-500 font-bold px-4 py-1 border-gray-200">MCA live ecosystem</Badge>
           </div>
         </div>
