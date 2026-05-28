@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Users, Search, Loader2, AlertCircle, Plus, Edit, Trash2, Eye, Download, FileArchive, FileText } from "lucide-react";
+import { Users, User, Search, Loader2, AlertCircle, Plus, Edit, Trash2, Eye, Download, FileArchive, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -898,7 +898,9 @@ const DirectorsDisclosureMasterData = () => {
                                 />
                               </div>
                             ) : (
-                              <div className="h-10 w-10"></div>
+                              <div className="h-10 w-10 rounded-full overflow-hidden border flex items-center justify-center bg-gray-50 text-gray-400">
+                                <User className="h-5 w-5" />
+                              </div>
                             )}
                           </div>
                         </TableCell>
@@ -1160,7 +1162,8 @@ const DirectorsDisclosureMasterData = () => {
                       }}
                     />
                   ) : (
-                    <div className="w-32 h-32 rounded-full border-4 border-white bg-white/20 flex items-center justify-center">
+                    <div className="w-32 h-32 rounded-full border-4 border-white bg-gray-100 flex items-center justify-center text-gray-400">
+                      <User className="w-16 h-16" />
                     </div>
                   )}
 
