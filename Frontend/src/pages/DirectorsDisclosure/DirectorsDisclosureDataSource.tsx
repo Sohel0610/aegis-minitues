@@ -442,58 +442,86 @@ const DirectorsDisclosureDataSource = () => {
 
       {/* Disclosure History Modal */}
       <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
-        <DialogContent className="max-w-4xl bg-white rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-          <DialogHeader className="p-8 pb-4">
-            <div className="flex items-center justify-between">
+        <DialogContent className="max-w-4xl w-[95vw] md:w-full bg-white rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+          <DialogHeader className="p-6 md:p-8 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="h-14 w-14 rounded-2xl bg-purple-50 flex items-center justify-center">
+                <div className="h-14 w-14 rounded-2xl bg-purple-50 flex items-center justify-center shrink-0">
                   <History className="h-7 w-7 text-[#75479C]" />
                 </div>
                 <div>
-                  <DialogTitle className="text-2xl font-black text-gray-900 tracking-tight">
+                  <DialogTitle className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">
                     Disclosure History
                   </DialogTitle>
-                  <p className="text-sm text-gray-500 font-medium uppercase tracking-widest">
+                  <p className="text-xs md:text-sm text-gray-500 font-medium uppercase tracking-widest break-all">
                     {historyDisclosure?.director_name} • DIN: {historyDisclosure?.din}
                   </p>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-left sm:text-right shrink-0">
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Active Cycle</span>
                 <Badge variant="outline" className="rounded-lg font-bold border-gray-100">FY 2024-25</Badge>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="px-8 py-6 bg-gray-50">
+          <div className="px-6 py-6 md:px-8 bg-gray-50 overflow-y-auto max-h-[70vh]">
             {/* Stats Bar */}
-            <div className="grid grid-cols-3 gap-6 p-6 rounded-[1.5rem] bg-white border border-gray-100 shadow-sm mb-8">
-              <div className="border-r border-gray-50">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 p-4 md:p-6 rounded-[1.5rem] bg-white border border-gray-100 shadow-sm mb-6">
+              <div className="border-b sm:border-b-0 sm:border-r border-gray-50 pb-3 sm:pb-0">
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Total Companies</span>
-                <span className="text-3xl font-black text-[#75479C]">
-                  {Array.from(new Set(historyDisclosure?.all_files?.map(f => f.folder_name))).length || 0}
+                <span className="text-2xl md:text-3xl font-black text-[#75479C]">
+                  {Array.from(new Set(historyDisclosure?.all_files?.filter(f => f.folder_name?.toUpperCase() !== "OVERALL").map(f => f.folder_name))).length || 0}
                 </span>
               </div>
-              <div className="border-r border-gray-50">
+              <div className="border-b sm:border-b-0 sm:border-r border-gray-50 py-3 sm:py-0">
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">MBP-1 Forms</span>
-                <span className="text-3xl font-black text-[#75479C]">
-                  {historyDisclosure?.all_files?.filter(f => f.type === 'MBP-1').length || 0}
+                <span className="text-2xl md:text-3xl font-black text-[#75479C]">
+                  {historyDisclosure?.all_files?.filter(f => f.type === 'MBP-1' && f.folder_name?.toUpperCase() !== "OVERALL").length || 0}
                 </span>
               </div>
-              <div>
+              <div className="pt-3 sm:pt-0">
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">DIR-8 Forms</span>
-                <span className="text-3xl font-black text-[#75479C]">
+                <span className="text-2xl md:text-3xl font-black text-[#75479C]">
                   {historyDisclosure?.all_files?.filter(f => f.type === 'DIR-8').length || 0}
                 </span>
               </div>
             </div>
 
+            {/* Overall MBP-1 Download Banner */}
+            {(() => {
+              const overallFile = historyDisclosure?.all_files?.find(
+                f => f.folder_name?.toUpperCase() === "OVERALL" && f.type === "MBP-1"
+              );
+              if (!overallFile) return null;
+              return (
+                <div className="mb-6 p-4 bg-[#75479C]/5 border border-[#75479C]/10 rounded-[1.5rem] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-[#75479C]/10 flex items-center justify-center shrink-0">
+                      <FileText className="h-5 w-5 text-[#75479C]" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-gray-900">Consolidated Form MBP-1</h4>
+                      <p className="text-[10px] text-[#75479C] font-black uppercase tracking-widest">Unified Group Disclosures</p>
+                    </div>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    className="w-full sm:w-auto h-10 gap-2 text-xs font-black uppercase bg-[#75479C] hover:bg-[#75479C]/90 text-white rounded-xl px-4 shadow-md transition-all flex items-center justify-center"
+                    onClick={() => handleDownloadDisclosure(historyDisclosure!, overallFile.path)}
+                  >
+                    <Download className="h-4 w-4" /> Download Consolidated MBP-1
+                  </Button>
+                </div>
+              );
+            })()}
+
             {/* History Table */}
-            <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm max-h-[400px] overflow-y-auto">
-              <Table>
+            <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm max-h-[350px] overflow-y-auto overflow-x-auto">
+              <Table className="min-w-[600px] md:min-w-full">
                 <TableHeader className="bg-gray-100 sticky top-0 z-10">
                   <TableRow>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest text-gray-400 pl-6 py-4">Company Name</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest text-gray-400 pl-4 md:pl-6 py-4">Company Name</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest text-gray-400 py-4 text-center">MBP-1 Form</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest text-gray-400 py-4 text-center">DIR-8 Form</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest text-gray-400 py-4 text-center">Status</TableHead>
@@ -506,6 +534,7 @@ const DirectorsDisclosureDataSource = () => {
                     const groups: Record<string, any> = {};
                     historyDisclosure?.all_files?.forEach(file => {
                       const name = file.folder_name || "General";
+                      if (name.toUpperCase() === "OVERALL") return;
                       if (!groups[name]) {
                         groups[name] = { 
                           name, 
@@ -522,13 +551,13 @@ const DirectorsDisclosureDataSource = () => {
 
                     return Object.values(groups).map((group, idx) => (
                       <TableRow key={idx} className="hover:bg-blue-50/30 transition-colors border-gray-100">
-                        <TableCell className="py-4 pl-6">
+                        <TableCell className="py-4 pl-4 md:pl-6">
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-gray-50 flex items-center justify-center">
+                            <div className="h-10 w-10 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
                               <Building className="h-5 w-5 text-gray-400" />
                             </div>
-                            <div>
-                              <div className="text-sm font-bold text-gray-900 capitalize leading-tight">
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-gray-900 capitalize leading-tight truncate max-w-[150px] sm:max-w-xs md:max-w-none">
                                 {group.name.toLowerCase()}
                               </div>
                               <div className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">Statutory Filling</div>
@@ -590,4 +619,4 @@ const DirectorsDisclosureDataSource = () => {
   );
 };
 
-export default DirectorsDisclosureDataSource;
+export default DirectorsDisclosureDataSource;

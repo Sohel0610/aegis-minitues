@@ -71,6 +71,7 @@ interface ImageCropData {
 const DirectorsDisclosureMasterData = () => {
   const [directors, setDirectors] = useState<Director[]>([]);
   const [filteredDirectors, setFilteredDirectors] = useState<Director[]>([]);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -470,12 +471,27 @@ const DirectorsDisclosureMasterData = () => {
       if (response.ok) {
         const imageUrl = URL.createObjectURL(await response.blob());
         setUploadedImage(imageUrl);
+        setFailedImages(prev => {
+          const next = new Set(prev);
+          next.delete(din);
+          return next;
+        });
       } else {
         setUploadedImage(null);
+        setFailedImages(prev => {
+          const next = new Set(prev);
+          next.add(din);
+          return next;
+        });
       }
     } catch (err) {
       console.error('Error loading director image:', err);
       setUploadedImage(null);
+      setFailedImages(prev => {
+        const next = new Set(prev);
+        next.add(din);
+        return next;
+      });
     }
   };
 
@@ -866,16 +882,24 @@ const DirectorsDisclosureMasterData = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center">
-                            <div className="h-10 w-10 rounded-full overflow-hidden border flex items-center justify-center bg-gray-50">
-                              <img
-                                src={`/api/directors-profile/${director.din}/image`}
-                                alt={director.name}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(director.name)}&background=f0e6f7&color=75479C&bold=true`;
-                                }}
-                              />
-                            </div>
+                            {!failedImages.has(director.din) ? (
+                              <div className="h-10 w-10 rounded-full overflow-hidden border flex items-center justify-center bg-gray-50">
+                                <img
+                                  src={`/api/directors-profile/${director.din}/image`}
+                                  alt={director.name}
+                                  className="h-full w-full object-cover"
+                                  onError={() => {
+                                    setFailedImages(prev => {
+                                      const next = new Set(prev);
+                                      next.add(director.din);
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="h-10 w-10"></div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -1122,11 +1146,23 @@ const DirectorsDisclosureMasterData = () => {
               <div className="text-center bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-8 rounded-lg relative">
                 {/* Profile Image Container */}
                 <div className="mx-auto relative w-32 h-32 mb-4">
-                  <img
-                    src={uploadedImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedDirectorProfile.name)}&size=120&background=667eea&color=fff&bold=true`}
-                    alt={selectedDirectorProfile.name}
-                    className="w-32 h-32 rounded-full border-4 border-white object-cover"
-                  />
+                  {!failedImages.has(selectedDirectorProfile.din) ? (
+                    <img
+                      src={uploadedImage || `/api/directors-profile/${selectedDirectorProfile.din}/image`}
+                      alt={selectedDirectorProfile.name}
+                      className="w-32 h-32 rounded-full border-4 border-white object-cover"
+                      onError={() => {
+                        setFailedImages(prev => {
+                          const next = new Set(prev);
+                          next.add(selectedDirectorProfile.din);
+                          return next;
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="w-32 h-32 rounded-full border-4 border-white bg-white/20 flex items-center justify-center">
+                    </div>
+                  )}
 
                   {/* Upload Icon Overlay */}
                   <button
