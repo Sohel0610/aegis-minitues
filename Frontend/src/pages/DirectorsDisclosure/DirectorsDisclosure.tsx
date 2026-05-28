@@ -69,7 +69,7 @@ const DirectorsDisclosure = () => {
       },
       {
         id: 'changes',
-        label: 'Director disclosure history',
+        label: 'Disclosure history',
         icon: History,
         href: '/directors-disclosure/changes',
         isActive: currentPath.endsWith('/changes')

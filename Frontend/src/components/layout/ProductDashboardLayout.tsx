@@ -82,7 +82,7 @@ const ProductDashboardLayout = ({
           display: "flex",
           alignItems: "center",
           gap: 10,
-          padding: collapsed ? "10px 0" : "10px 12px",
+          padding: collapsed ? "6px 0" : "7px 12px",
           borderRadius: 9,
           border: "none",
           cursor: "pointer",
@@ -187,13 +187,13 @@ const ProductDashboardLayout = ({
         {/* Logo */}
         <div
           style={{
-            padding: isCollapsed ? "18px 0" : "18px 20px",
+            padding: isCollapsed ? "12px 0" : "12px 16px",
             display: "flex",
             alignItems: "center",
             gap: 10,
             justifyContent: isCollapsed ? "center" : "flex-start",
             borderBottom: `1px solid ${A.border}`,
-            minHeight: 70,
+            minHeight: 56,
             flexShrink: 0,
           }}
         >
@@ -228,11 +228,13 @@ const ProductDashboardLayout = ({
           style={{
             flex: 1,
             minHeight: 0,
-            padding: "14px 8px",
+            padding: "8px 8px",
             display: "flex",
             flexDirection: "column",
             gap: 2,
             overflowY: "auto",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
           {!isCollapsed && (

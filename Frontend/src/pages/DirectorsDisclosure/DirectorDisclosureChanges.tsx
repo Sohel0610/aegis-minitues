@@ -128,7 +128,7 @@ const DirectorDisclosureChanges = () => {
                             <History className="h-9 w-9 text-[#75479C]" />
                             <div>
                                 <CardTitle className="text-3xl font-black text-gray-900 tracking-tight">
-                                    Director disclosure history
+                                    Disclosure history
                                 </CardTitle>
                                 <CardDescription className="text-gray-500 font-medium">
                                     Track comprehensive audit trail of registry modifications
