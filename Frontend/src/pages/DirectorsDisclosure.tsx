@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { FileText, Database, BarChart3, Home, FileSpreadsheet, History, Network, Shield } from "lucide-react";
+import { FileText, Database, BarChart3, Home, FileSpreadsheet, History, Network, Shield, BookOpen, Settings } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import DirectorsDisclosureDataSource from "./DirectorsDisclosure/DirectorsDisclosureDataSource";
@@ -11,7 +11,7 @@ import DirectorDisclosureChanges from "./DirectorsDisclosure/DirectorDisclosureC
 import DirectorRegistryIntelligence from "./DirectorsDisclosure/DirectorRegistryIntelligence";
 import InstitutionalRiskMonitor from "./DirectorsDisclosure/InstitutionalRiskMonitor";
 import RegistryManagement from "./DirectorsDisclosure/RegistryManagement";
-import { Settings } from "lucide-react";
+import DirectorsDisclosureUserGuide from "./DirectorsDisclosure/DirectorsDisclosureUserGuide";
 
 type TabType = 'analytics' | 'datasource' | 'masterdata' | 'companies';
 
@@ -87,6 +87,13 @@ const DirectorsDisclosure = () => {
         icon: FileText,
         href: '/directors-disclosure/repository',
         isActive: currentPath.endsWith('/repository')
+      },
+      {
+        id: 'user-guide',
+        label: 'User Guide & Docs',
+        icon: BookOpen,
+        href: '/directors-disclosure/user-guide',
+        isActive: currentPath.endsWith('/user-guide')
       }
     ];
   }, [location.pathname]);
@@ -109,6 +116,8 @@ const DirectorsDisclosure = () => {
       return <InstitutionalRiskMonitor />;
     } else if (location.pathname.endsWith('/registry-management')) {
       return <RegistryManagement />;
+    } else if (location.pathname.endsWith('/user-guide')) {
+      return <DirectorsDisclosureUserGuide />;
     } else {
       // Default to Analytics
       return <DirectorsDisclosureAnalytics />;
@@ -124,7 +133,7 @@ const DirectorsDisclosure = () => {
 
   return (
     <ProductDashboardLayout
-      productName="Directors' Disclosure"
+      productName="Directors' Disclosure Agent"
       productRoute="/directors-disclosure"
       navigationItems={navigationItems}
     >

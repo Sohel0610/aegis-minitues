@@ -124,7 +124,7 @@ const DirectorsDisclosure = () => {
 
   return (
     <ProductDashboardLayout
-      productName="Directors' Disclosure"
+      productName="Directors' Disclosure Agent"
       productRoute="/directors-disclosure"
       navigationItems={navigationItems}
     >
