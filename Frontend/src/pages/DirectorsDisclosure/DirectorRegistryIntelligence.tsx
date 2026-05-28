@@ -453,64 +453,7 @@ const DirectorRegistryIntelligence = () => {
            </Card>
         </div>
 
-         {/* Association Benchmarking Analysis */}
-         <Card className="rounded-[2.5rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white overflow-hidden mt-10">
-            <div className="p-10 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center group">
-               <div>
-                  <h3 className="text-2xl font-black text-gray-900 tracking-tighter">Registry load density</h3>
-                  <p className="text-gray-400 font-bold text-xs uppercase tracking-[0.2em] mt-1">Cross-network association distribution</p>
-               </div>
-               <div className="p-4 bg-white rounded-2xl border border-gray-100 shadow-sm group-hover:border-[#0B74B0]/30 transition-colors">
-                  <LayoutDashboard size={28} className="text-[#0B74B0]" />
-               </div>
-            </div>
-            <CardContent className="p-10">
-               <div className="h-[350px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                     <BarChart data={loadDistributionData}>
-                        <defs>
-                           <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#0B74B0" stopOpacity={1} />
-                              <stop offset="100%" stopColor="#0B74B0" stopOpacity={0.6} />
-                           </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                        <XAxis 
-                           dataKey="name" 
-                           axisLine={false}
-                           tickLine={false}
-                           stroke="#94A3B8" 
-                           fontSize={11} 
-                           tick={{fontWeight: 'bold'}}
-                           label={{ value: 'No. of board seats held', position: 'insideBottom', offset: -10, fontSize: 9, fontWeight: 900, fill: '#94A3B8' }} 
-                        />
-                        <YAxis axisLine={false} tickLine={false} stroke="#94A3B8" fontSize={11} />
-                        <RechartsTooltip 
-                           cursor={{fill: '#F8FAFC'}}
-                           contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                        />
-                        <Bar dataKey="count" fill="url(#barGradient)" radius={[8, 8, 0, 0]} barSize={40}>
-                          <LabelList dataKey="count" position="top" style={{ fill: '#64748B', fontSize: 11, fontWeight: '800' }} />
-                        </Bar>
-                     </BarChart>
-                  </ResponsiveContainer>
-               </div>
-               <div className="mt-10 pt-10 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="text-center p-6 bg-slate-50 rounded-3xl border border-slate-100/50 hover:bg-white transition-colors duration-300">
-                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Network median</p>
-                     <p className="text-2xl font-black text-slate-900">{stats.median} Seats</p>
-                  </div>
-                  <div className="text-center p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100/50 hover:bg-white transition-colors duration-300">
-                     <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5">Ecosystem peak</p>
-                     <p className="text-2xl font-black text-indigo-900">{stats.peak} Seats</p>
-                  </div>
-                  <div className="text-center p-6 bg-rose-50/50 rounded-3xl border border-rose-100/50 hover:bg-white transition-colors duration-300">
-                     <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1.5">Anomaly threshold</p>
-                     <p className="text-2xl font-black text-rose-600">&gt; {stats.threshold} Seats</p>
-                  </div>
-               </div>
-            </CardContent>
-         </Card>
+
 
         {/* Global Registry Compliance Disclaimer */}
         <div className="mt-12 p-6 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex items-start gap-4">
