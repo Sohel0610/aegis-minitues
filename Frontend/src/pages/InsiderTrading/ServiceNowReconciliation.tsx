@@ -252,7 +252,7 @@ const ServiceNowReconciliation = () => {
   const getHeaders = () => {
     switch (activeTab) {
       case "UNSANCTIONED":
-        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Qty", "Approved Qty", "Ticket", "Batch", "State"];
+        return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Qty", "Ticket", "Batch", "State"];
       case "VOLUME_BREACH":
         return ["Insider Shareholder", "PAN", "Company", "Employee / Owner", "Traded Vol", "Approved Vol", "Excess Vol", "Ticket", "Batch", "State"];
       case "HOLDING_MISMATCH":
@@ -420,9 +420,6 @@ const ServiceNowReconciliation = () => {
                           </td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.red, fontWeight: 800 }}>
                             {record.shares_traded && record.shares_traded > 0 ? "+" : ""}{record.shares_traded?.toLocaleString()}
-                          </td>
-                          <td style={{ padding: "10px 8px", fontSize: 11, color: C.sub }}>
-                            {record.approved_volume?.toLocaleString() || "0"}
                           </td>
                           <td style={{ padding: "10px 8px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>
                             {record.ritm_number || "—"}

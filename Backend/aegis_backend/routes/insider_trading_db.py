@@ -83,23 +83,43 @@ def fetch_summary(company_name=None, batch_name=None, depository_type=None) -> L
         cur.execute(q, params)
         return [dict(r) for r in cur.fetchall()]
 
-def fetch_record_counts(company_name=None, batch_name=None, depository_type=None) -> Dict[str, int]:
+def fetch_record_counts(company_name=None, batch_name=None, depository_type=None, adani_only=False) -> Dict[str, int]:
     with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return {"TOTAL": 0}
         c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
         b_id = _resolve_id(conn, 'result_batches', 'batch_name', batch_name)
         d_id = _resolve_id(conn, 'depository_types', 'type_name', depository_type)
         cur = get_pg_cursor(conn)
-        q = "SELECT SUM(added_count) as added, SUM(removed_count) as removed, SUM(changed_count) as changed, SUM(unchanged_count) as unchanged, SUM(total_count) as total FROM summary WHERE 1=1"
-        params = []
-        if c_id: q += " AND company_id = %s"; params.append(c_id)
-        if b_id: q += " AND batch_id = %s"; params.append(b_id)
-        if d_id: q += " AND depository_id = %s"; params.append(d_id)
-        cur.execute(q, params)
-        r = cur.fetchone()
-        return {"ADDED": r['added'] or 0, "REMOVED": r['removed'] or 0, "CHANGED": r['changed'] or 0, "UNCHANGED": r['unchanged'] or 0, "TOTAL": r['total'] or 0}
+        if adani_only:
+            # For adani only, we dynamically count from the smaller table
+            where = []
+            params = []
+            if c_id: where.append("company_id = %s"); params.append(c_id)
+            if b_id: where.append("batch_id = %s"); params.append(b_id)
+            if d_id: where.append("depository_id = %s"); params.append(d_id)
+            where_clause = (" WHERE " + " AND ".join(where)) if where else ""
+            
+            q = f"SELECT status, COUNT(*) as cnt FROM adani_servicenow_records {where_clause} GROUP BY status"
+            cur.execute(q, params)
+            counts = {"ADDED": 0, "REMOVED": 0, "CHANGED": 0, "UNCHANGED": 0, "TOTAL": 0}
+            for row in cur.fetchall():
+                st = row['status'].upper() if row['status'] else 'UNCHANGED'
+                cnt = row['cnt']
+                if st in counts:
+                    counts[st] = cnt
+                counts["TOTAL"] += cnt
+            return counts
+        else:
+            q = "SELECT SUM(added_count) as added, SUM(removed_count) as removed, SUM(changed_count) as changed, SUM(unchanged_count) as unchanged, SUM(total_count) as total FROM summary WHERE 1=1"
+            params = []
+            if c_id: q += " AND company_id = %s"; params.append(c_id)
+            if b_id: q += " AND batch_id = %s"; params.append(b_id)
+            if d_id: q += " AND depository_id = %s"; params.append(d_id)
+            cur.execute(q, params)
+            r = cur.fetchone()
+            return {"ADDED": r['added'] or 0, "REMOVED": r['removed'] or 0, "CHANGED": r['changed'] or 0, "UNCHANGED": r['unchanged'] or 0, "TOTAL": r['total'] or 0}
 
-def fetch_records(status=None, company_name=None, batch_name=None, depository_type=None, search=None, limit=15, offset=0, cursor=None) -> Dict[str, Any]:
+def fetch_records(status=None, company_name=None, batch_name=None, depository_type=None, search=None, limit=15, offset=0, cursor=None, adani_only=False) -> Dict[str, Any]:
     with get_pg_connection(os.getenv('POSTGRES_DATABASE_INSIDER')) as conn:
         if not conn: return {"records": []}
         c_id = _resolve_id(conn, 'companies', 'company_name', company_name)
@@ -114,19 +134,27 @@ def fetch_records(status=None, company_name=None, batch_name=None, depository_ty
         if d_id: where.append("depository_id = %s"); params.append(d_id)
         if search:
             search_prefix = f"{search.lower()}%"
-            where.append("(lower(sr.name) LIKE %s OR lower(sr.email) LIKE %s OR lower(sr.pangir) LIKE %s)")
+            if adani_only:
+                where.append("(lower(sr.name) LIKE %s OR lower(sr.email) LIKE %s OR lower(sr.pan_card) LIKE %s)")
+            else:
+                where.append("(lower(sr.name) LIKE %s OR lower(sr.email) LIKE %s OR lower(sr.pangir) LIKE %s)")
             params.extend([search_prefix, search_prefix, search_prefix])
         
         where_clause = (" WHERE " + " AND ".join(where)) if where else ""
-        if search:
-            # Full table scan when explicitly searching
-            cur.execute(f"SELECT COUNT(*) as cnt FROM shareholder_records sr {where_clause}", params)
+        table_name = "adani_servicenow_records" if adani_only else "shareholder_records"
+        
+        if search or adani_only:
+            # Full table scan when explicitly searching or using the smaller adani table
+            cur.execute(f"SELECT COUNT(*) as cnt FROM {table_name} sr {where_clause}", params)
         else:
-            # Cap at 200 to prevent massive latency and timeout on load
-            cur.execute(f"SELECT COUNT(*) as cnt FROM (SELECT 1 FROM shareholder_records sr {where_clause} LIMIT 200) AS temp", params)
+            # Cap at 200 to prevent massive latency and timeout on load for main table
+            cur.execute(f"SELECT COUNT(*) as cnt FROM (SELECT 1 FROM {table_name} sr {where_clause} LIMIT 200) AS temp", params)
         total = cur.fetchone()['cnt']
         
-        q = f"SELECT sr.id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, sr.pangir, sr.name, sr.email, sr.position_latest, sr.position_older, sr.position_difference, sr.status FROM shareholder_records sr JOIN companies c ON sr.company_id = c.id JOIN result_batches rb ON sr.batch_id = rb.id JOIN depository_types dt ON sr.depository_id = dt.id {where_clause} ORDER BY sr.id LIMIT %s OFFSET %s"
+        if adani_only:
+            q = f"SELECT 0 as id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, sr.pan_card as pangir, sr.name, sr.email, sr.position_latest, sr.position_older, sr.position_difference, sr.status FROM {table_name} sr JOIN companies c ON sr.company_id = c.id JOIN result_batches rb ON sr.batch_id = rb.id JOIN depository_types dt ON sr.depository_id = dt.id {where_clause} ORDER BY sr.pan_card, sr.company_id LIMIT %s OFFSET %s"
+        else:
+            q = f"SELECT sr.id, c.company_name AS company, rb.batch_name AS batch, dt.type_name AS depository, sr.pangir, sr.name, sr.email, sr.position_latest, sr.position_older, sr.position_difference, sr.status FROM {table_name} sr JOIN companies c ON sr.company_id = c.id JOIN result_batches rb ON sr.batch_id = rb.id JOIN depository_types dt ON sr.depository_id = dt.id {where_clause} ORDER BY sr.id LIMIT %s OFFSET %s"
         cur.execute(q, params + [limit, offset])
         records = [dict(r) for r in cur.fetchall()]
         return {"records": records, "total": total}

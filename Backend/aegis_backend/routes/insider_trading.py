@@ -169,10 +169,11 @@ async def get_record_counts(
     company: str = Query(None),
     batch: str = Query(None),
     depository: str = Query(None),
+    adani_only: bool = Query(False),
 ):
     """Get record counts grouped by status"""
     def _fetch():
-        return pg_fetch_record_counts(company, batch, depository)
+        return pg_fetch_record_counts(company, batch, depository, adani_only)
     
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(thread_pool, _fetch)
@@ -187,9 +188,10 @@ async def get_records(
     limit: int = Query(15),
     offset: int = Query(0),
     cursor: int = Query(None),
+    adani_only: bool = Query(False),
 ):
     def _fetch():
-        return pg_fetch_records(status, company, batch, depository, search, limit, offset, cursor)
+        return pg_fetch_records(status, company, batch, depository, search, limit, offset, cursor, adani_only)
     
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(thread_pool, _fetch)
