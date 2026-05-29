@@ -623,7 +623,26 @@ async def get_director_profile(din: str):
                     FROM directors_profile.directors_profile WHERE din = %s
                 """, (din,))
                 row = cursor.fetchone()
-                if not row: raise HTTPException(status_code=404, detail="Profile not found")
+                if not row:
+                    # Fallback: Get name from master list or external board members
+                    cursor.execute("SELECT name FROM directors_master.directors WHERE din = %s", (din,))
+                    master_row = cursor.fetchone()
+                    if master_row:
+                        name = master_row["name"]
+                    else:
+                        cursor.execute("SELECT name FROM directors_master.external_board_members WHERE din = %s LIMIT 1", (din,))
+                        ext_row = cursor.fetchone()
+                        name = ext_row["name"] if ext_row else "Unknown Director"
+                    
+                    return {
+                        "name": name,
+                        "din": din,
+                        "address": "",
+                        "date_of_birth": None,
+                        "pan": "",
+                        "qualification": "",
+                        "experience": "",
+                    }
                 return {
                     "name": row["name_of_director"] or "",
                     "din": row["din"] or "",
@@ -652,6 +671,26 @@ async def update_director_profile(din: str, request: DirectorProfileUpdateReques
             if not pg_conn: raise Exception("No DB connection")
             cursor = get_pg_cursor(pg_conn)
             try:
+                # Ensure the profile row exists first (UPSERT pattern)
+                cursor.execute("SELECT 1 FROM directors_profile.directors_profile WHERE din = %s", (din,))
+                exists = cursor.fetchone()
+                if not exists:
+                    # Resolve director's name
+                    cursor.execute("SELECT name FROM directors_master.directors WHERE din = %s", (din,))
+                    master_row = cursor.fetchone()
+                    if master_row:
+                        name = master_row["name"]
+                    else:
+                        cursor.execute("SELECT name FROM directors_master.external_board_members WHERE din = %s LIMIT 1", (din,))
+                        ext_row = cursor.fetchone()
+                        name = ext_row["name"] if ext_row else "Unknown Director"
+                    
+                    cursor.execute("""
+                        INSERT INTO directors_profile.directors_profile (din, name_of_director, address, date_of_birth, pan, qualification, experience)
+                        VALUES (%s, %s, '', NULL, '', '', '')
+                    """, (din, name))
+                    pg_conn.commit()
+
                 update_fields = []
                 values = []
                 for field, val in (('address', request.address), ('date_of_birth', request.date_of_birth), 

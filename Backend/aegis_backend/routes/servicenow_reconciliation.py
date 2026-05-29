@@ -323,7 +323,7 @@ async def get_servicenow_all_records(
             sr_pans = [r['pangir'] for r in cur.fetchall() if r['pangir']]
 
             # 2. Search compliance_cache_violations
-            cur.execute("SELECT pan_card FROM public.compliance_cache_violations WHERE lower(declared_name) LIKE %s OR lower(shareholder_name) LIKE %s OR lower(email) LIKE %s OR lower(pan_card) LIKE %s LIMIT 100", (search_prefix, search_prefix, search_prefix, search_prefix))
+            cur.execute("SELECT pan_card FROM public.compliance_cache_violations WHERE lower(declared_name) LIKE %s OR lower(shareholder_name) LIKE %s OR lower(pan_card) LIKE %s LIMIT 100", (search_prefix, search_prefix, search_prefix))
             ccv_pans = [r['pan_card'] for r in cur.fetchall() if r['pan_card']]
 
             # 3. Search servicenow_holdings
@@ -472,59 +472,104 @@ async def get_servicenow_ledger(
         cur = conn.cursor()
         
         # Base query to get aggregated employee compliance history
-        query = """
-            WITH decls AS (
-                SELECT 
-                    COALESCE(NULLIF(email, ''), employee_code) as emp_id,
-                    MAX(email) as email,
-                    MAX(requested_for) as name, 
-                    MAX(employee_code) as code, 
-                    MAX(designation) as designation,
-                    COUNT(*) as decl_count
-                FROM public.servicenow_declarations
-                GROUP BY COALESCE(NULLIF(email, ''), employee_code)
-            ),
-            preclears AS (
-                SELECT 
-                    COALESCE(NULLIF(email, ''), employee_code) as emp_id,
-                    MAX(email) as email,
-                    MAX(requested_for) as name, 
-                    MAX(employee_code) as code, 
-                    MAX(designation) as designation,
-                    COUNT(*) as pc_count
-                FROM public.servicenow_preclearances
-                GROUP BY COALESCE(NULLIF(email, ''), employee_code)
-            )
-            SELECT 
-                COALESCE(d.emp_id, p.emp_id) as email,
-                COALESCE(d.name, p.name) as name,
-                COALESCE(d.code, p.code) as employee_code,
-                COALESCE(d.designation, p.designation) as designation,
-                COALESCE(d.decl_count, 0) as declarations_count,
-                COALESCE(p.pc_count, 0) as preclearances_count
-            FROM decls d
-            FULL OUTER JOIN preclears p ON d.emp_id = p.emp_id
-        """
         
-        params = []
+        search_param = f"%{search}%" if search else None
+        
         if search:
-            query += """ WHERE 
-                d.name ILIKE %s OR p.name ILIKE %s OR 
-                d.email ILIKE %s OR p.email ILIKE %s OR 
-                d.code ILIKE %s OR p.code ILIKE %s OR
-                EXISTS (
-                    SELECT 1 FROM public.servicenow_declarations sd
-                    JOIN public.servicenow_holdings sh ON sd.id = sh.declaration_id
-                    WHERE COALESCE(NULLIF(sd.email, ''), sd.employee_code) = COALESCE(d.emp_id, p.emp_id) AND sh.pan_card ILIKE %s
-                ) OR
-                EXISTS (
-                    SELECT 1 FROM public.servicenow_preclearances sp
-                    JOIN public.servicenow_preclearance_details spd ON sp.id = spd.preclearance_id
-                    WHERE COALESCE(NULLIF(sp.email, ''), sp.employee_code) = COALESCE(d.emp_id, p.emp_id) AND spd.pan_card ILIKE %s
+            query = """
+                WITH search_matches AS (
+                    SELECT COALESCE(NULLIF(email, ''), employee_code) as emp_id
+                    FROM public.servicenow_declarations
+                    WHERE requested_for ILIKE %s OR email ILIKE %s OR employee_code ILIKE %s OR ritm_number ILIKE %s
+                    UNION
+                    SELECT COALESCE(NULLIF(email, ''), employee_code) as emp_id
+                    FROM public.servicenow_preclearances
+                    WHERE requested_for ILIKE %s OR email ILIKE %s OR employee_code ILIKE %s OR ritm_number ILIKE %s
+                    UNION
+                    SELECT employee_code as emp_id
+                    FROM public.servicenow_valid_pans
+                    WHERE pan_card ILIKE %s
+                    UNION
+                    SELECT COALESCE(NULLIF(sd.email, ''), sd.employee_code) as emp_id
+                    FROM public.servicenow_holdings sh
+                    JOIN public.servicenow_declarations sd ON sh.declaration_id = sd.id
+                    WHERE sh.pan_card ILIKE %s
+                    UNION
+                    SELECT COALESCE(NULLIF(sp.email, ''), sp.employee_code) as emp_id
+                    FROM public.servicenow_preclearance_details spd
+                    JOIN public.servicenow_preclearances sp ON spd.preclearance_id = sp.id
+                    WHERE spd.pan_card ILIKE %s
+                ),
+                decls AS (
+                    SELECT 
+                        COALESCE(NULLIF(email, ''), employee_code) as emp_id,
+                        MAX(email) as email,
+                        MAX(requested_for) as name, 
+                        MAX(employee_code) as code, 
+                        MAX(designation) as designation,
+                        COUNT(*) as decl_count
+                    FROM public.servicenow_declarations
+                    GROUP BY COALESCE(NULLIF(email, ''), employee_code)
+                ),
+                preclears AS (
+                    SELECT 
+                        COALESCE(NULLIF(email, ''), employee_code) as emp_id,
+                        MAX(email) as email,
+                        MAX(requested_for) as name, 
+                        MAX(employee_code) as code, 
+                        MAX(designation) as designation,
+                        COUNT(*) as pc_count
+                    FROM public.servicenow_preclearances
+                    GROUP BY COALESCE(NULLIF(email, ''), employee_code)
                 )
+                SELECT 
+                    COALESCE(d.emp_id, p.emp_id) as email,
+                    COALESCE(d.name, p.name) as name,
+                    COALESCE(d.code, p.code) as employee_code,
+                    COALESCE(d.designation, p.designation) as designation,
+                    COALESCE(d.decl_count, 0) as declarations_count,
+                    COALESCE(p.pc_count, 0) as preclearances_count
+                FROM decls d
+                FULL OUTER JOIN preclears p ON d.emp_id = p.emp_id
+                WHERE COALESCE(d.emp_id, p.emp_id) IN (SELECT emp_id FROM search_matches)
             """
-            search_param = f"%{search}%"
-            params.extend([search_param] * 8)
+            params = [search_param] * 11
+        else:
+            query = """
+                WITH decls AS (
+                    SELECT 
+                        COALESCE(NULLIF(email, ''), employee_code) as emp_id,
+                        MAX(email) as email,
+                        MAX(requested_for) as name, 
+                        MAX(employee_code) as code, 
+                        MAX(designation) as designation,
+                        COUNT(*) as decl_count
+                    FROM public.servicenow_declarations
+                    GROUP BY COALESCE(NULLIF(email, ''), employee_code)
+                ),
+                preclears AS (
+                    SELECT 
+                        COALESCE(NULLIF(email, ''), employee_code) as emp_id,
+                        MAX(email) as email,
+                        MAX(requested_for) as name, 
+                        MAX(employee_code) as code, 
+                        MAX(designation) as designation,
+                        COUNT(*) as pc_count
+                    FROM public.servicenow_preclearances
+                    GROUP BY COALESCE(NULLIF(email, ''), employee_code)
+                )
+                SELECT 
+                    COALESCE(d.emp_id, p.emp_id) as email,
+                    COALESCE(d.name, p.name) as name,
+                    COALESCE(d.code, p.code) as employee_code,
+                    COALESCE(d.designation, p.designation) as designation,
+                    COALESCE(d.decl_count, 0) as declarations_count,
+                    COALESCE(p.pc_count, 0) as preclearances_count
+                FROM decls d
+                FULL OUTER JOIN preclears p ON d.emp_id = p.emp_id
+            """
+            params = []
+
             
         # Get total count of matching employees
         count_query = f"SELECT COUNT(*) as count FROM ({query}) AS temp"
@@ -710,31 +755,35 @@ async def get_servicenow_raw_feed(
         dec_query = """
             SELECT 
                 'Declaration' as ticket_type,
-                ritm_number,
-                requested_for as name,
-                email,
-                employee_code,
-                designation,
-                state,
-                fiscal_year,
+                sd.ritm_number,
+                sd.requested_for as name,
+                sd.email,
+                sd.employee_code,
+                sd.designation,
+                sd.state,
+                sd.fiscal_year,
                 NULL as phase,
-                declaration_date::text as date
-            FROM public.servicenow_declarations
+                sd.declaration_date::text as date,
+                vp.pan_card
+            FROM public.servicenow_declarations sd
+            LEFT JOIN public.servicenow_valid_pans vp ON vp.employee_code = sd.employee_code
         """
         
         pc_query = """
             SELECT 
                 'Pre-clearance' as ticket_type,
-                ritm_number,
-                requested_for as name,
-                email,
-                employee_code,
-                designation,
-                state,
-                fiscal_year,
-                declaration_phase as phase,
-                NULL as date
-            FROM public.servicenow_preclearances
+                sp.ritm_number,
+                sp.requested_for as name,
+                sp.email,
+                sp.employee_code,
+                sp.designation,
+                sp.state,
+                sp.fiscal_year,
+                sp.declaration_phase as phase,
+                NULL as date,
+                vp.pan_card
+            FROM public.servicenow_preclearances sp
+            LEFT JOIN public.servicenow_valid_pans vp ON vp.employee_code = sp.employee_code
         """
         
         if type.upper() == "DECLARATION":
@@ -756,10 +805,11 @@ async def get_servicenow_raw_feed(
                 email ILIKE %s OR 
                 employee_code ILIKE %s OR 
                 designation ILIKE %s OR 
-                state ILIKE %s
+                state ILIKE %s OR
+                pan_card ILIKE %s
             """
             search_param = f"%{search}%"
-            params.extend([search_param] * 6)
+            params.extend([search_param] * 7)
             
         # Get count
         count_query = f"SELECT COUNT(*) as count FROM ({final_query}) AS temp"

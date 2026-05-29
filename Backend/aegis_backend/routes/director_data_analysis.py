@@ -411,22 +411,22 @@ def get_company_count():
             cursor = get_pg_cursor(pg_conn)
             # Total unique active/non-amalgamated companies in the registry
             cursor.execute("""
-                SELECT COUNT(DISTINCT cin) AS count 
-                FROM directors_master.external_board_members 
-                WHERE COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%%'
-                  AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%%'
-                  AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
+                SELECT COUNT(DISTINCT ea.cin) AS count 
+                FROM directors_master.external_board_members ea
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                  AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
             """)
             total = cursor.fetchone()["count"] or 0
             
             # Listed companies (CIN starts with 'L')
             cursor.execute("""
-                SELECT COUNT(DISTINCT cin) AS count 
-                FROM directors_master.external_board_members 
-                WHERE cin LIKE 'L%' 
-                AND COALESCE(UPPER(status), '') NOT LIKE 'RESIGNED%%'
-                AND COALESCE(UPPER(status), '') NOT LIKE 'INACTIVE%%'
-                AND COALESCE(UPPER(status), '') != 'AMALGAMATED'
+                SELECT COUNT(DISTINCT ea.cin) AS count 
+                FROM directors_master.external_board_members ea
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE ea.cin LIKE 'L%' 
+                AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
             """)
             public = cursor.fetchone()["count"] or 0
             
@@ -448,9 +448,9 @@ def get_cross_directorship():
                 SELECT d.name, d.din, COUNT(ea.cin) AS companies
                 FROM directors_master.directors d
                 JOIN directors_master.external_board_members ea ON d.din = ea.din
-                WHERE COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%%'
-                  AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%%'
-                  AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                  AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
                 GROUP BY d.name, d.din
                 ORDER BY companies DESC
                 LIMIT 100
@@ -472,8 +472,12 @@ def get_clustering():
                 JOIN directors_master.external_board_members ea2 ON ea1.cin = ea2.cin AND ea1.din < ea2.din
                 JOIN directors_master.directors d1 ON ea1.din = d1.din
                 JOIN directors_master.directors d2 ON ea2.din = d2.din
-                WHERE COALESCE(UPPER(ea1.status), '') NOT LIKE 'RESIGNED%' AND COALESCE(UPPER(ea1.status), '') NOT LIKE 'INACTIVE%' AND COALESCE(UPPER(ea1.status), '') != 'AMALGAMATED'
-                  AND COALESCE(UPPER(ea2.status), '') NOT LIKE 'RESIGNED%' AND COALESCE(UPPER(ea2.status), '') NOT LIKE 'INACTIVE%' AND COALESCE(UPPER(ea2.status), '') != 'AMALGAMATED'
+                LEFT JOIN directors_data.companies c1 ON ea1.cin = c1.cin
+                LEFT JOIN directors_data.companies c2 ON ea2.cin = c2.cin
+                WHERE (ea1.status IS NULL OR ea1.status = '' OR ea1.status = 'None' OR ea1.status ILIKE 'ACTIVE%%')
+                  AND (c1.status IS NULL OR c1.status = '' OR c1.status = 'None' OR c1.status ILIKE 'ACTIVE%%')
+                  AND (ea2.status IS NULL OR ea2.status = '' OR ea2.status = 'None' OR ea2.status ILIKE 'ACTIVE%%')
+                  AND (c2.status IS NULL OR c2.status = '' OR c2.status = 'None' OR c2.status ILIKE 'ACTIVE%%')
                 GROUP BY d1.name, d2.name
                 ORDER BY shared_companies DESC
                 LIMIT 30
@@ -530,9 +534,9 @@ def get_wtd_count():
                 SELECT d.name, COUNT(ea.cin) as positions
                 FROM directors_master.directors d
                 JOIN directors_master.external_board_members ea ON d.din = ea.din
-                WHERE COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%%'
-                  AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%%'
-                  AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                  AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
                 GROUP BY d.name
                 ORDER BY positions DESC
                 LIMIT 50
@@ -557,9 +561,9 @@ def get_all_companies_with_director_count():
                            SELECT 1 FROM directors_data.companies c WHERE c.cin = ea.cin
                        ) as is_group
                 FROM directors_master.external_board_members ea
-                WHERE COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%%'
-                  AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%%'
-                  AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
+                LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+                WHERE (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                  AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
                 GROUP BY ea.cin, ea.company_name
                 ORDER BY is_group DESC, director_count DESC, ea.company_name ASC
             """)

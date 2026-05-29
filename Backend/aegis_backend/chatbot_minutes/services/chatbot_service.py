@@ -1,4 +1,8 @@
 import logging
+import os
+import json
+import subprocess
+import tempfile
 from typing import Dict, List
 from openai import AzureOpenAI
 import groq
@@ -19,18 +23,25 @@ class ChatbotService:
         self.azure_client = None
         
         if settings.GROQ_API_KEY and settings.GROQ_API_KEY != "your-groq-api-key":
-            self.groq_client = groq.Groq(api_key=settings.GROQ_API_KEY)
-            logger.info(f"Groq LLM initialized: {settings.GROQ_MODEL}")
+            try:
+                self.groq_client = groq.Groq(api_key=settings.GROQ_API_KEY)
+                logger.info(f"Groq LLM initialized: {settings.GROQ_MODEL}")
+            except Exception as e:
+                logger.warning(f"Could not initialize Groq client: {e}")
             
         if settings.AZURE_OPENAI_API_KEY:
-            self.azure_client = AzureOpenAI(
-                azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-                api_key=settings.AZURE_OPENAI_API_KEY,
-                api_version=settings.AZURE_OPENAI_API_VERSION
-            )
-            logger.info("Azure OpenAI LLM initialized")
+            try:
+                self.azure_client = AzureOpenAI(
+                    azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+                    api_key=settings.AZURE_OPENAI_API_KEY,
+                    api_version=settings.AZURE_OPENAI_API_VERSION
+                )
+                logger.info("Azure OpenAI LLM initialized")
+            except Exception as e:
+                logger.warning(f"Could not initialize AzureOpenAI Python client: {e}. Subprocess curl will be used.")
+                self.azure_client = None
             
-        if not self.groq_client and not self.azure_client:
+        if not self.groq_client and not settings.AZURE_OPENAI_API_KEY:
             logger.warning("No LLM API key configured for ChatbotService")
 
     def process_query(
@@ -118,17 +129,69 @@ Always cite source filenames."""
 
         try:
             # Logic: Try Azure first, fallback to Groq if Azure fails or is unavailable
-            if self.azure_client:
+            if settings.AZURE_OPENAI_API_KEY:
                 try:
-                    response = self.azure_client.chat.completions.create(
-                        model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
-                        messages=messages,
-                        temperature=0.4,
-                        max_tokens=2048
-                    )
-                    return response.choices[0].message.content
+                    # Prepare payload
+                    prompt_data = {
+                        "messages": messages,
+                        "temperature": 0.4,
+                        "max_tokens": 2048
+                    }
+                    
+                    # Write payload to a temporary file
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', encoding='utf-8', delete=False) as f:
+                        json.dump(prompt_data, f, indent=2, ensure_ascii=False)
+                        prompt_file = f.name
+                        
+                    endpoint = settings.AZURE_OPENAI_ENDPOINT
+                    deployment = settings.AZURE_OPENAI_DEPLOYMENT_NAME
+                    api_key = settings.AZURE_OPENAI_API_KEY
+                    api_version = settings.AZURE_OPENAI_API_VERSION
+                    
+                    api_url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+                    
+                    if os.name == 'nt':
+                        # Windows - quote file path properly and use shell execution
+                        curl_command = f'curl -s -k -X POST "{api_url}" -H "Content-Type: application/json" -H "api-key: {api_key}" -d "@{prompt_file}"'
+                        result = subprocess.run(curl_command, capture_output=True, encoding='utf-8', errors='replace', shell=True, timeout=45)
+                    else:
+                        # Unix/Linux/Mac
+                        curl_command = [
+                            'curl', '-s', '-k', '-X', 'POST', api_url,
+                            '-H', 'Content-Type: application/json',
+                            '-H', f'api-key: {api_key}',
+                            '-d', f'@{prompt_file}'
+                        ]
+                        result = subprocess.run(curl_command, capture_output=True, encoding='utf-8', errors='replace', timeout=45)
+                        
+                    # Clean up file
+                    if os.path.exists(prompt_file):
+                        os.unlink(prompt_file)
+                        
+                    if result.returncode != 0:
+                        error_msg = result.stderr if result.stderr else "Unknown error"
+                        raise Exception(f"Curl command failed with return code {result.returncode}: {error_msg}")
+                        
+                    if not result.stdout:
+                        raise Exception("No response from Azure OpenAI via curl")
+                        
+                    response_data = json.loads(result.stdout)
+                    
+                    if "error" in response_data:
+                        error_message = response_data["error"]
+                        if isinstance(error_message, dict) and "message" in error_message:
+                            raise Exception(f"Azure API error: {error_message['message']}")
+                        else:
+                            raise Exception(f"Azure API error: {error_message}")
+                            
+                    if "choices" in response_data and len(response_data["choices"]) > 0:
+                        if "message" in response_data["choices"][0] and "content" in response_data["choices"][0]["message"]:
+                            return response_data["choices"][0]["message"]["content"].strip()
+                    
+                    raise Exception("Invalid API response format from curl")
+                    
                 except Exception as azure_err:
-                    logger.warning(f"Azure OpenAI call failed: {azure_err}. Attempting Groq fallback...")
+                    logger.warning(f"Azure OpenAI curl call failed: {azure_err}. Attempting Groq fallback...")
                     if self.groq_client:
                         response = self.groq_client.chat.completions.create(
                             model=settings.GROQ_MODEL,

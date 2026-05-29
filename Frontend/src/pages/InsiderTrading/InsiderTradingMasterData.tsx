@@ -69,6 +69,7 @@ const InsiderTradingMasterData = () => {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [counts, setCounts] = useState<Record<string, number>>({ ADDED: 0, REMOVED: 0, CHANGED: 0, UNCHANGED: 0, TOTAL: 0 });
+  const [adaniOnly, setAdaniOnly] = useState(false);
 
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -85,15 +86,17 @@ const InsiderTradingMasterData = () => {
   useEffect(() => {
     setOffset(0);
     fetchCounts();
-  }, [filters.company, filters.batch, filters.depository]);
+  }, [filters.company, filters.batch, filters.depository, adaniOnly]);
 
   useEffect(() => {
     fetchRecords();
-  }, [filters.company, filters.batch, filters.depository, statusFilter, offset, debouncedSearch]);
+  }, [filters.company, filters.batch, filters.depository, statusFilter, offset, debouncedSearch, adaniOnly]);
 
   const fetchCounts = async () => {
     try {
-      const qs = buildQuery();
+      const extra: Record<string, string | number | boolean> = {};
+      if (adaniOnly) extra.adani_only = true;
+      const qs = buildQuery(extra);
       const res = await fetch(`/api/insider-trading/counts${qs}`);
       if (res.ok) {
         const data = await res.json();
@@ -109,9 +112,10 @@ const InsiderTradingMasterData = () => {
       setLoading(true);
       setError(null);
 
-      const extra: Record<string, string | number> = { limit: RECORDS_PER_PAGE, offset };
+      const extra: Record<string, string | number | boolean> = { limit: RECORDS_PER_PAGE, offset };
       if (statusFilter) extra.status = statusFilter;
       if (debouncedSearch) extra.search = debouncedSearch;
+      if (adaniOnly) extra.adani_only = true;
 
       const qs = buildQuery(extra);
       const res = await fetch(`/api/insider-trading/records${qs}`);
@@ -232,14 +236,37 @@ const InsiderTradingMasterData = () => {
               );
             })}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
-            <Search size={13} color={C.muted} />
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by PAN or name…"
-              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Adani" }}
-            />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={() => setAdaniOnly(!adaniOnly)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                fontSize: 12, fontWeight: 700, fontFamily: "Adani, sans-serif",
+                background: adaniOnly ? "linear-gradient(135deg, #0057B8, #003087)" : C.bg,
+                color: adaniOnly ? "#fff" : C.text,
+                border: adaniOnly ? "none" : `1px solid ${C.border}`,
+                boxShadow: adaniOnly ? "0 4px 12px rgba(0,87,184,0.3)" : "none",
+                transition: "all 0.2s"
+              }}
+            >
+              <div style={{
+                width: 16, height: 16, borderRadius: "50%", background: adaniOnly ? "#fff" : "transparent",
+                border: adaniOnly ? "none" : `2px solid ${C.sub}`, display: "flex", alignItems: "center", justifyContent: "center"
+              }}>
+                {adaniOnly && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#0057B8" }} />}
+              </div>
+              Adani Employees Only
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}` }}>
+              <Search size={13} color={C.muted} />
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by PAN or name…"
+                style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: C.text, width: 200, fontFamily: "Adani" }}
+              />
+            </div>
           </div>
         </div>
 

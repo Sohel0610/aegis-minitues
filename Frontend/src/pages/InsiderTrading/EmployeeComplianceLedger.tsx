@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Loader2,
   Search,
@@ -86,6 +86,7 @@ interface RawTicketItem {
   fiscal_year: string | null;
   phase: string | null;
   date: string | null;
+  pan_card?: string | null;
 }
 
 const EmployeeComplianceLedger = () => {
@@ -144,7 +145,7 @@ const EmployeeComplianceLedger = () => {
     if (activeMainTab === "RAW_FEED") {
       fetchRawFeed();
     }
-  }, [rawSearch, rawFilterType, rawPage, activeMainTab]);
+  }, [rawSearch, rawFilterType, activeMainTab]);
 
   // Reset pagination when search or filters change on Raw Feed
   useEffect(() => {
@@ -199,8 +200,7 @@ const EmployeeComplianceLedger = () => {
   const fetchRawFeed = async () => {
     try {
       setLoadingRaw(true);
-      const offset = (rawPage - 1) * limitPerPage;
-      let url = `/api/servicenow/raw-feed?limit=${limitPerPage}&offset=${offset}&type=${rawFilterType}`;
+      let url = `/api/servicenow/raw-feed?limit=5000&offset=0&type=${rawFilterType}`;
       if (rawSearch) {
         url += `&search=${encodeURIComponent(rawSearch)}`;
       }
@@ -217,6 +217,17 @@ const EmployeeComplianceLedger = () => {
       setLoadingRaw(false);
     }
   };
+
+  const filteredRawTickets = useMemo(() => {
+    return rawTickets.filter(t => t.date && t.date.trim() !== "");
+  }, [rawTickets]);
+
+  const paginatedTickets = useMemo(() => {
+    const startIndex = (rawPage - 1) * limitPerPage;
+    return filteredRawTickets.slice(startIndex, startIndex + limitPerPage);
+  }, [filteredRawTickets, rawPage, limitPerPage]);
+
+  const finalRawCount = filteredRawTickets.length;
 
   const handleRowClick = async (ritm: string) => {
     if (expandedRitm === ritm) {
@@ -347,7 +358,7 @@ const EmployeeComplianceLedger = () => {
                   type="text"
                   value={ledgerSearch}
                   onChange={(e) => setLedgerSearch(e.target.value)}
-                  placeholder="Search name, code, or PAN..."
+                  placeholder="Search by name, PAN, or RITM..."
                   style={{
                     width: "100%",
                     padding: "9px 12px 9px 38px",
@@ -724,7 +735,7 @@ const EmployeeComplianceLedger = () => {
                   type="text"
                   value={rawSearch}
                   onChange={(e) => setRawSearch(e.target.value)}
-                  placeholder="Search raw tickets..."
+                  placeholder="Search by name, PAN, or RITM..."
                   style={{
                     width: 250,
                     padding: "7px 12px 7px 34px",
@@ -787,166 +798,75 @@ const EmployeeComplianceLedger = () => {
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 150 }}>RITM Number</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 140 }}>Ticket Type</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left" }}>Employee Details</th>
+                    <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 100 }}>PAN</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 120 }}>Fiscal Year</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 140 }}>State</th>
                     <th style={{ padding: "10px 14px", fontSize: 9, color: C.text, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "left", width: 130 }}>Date Ingested</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rawTickets.map((ticket, index) => {
+                  {paginatedTickets.map((ticket, index) => {
                     const srNo = (rawPage - 1) * limitPerPage + index + 1;
-                    const isExpanded = expandedRitm === ticket.ritm_number;
-                    
                     return (
-                      <React.Fragment key={ticket.ritm_number}>
-                        {/* Parent Row */}
-                        <tr 
-                          onClick={() => handleRowClick(ticket.ritm_number)}
-                          style={{ 
-                            borderBottom: isExpanded ? "none" : `1px solid ${C.border}`, 
-                            background: isExpanded ? "rgba(0,102,179,0.03)" : (index % 2 === 0 ? "#FFFFFF" : C.bg),
-                            cursor: "pointer"
-                          }} 
-                          className="hover:bg-slate-100 transition-colors"
-                        >
-                          {/* Serial No */}
-                          <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub }}>{srNo}</td>
-                          
-                          {/* RITM Number */}
-                          <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 700, color: C.orange }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              {isExpanded ? <ChevronUp size={14} color={C.orange} /> : <ChevronDown size={14} color={C.orange} />}
-                              {ticket.ritm_number}
+                      <tr 
+                        key={ticket.ritm_number}
+                        style={{ 
+                          borderBottom: `1px solid ${C.border}`, 
+                          background: index % 2 === 0 ? "#FFFFFF" : C.bg
+                        }} 
+                        className="hover:bg-slate-100 transition-colors"
+                      >
+                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub }}>{srNo}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 700, color: C.orange }}>
+                          {ticket.ritm_number}
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            background: ticket.ticket_type === "Declaration" ? "rgba(0,199,138,0.08)" : "rgba(99,102,241,0.08)",
+                            color: ticket.ticket_type === "Declaration" ? C.green : C.red
+                          }}>
+                            {ticket.ticket_type}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: C.text }}>{ticket.name || ""}</div>
+                          <div style={{ fontSize: 10, color: C.sub }}>{ticket.email}</div>
+                          {ticket.designation && (
+                            <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>
+                              {ticket.designation} {ticket.employee_code ? `(Code: ${ticket.employee_code})` : ""}
                             </div>
-                          </td>
-                          
-                          {/* Ticket Type */}
-                          <td style={{ padding: "12px 14px" }}>
-                            <span style={{
-                              fontSize: 9,
-                              fontWeight: 700,
-                              padding: "3px 8px",
-                              borderRadius: 6,
-                              background: ticket.ticket_type === "Declaration" ? "rgba(0,199,138,0.08)" : "rgba(99,102,241,0.08)",
-                              color: ticket.ticket_type === "Declaration" ? C.green : C.red
-                            }}>
-                              {ticket.ticket_type}
-                            </span>
-                          </td>
-                          
-                          {/* Employee details */}
-                          <td style={{ padding: "12px 14px" }}>
-                            <div style={{ fontWeight: 700, fontSize: 12, color: C.text }}>{ticket.name || "N/A"}</div>
-                            <div style={{ fontSize: 10, color: C.sub }}>{ticket.email}</div>
-                            {ticket.designation && (
-                              <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>
-                                {ticket.designation} {ticket.employee_code ? `(Code: ${ticket.employee_code})` : ""}
-                              </div>
-                            )}
-                          </td>
-                          
-                          {/* Fiscal Year */}
-                          <td style={{ padding: "12px 14px", fontSize: 11, color: C.text }}>
-                            {ticket.fiscal_year ? ticket.fiscal_year : "N/A"}
-                          </td>
-                          
-                          {/* State */}
-                          <td style={{ padding: "12px 14px" }}>
-                            <span style={{
-                              fontSize: 9,
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              padding: "2px 8px",
-                              borderRadius: 12,
-                              background: getStatusStyle(ticket.state).bg,
-                              color: getStatusStyle(ticket.state).color
-                            }}>
-                              {ticket.state || "Ingested"}
-                            </span>
-                          </td>
-                          
-                          {/* Date Ingested */}
-                          <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub, whiteSpace: "nowrap" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                              <Calendar size={11} color={C.muted} />
-                              <span>{ticket.date ? ticket.date.split(" ")[0] : "N/A"}</span>
-                            </div>
-                          </td>
-                        </tr>
-
-                        {/* Expandable Child Row */}
-                        {isExpanded && (
-                          <tr style={{ background: "rgba(0,102,179,0.015)", borderBottom: `1px solid ${C.border}` }}>
-                            <td colSpan={7} style={{ padding: "12px 24px 20px" }}>
-                              <div style={{
-                                padding: "16px",
-                                border: `1px solid ${C.border}`,
-                                borderRadius: 10,
-                                background: "#FFFFFF",
-                                boxShadow: "inset 0 1px 3px rgba(0,0,0,0.02)"
-                              }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
-                                  <Database size={13} color={C.orange} />
-                                  <span>ServiceNow Raw Holdings / Details payload for {ticket.ritm_number}</span>
-                                </div>
-
-                                {loadingRitm ? (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0" }}>
-                                    <Loader2 size={16} color={C.orange} style={{ animation: "spin 1s linear infinite" }} />
-                                    <span style={{ fontSize: 11, color: C.sub }}>Loading ticket items...</span>
-                                  </div>
-                                ) : !ritmDetails || !ritmDetails.details || ritmDetails.details.length === 0 ? (
-                                  <div style={{ fontSize: 11, color: C.muted, padding: "6px 0" }}>
-                                    No details or holdings found for this transaction.
-                                  </div>
-                                ) : (
-                                  <div style={{ overflowX: "auto" }}>
-                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                      <thead>
-                                        <tr style={{ background: "rgba(0,0,0,0.02)", borderBottom: `1px solid ${C.border}` }}>
-                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left", width: 50 }}>SR</th>
-                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>Beneficiary</th>
-                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>Relationship</th>
-                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>PAN Card</th>
-                                          {ticket.ticket_type === "Declaration" && (
-                                            <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "left" }}>Company</th>
-                                          )}
-                                          <th style={{ padding: "6px 12px", fontSize: 9, color: C.sub, fontWeight: 700, textAlign: "right" }}>
-                                            {ticket.ticket_type === "Declaration" ? "Declared Quantity" : "Approved Quantity"}
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {ritmDetails.details.map((row: any, rIdx: number) => (
-                                          <tr key={rIdx} style={{ borderBottom: rIdx === ritmDetails.details.length - 1 ? "none" : `1px solid ${C.border}` }}>
-                                            <td style={{ padding: "8px 12px", fontSize: 10, color: C.muted }}>{rIdx + 1}</td>
-                                            <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 600 }}>{row.name}</td>
-                                            <td style={{ padding: "8px 12px", fontSize: 10, color: C.sub, textTransform: "capitalize" }}>{row.relationship}</td>
-                                            <td style={{ padding: "8px 12px", fontSize: 11, color: C.orange, fontFamily: "monospace", fontWeight: 700 }}>{row.pan_card || "N/A"}</td>
-                                            {ticket.ticket_type === "Declaration" && (
-                                              <td style={{ padding: "8px 12px" }}>
-                                                <span style={{ fontSize: 9, background: "rgba(0,102,179,0.06)", color: C.orange, padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
-                                                  {row.company_name}
-                                                </span>
-                                              </td>
-                                            )}
-                                            <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 700, textAlign: "right", color: C.text }}>
-                                              {ticket.ticket_type === "Declaration" 
-                                                ? (row.declared_quantity ? parseInt(String(row.declared_quantity)).toLocaleString() : "0")
-                                                : (row.approved_quantity ? parseInt(String(row.approved_quantity)).toLocaleString() : "0")
-                                              }
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.text, fontWeight: 700, fontFamily: "monospace" }}>
+                          {ticket.pan_card || ""}
+                        </td>
+                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.text }}>
+                          {ticket.fiscal_year ? ticket.fiscal_year : ""}
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            padding: "2px 8px",
+                            borderRadius: 12,
+                            background: getStatusStyle(ticket.state).bg,
+                            color: getStatusStyle(ticket.state).color
+                          }}>
+                            {formatState(ticket.state)}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 14px", fontSize: 11, color: C.sub, whiteSpace: "nowrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <Calendar size={11} color={C.muted} />
+                            <span>{ticket.date ? ticket.date.split(" ")[0] : ""}</span>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -955,10 +875,10 @@ const EmployeeComplianceLedger = () => {
           </div>
 
           {/* Pagination Controls */}
-          {rawTotalCount > limitPerPage && (
+          {finalRawCount > limitPerPage && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 }}>
               <div style={{ fontSize: 11, color: C.sub }}>
-                Showing <strong>{((rawPage - 1) * limitPerPage) + 1}</strong> to <strong>{Math.min(rawPage * limitPerPage, rawTotalCount)}</strong> of <strong>{rawTotalCount.toLocaleString()}</strong> tickets
+                Showing <strong>{((rawPage - 1) * limitPerPage) + 1}</strong> to <strong>{Math.min(rawPage * limitPerPage, finalRawCount)}</strong> of <strong>{finalRawCount.toLocaleString()}</strong> tickets
               </div>
               
               <div style={{ display: "flex", gap: 8 }}>
@@ -983,7 +903,7 @@ const EmployeeComplianceLedger = () => {
                   Prev
                 </button>
                 <button
-                  disabled={rawPage * limitPerPage >= rawTotalCount || loadingRaw}
+                  disabled={rawPage * limitPerPage >= finalRawCount || loadingRaw}
                   onClick={() => setRawPage(prev => prev + 1)}
                   style={{
                     display: "flex",
@@ -992,9 +912,9 @@ const EmployeeComplianceLedger = () => {
                     padding: "6px 12px",
                     borderRadius: 6,
                     border: `1px solid ${C.border}`,
-                    background: rawPage * limitPerPage >= rawTotalCount ? "transparent" : "#FFF",
-                    color: rawPage * limitPerPage >= rawTotalCount ? C.muted : C.text,
-                    cursor: rawPage * limitPerPage >= rawTotalCount ? "not-allowed" : "pointer",
+                    background: rawPage * limitPerPage >= finalRawCount ? "transparent" : "#FFF",
+                    color: rawPage * limitPerPage >= finalRawCount ? C.muted : C.text,
+                    cursor: rawPage * limitPerPage >= finalRawCount ? "not-allowed" : "pointer",
                     fontSize: 11,
                     fontWeight: 700
                   }}

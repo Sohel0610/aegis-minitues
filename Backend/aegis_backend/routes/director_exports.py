@@ -46,7 +46,10 @@ async def fetch_consolidated_data(din: str):
             SELECT a.*, c.status as company_status
             FROM directors_master.external_board_members a
             LEFT JOIN directors_data.companies c ON a.cin = c.cin
-            WHERE TRIM(a.din) = TRIM(%s) ORDER BY a.appointment_date DESC
+            WHERE TRIM(a.din) = TRIM(%s)
+              AND (a.status IS NULL OR a.status = '' OR a.status = 'None' OR a.status ILIKE 'ACTIVE%%')
+              AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
+            ORDER BY a.appointment_date DESC
         """, (din,))
         associations = cursor.fetchall() or []
         
