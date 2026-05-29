@@ -244,6 +244,7 @@ async def get_directors_disclosures():
                         'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
                         'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
                     )
+                    AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
                 ) as is_kmp
             FROM directors_master.directors d
             LEFT JOIN directors_profile.directors_profile p
@@ -259,6 +260,7 @@ async def get_directors_disclosures():
             WHERE EXISTS (
                 SELECT 1 FROM directors_master.external_board_members ea
                 WHERE TRIM(ea.din) = TRIM(d.din)
+                AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
             )
             ORDER BY d.name ASC
         """)
@@ -336,6 +338,7 @@ async def get_directors_master():
                            'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
                            'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
                        )
+                       AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
                    ) as is_kmp
             FROM directors_master.directors d
             LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)

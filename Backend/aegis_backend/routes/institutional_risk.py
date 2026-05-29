@@ -362,10 +362,17 @@ def get_board_interlock():
                 FALSE                          AS is_group_director
             FROM directors_master.external_board_members ebm
             WHERE
-                -- Only on CINs where at least one Adani group director also sits
-                EXISTS (
+                -- Exclude resigned or inactive associations for the external board member
+                COALESCE(UPPER(ebm.status), '') NOT LIKE 'RESIGNED%'
+                AND COALESCE(UPPER(ebm.status), '') NOT LIKE 'INACTIVE%'
+                AND COALESCE(UPPER(ebm.status), '') != 'AMALGAMATED'
+                -- Only on CINs where at least one Adani group director also sits active
+                AND EXISTS (
                     SELECT 1 FROM directors_master.external_board_members ea
                     WHERE ea.cin = ebm.cin
+                      AND COALESCE(UPPER(ea.status), '') NOT LIKE 'RESIGNED%'
+                      AND COALESCE(UPPER(ea.status), '') NOT LIKE 'INACTIVE%'
+                      AND COALESCE(UPPER(ea.status), '') != 'AMALGAMATED'
                 )
                 -- Exclude people who ARE Adani group directors
                 AND NOT EXISTS (

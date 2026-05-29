@@ -133,6 +133,7 @@ async def get_company_compliance_status(cin: str, year: str = "2024-25"):
             FROM directors_master.external_board_members ebm
             LEFT JOIN directors_master.directors d ON ebm.din = d.din
             WHERE ebm.cin = %s
+              AND (ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None' OR ebm.status ILIKE 'ACTIVE%%')
             ORDER BY ebm.name ASC
         """, (cin,))
         directors = cur.fetchall()
