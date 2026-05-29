@@ -83,7 +83,17 @@ const DirectorRegistryIntelligence = () => {
       setAssociations([]);
       const res = await fetch(`/api/director-intelligence/associations/${din}`);
       const data = await res.json();
-      setAssociations(data);
+      if (Array.isArray(data)) {
+        // Filter out resigned, inactive or non-active board seats
+        const activeAssociations = data.filter((a: Association) => {
+          if (!a.status) return true;
+          const statusLower = a.status.toLowerCase().trim();
+          return !statusLower.includes("resigned") && !statusLower.includes("inactive");
+        });
+        setAssociations(activeAssociations);
+      } else {
+        setAssociations([]);
+      }
     } catch (err) {
       console.error("Failed to fetch associations", err);
     }

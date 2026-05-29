@@ -241,7 +241,7 @@ const InsiderTradingMasterData = () => {
               onClick={() => setAdaniOnly(!adaniOnly)}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                padding: "7px 14px", borderRadius: 8, cursor: "pointer",
                 fontSize: 12, fontWeight: 700, fontFamily: "Adani, sans-serif",
                 background: adaniOnly ? "linear-gradient(135deg, #0057B8, #003087)" : C.bg,
                 color: adaniOnly ? "#fff" : C.text,
