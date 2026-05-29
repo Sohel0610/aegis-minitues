@@ -214,10 +214,7 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
                     company_name = EXCLUDED.company_name,
                     designation = EXCLUDED.designation,
                     appointment_date = EXCLUDED.appointment_date,
-                    status = CASE 
-                        WHEN directors_master.external_board_members.status = 'Resigned' THEN 'Resigned'
-                        ELSE EXCLUDED.status 
-                    END
+                    status = EXCLUDED.status
             """, (
                 din, cin, com_name, assoc.get('designation'),
                 assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
@@ -359,10 +356,7 @@ if __name__ == "__main__":
                                     company_name = EXCLUDED.company_name,
                                     designation = EXCLUDED.designation,
                                     appointment_date = EXCLUDED.appointment_date,
-                                    status = CASE 
-                                        WHEN directors_master.external_board_members.status = 'Resigned' THEN 'Resigned'
-                                        ELSE EXCLUDED.status 
-                                    END
+                                    status = EXCLUDED.status
                             """, (din, cin, com_name, assoc.get('designation'),
                                 assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
                                 assoc.get('status', 'Active')))

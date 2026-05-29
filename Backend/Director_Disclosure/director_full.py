@@ -138,7 +138,7 @@ def main():
         din_to_fetch = sys.argv[1]
     else:
         # Fallback to example DIN
-        din_to_fetch = "00006273"
+        din_to_fetch = "11330419"
     
     print(f"Fetching complete profile for DIN: {din_to_fetch}...")
     data = fetch_director_data(din_to_fetch)
