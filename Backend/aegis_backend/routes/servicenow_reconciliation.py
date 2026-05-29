@@ -323,7 +323,7 @@ async def get_servicenow_all_records(
             sr_pans = [r['pangir'] for r in cur.fetchall() if r['pangir']]
 
             # 2. Search compliance_cache_violations
-            cur.execute("SELECT pan_card FROM public.compliance_cache_violations WHERE lower(declared_name) LIKE %s OR lower(shareholder_name) LIKE %s OR lower(email) LIKE %s OR lower(pan_card) LIKE %s LIMIT 100", (search_prefix, search_prefix, search_prefix, search_prefix))
+            cur.execute("SELECT pan_card FROM public.compliance_cache_violations WHERE lower(declared_name) LIKE %s OR lower(shareholder_name) LIKE %s OR lower(pan_card) LIKE %s LIMIT 100", (search_prefix, search_prefix, search_prefix))
             ccv_pans = [r['pan_card'] for r in cur.fetchall() if r['pan_card']]
 
             # 3. Search servicenow_holdings
