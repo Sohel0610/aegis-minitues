@@ -54,7 +54,10 @@ const CreateAgenda = () => {
         try {
             const res = await fetch('/api/minutes-chatbot/query', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-User-Email': userEmail
+                },
                 body: JSON.stringify({
                     query: userMsg.text,
                     session_id: 'session_agenda_page'
