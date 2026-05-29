@@ -17,7 +17,7 @@ FETCH_DIN_URL = "https://www.falconebiz.com/api/director_details"
 UPDATE_DIN_URL = "https://www.falconebiz.com/api/request_update"
 FETCH_CIN_URL = "https://www.falconebiz.com/api/company_details"
 
-DIN = "11284690"
+DIN = "11330419"
 
 # Adani Cloud Proxy
 PROXIES = {
