@@ -198,14 +198,13 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
         
         # 2. Sync Associations
         associations = api_data.get('association', [])
+        api_cins = []
         for assoc in associations:
             cin = assoc.get('cin')
             com_name = assoc.get('com_name', 'Unknown')
             if not cin or cin == 'N/A': continue
+            api_cins.append(cin)
             
-            # Use a conditional update for status: 
-            # If the current status is 'Resigned', don't let the (potentially stale) 
-            # Director API overwrite it back to 'Active' unless it's a very fresh update.
             cur.execute("""
                 INSERT INTO directors_master.external_board_members 
                 (din, cin, company_name, designation, appointment_date, status)
@@ -220,6 +219,20 @@ def sync_worker(director, adani_universe, session, idx, total, stats_lock, stats
                 assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
                 assoc.get('status', 'Active')
             ))
+            
+        # Mark missing associations as Resigned
+        if api_cins:
+            cur.execute("""
+                UPDATE directors_master.external_board_members
+                SET status = 'Resigned'
+                WHERE din = %s AND cin NOT IN %s
+            """, (din, tuple(api_cins)))
+        else:
+            cur.execute("""
+                UPDATE directors_master.external_board_members
+                SET status = 'Resigned'
+                WHERE din = %s
+            """, (din,))
         
         conn.commit()
         with stats_lock:
@@ -342,11 +355,12 @@ if __name__ == "__main__":
                         
                         # 2. Sync Associations
                         associations = api_data.get('association', [])
+                        api_cins = []
                         for assoc in associations:
                             cin = assoc.get('cin')
                             com_name = assoc.get('com_name', 'Unknown')
                             if not cin or cin == 'N/A': continue
-                            is_adani = "ADANI" in com_name.upper()
+                            api_cins.append(cin)
                             
                             cur.execute("""
                                 INSERT INTO directors_master.external_board_members 
@@ -360,6 +374,20 @@ if __name__ == "__main__":
                             """, (din, cin, com_name, assoc.get('designation'),
                                 assoc.get('appointment') if assoc.get('appointment') != 'N/A' else None,
                                 assoc.get('status', 'Active')))
+                                
+                        # Mark missing associations as Resigned
+                        if api_cins:
+                            cur.execute("""
+                                UPDATE directors_master.external_board_members
+                                SET status = 'Resigned'
+                                WHERE din = %s AND cin NOT IN %s
+                            """, (din, tuple(api_cins)))
+                        else:
+                            cur.execute("""
+                                UPDATE directors_master.external_board_members
+                                SET status = 'Resigned'
+                                WHERE din = %s
+                            """, (din,))
                         conn.commit()
                         print(f"Successfully synced DIN {din}")
             finally:
