@@ -12,7 +12,7 @@ def build_indexes():
     print("==================================================")
     print("Connecting to database...")
     
-    conn_proxy = get_pg_connection(database="aegis_insider")
+    conn_proxy = get_pg_connection()
     if not conn_proxy:
         print("Failed to get database connection from utils.pgsql_service")
         sys.exit(1)
