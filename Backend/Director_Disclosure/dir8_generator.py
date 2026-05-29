@@ -204,13 +204,14 @@ def fetch_full_data_from_db(din: str, cins: list[str], sig_date: Optional[str] =
         # Use first company for primary header details
         primary_co = target_cos[0]
             
-        # 3. Fetch Associations (Other Companies) - Filter for Active Only
         cur.execute("""
-            SELECT company_name as com_name, appointment_date, status
-            FROM directors_master.external_board_members 
-            WHERE din = %s
-            AND (status IS NULL OR status = '' OR status = 'None' OR status ILIKE 'Active%%')
-            ORDER BY appointment_date DESC
+            SELECT ea.company_name as com_name, ea.appointment_date, ea.status
+            FROM directors_master.external_board_members ea
+            LEFT JOIN directors_data.companies c ON ea.cin = c.cin
+            WHERE ea.din = %s
+            AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'Active%%')
+            AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'Active%%')
+            ORDER BY ea.appointment_date DESC
         """, (din,))
         assoc_rows = cur.fetchall()
         
@@ -256,6 +257,8 @@ def get_all_pairs_from_db():
             FROM directors_master.external_board_members ea
             JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE ea.din IS NOT NULL AND ea.cin IS NOT NULL
+              AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'Active%%')
+              AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'Active%%')
         """)
         pairs = cur.fetchall()
         return [(p['din'], p['cin']) for p in pairs]

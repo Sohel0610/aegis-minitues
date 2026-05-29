@@ -55,8 +55,8 @@ async def get_intelligence_summary():
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE d.last_api_sync IS NOT NULL 
-            AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
-            AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+            AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+            AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
             GROUP BY d.din_status
         """)
         status_breakdown = cur.fetchall()
@@ -69,8 +69,8 @@ async def get_intelligence_summary():
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE d.last_api_sync IS NOT NULL 
             AND UPPER(d.gender) IN ('MALE', 'FEMALE')
-            AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
-            AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+            AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+            AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
             GROUP BY 1
         """)
         gender_breakdown = cur.fetchall()
@@ -82,8 +82,8 @@ async def get_intelligence_summary():
             INNER JOIN directors_master.external_board_members ea ON d.din = ea.din
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE d.last_api_sync IS NOT NULL
-            AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
-            AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+            AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+            AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
             GROUP BY 1
         """)
         kyc_breakdown = cur.fetchall()
@@ -93,8 +93,8 @@ async def get_intelligence_summary():
             SELECT COUNT(*) as total 
             FROM directors_master.external_board_members ea
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
-            WHERE (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
-              AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+            WHERE (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+              AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
         """)
         assoc_count = cur.fetchone()
 
@@ -137,8 +137,8 @@ async def get_enriched_directors():
                 FROM directors_master.external_board_members ea
                 LEFT JOIN directors_data.companies c ON ea.cin = c.cin
                 WHERE ea.din IS NOT NULL
-                  AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
-                  AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+                  AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                  AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
                 GROUP BY ea.din
             ) eb_counts ON d.din = eb_counts.din
             WHERE d.last_api_sync IS NOT NULL
@@ -171,8 +171,8 @@ async def get_director_associations(din: str):
             FROM directors_master.external_board_members ea
             LEFT JOIN directors_data.companies c ON ea.cin = c.cin
             WHERE ea.din = %s
-              AND (ea.status IS NULL OR (ea.status NOT ILIKE 'RESIGNED%%' AND ea.status NOT ILIKE 'INACTIVE%%'))
-              AND (c.status IS NULL OR c.status NOT ILIKE 'AMALGAMATED%%')
+              AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+              AND (c.status IS NULL OR c.status = '' OR c.status = 'None' OR c.status ILIKE 'ACTIVE%%')
             ORDER BY ea.appointment_date DESC NULLS LAST
         """, (din,))
         results = cur.fetchall()
