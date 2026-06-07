@@ -256,9 +256,9 @@ def init_rbac_pg_tables():
             ]
             
             # Clean up old route definitions and permissions that are not in the new 6 routes
-            cursor.execute("DELETE FROM rbac.route_definitions WHERE route_path NOT IN (%s, %s, %s, %s, %s, %s)",
-                           tuple(r[0] for r in default_routes))
             cursor.execute("DELETE FROM rbac.route_permissions WHERE route_path NOT IN (%s, %s, %s, %s, %s, %s)",
+                           tuple(r[0] for r in default_routes))
+            cursor.execute("DELETE FROM rbac.route_definitions WHERE route_path NOT IN (%s, %s, %s, %s, %s, %s)",
                            tuple(r[0] for r in default_routes))
             
             for path, name, module in default_routes:
