@@ -129,11 +129,13 @@ async def get_company_compliance_status(cin: str, year: str = "2024-25"):
             SELECT 
                 ebm.din, 
                 ebm.name,
+                ebm.designation,
+                ebm.appointment_date,
                 CASE WHEN d.din IS NOT NULL THEN TRUE ELSE FALSE END as is_adani
             FROM directors_master.external_board_members ebm
             LEFT JOIN directors_master.directors d ON ebm.din = d.din
             WHERE ebm.cin = %s
-              AND (ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None' OR ebm.status ILIKE 'ACTIVE%%')
+              AND (ebm.status IS NULL OR ebm.status = '' OR ebm.status = 'None' OR ebm.status ILIKE 'ACTIVE%')
             ORDER BY ebm.name ASC
         """, (cin,))
         directors = cur.fetchall()
@@ -145,6 +147,11 @@ async def get_company_compliance_status(cin: str, year: str = "2024-25"):
         for d in directors:
             din = d['din']
             name = d['name']
+            designation = d['designation'] or "Director"
+            
+            # Format appointment date
+            appt_date = d['appointment_date']
+            appt_date_str = appt_date.strftime("%d/%m/%Y") if hasattr(appt_date, 'strftime') else (str(appt_date) if appt_date else "N/A")
             
             dir8_path = target_dir / "DIR-8"
             mbp1_path = target_dir / "MBP-1"
@@ -156,6 +163,8 @@ async def get_company_compliance_status(cin: str, year: str = "2024-25"):
             results.append({
                 "din": din,
                 "name": name,
+                "designation": designation,
+                "appointment_date": appt_date_str,
                 "dir8_status": "Filed" if dir8_files else "Pending",
                 "mbp1_status": "Filed" if mbp1_files else "Pending",
                 "dir8_file": str(dir8_files[0].relative_to(BASE_DIR)) if dir8_files else None,

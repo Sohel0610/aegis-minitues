@@ -91,7 +91,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     await loadPermissions(email);
                     isInitialized.current = true;
                     setIsLoading(false);
-                    navigate("/", { replace: true });
+                    // Redirect to the originally requested route if saved, otherwise default to home page
+                    const redirectTo = localStorage.getItem("aegis_redirect_to");
+                    if (redirectTo) {
+                        localStorage.removeItem("aegis_redirect_to");
+                        navigate(redirectTo, { replace: true });
+                    } else {
+                        navigate("/", { replace: true });
+                    }
                     return;
                 }
             } else {
@@ -136,6 +143,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
     const login = async () => {
+        // Save current route path to redirect back after SSO login
+        const returnUrl = window.location.pathname + window.location.search;
+        if (returnUrl && returnUrl !== '/' && !returnUrl.includes('token=')) {
+            localStorage.setItem("aegis_redirect_to", returnUrl);
+        }
         await authService.login();
     };
 
@@ -160,8 +172,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Helper functions
     const normalizeRoute = (r: string) => r.replace(/\/+$/, "").replace(/^\/*/, "/").toLowerCase();
 
-    // When SSO is disabled, grant full access to everything
-    const isAdmin = !ssoEnabled || permissions.some(p => p.can_admin);
+    // When SSO is disabled, grant full access to everything.
+    // Otherwise, require explicit 'can_admin' permission on '/admin-panel' (which is injected for global admins).
+    const isAdmin = !ssoEnabled || permissions.some(p => normalizeRoute(p.route) === '/admin-panel' && p.can_admin);
 
     const hasAccess = (route: string): boolean => {
         if (!ssoEnabled) return true; // Open access when SSO disabled

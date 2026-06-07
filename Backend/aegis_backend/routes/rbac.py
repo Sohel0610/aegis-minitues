@@ -98,6 +98,13 @@ class AccessRequestResponse(BaseModel):
 class ReviewAccessRequestRequest(BaseModel):
     review_notes: Optional[str] = None
 
+class GrantRoleRequest(BaseModel):
+    target_email: str
+    role: str = "admin"
+
+class RevokeRoleRequest(BaseModel):
+    target_email: str
+
 class AuditLogResponse(BaseModel):
     id: int
     email: Optional[str]
@@ -212,7 +219,17 @@ def init_rbac_pg_tables():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
+
+            # Platform User Roles (global roles like 'admin')
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rbac.user_roles (
+                    email TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'admin',
+                    granted_by TEXT,
+                    granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (email, role)
+                )
+            """)
             # Seed default routes
             default_routes = [
                 ("/data-source", "Data Source", "excel"),
@@ -478,17 +495,20 @@ async def submit_access_request(req: AccessRequestSubmit):
         if res:
             # Trigger background email notification
             try:
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(
-                    None, 
-                    send_access_request_emails, 
-                    res, # Pass the new request_id
-                    req.email, 
-                    req.name, 
-                    req.requested_route, 
-                    req.requested_permission, 
-                    req.justification
+                loop = asyncio.get_running_loop()
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        thread_pool,
+                        send_access_request_emails,
+                        res,  # Pass the new request_id
+                        req.email,
+                        req.name,
+                        req.requested_route,
+                        req.requested_permission,
+                        req.justification
+                    )
                 )
+                logger.info(f"Email task scheduled for new access request #{res}")
             except Exception as e:
                 logger.error(f"Email notification task submission failed: {e}")
                 
@@ -587,11 +607,53 @@ async def get_all_requests(email: Optional[str] = None, requester_email: Optiona
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/permissions/all", response_model=PermissionCheckResponse)
-async def get_specific_permission(email: str, route: str):
-    """Specific endpoint for Admin Panel to check permissions."""
-    # This is effectively the same as check-access but matches the frontend's expected URL
-    return await check_route_access(email, route)
+@router.get("/permissions/all", response_model=Dict[str, Any])
+async def get_all_route_permissions(email: str, route: Optional[str] = None):
+    """Get all user permissions for a specific route — used by Admin Panel UserPermissions tab."""
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
+            if not conn: return None
+            cursor = get_pg_cursor(conn)
+            try:
+                # Verify the caller is an admin
+                cursor.execute("SELECT 1 FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (email,))
+                if not cursor.fetchone():
+                    return None  # Unauthorized
+                if route:
+                    cursor.execute("""
+                        SELECT rp.email, rp.permission_type, rp.assigned_at, rp.assigned_by
+                        FROM rbac.route_permissions rp
+                        WHERE rp.route_path = %s AND rp.is_active = TRUE
+                        ORDER BY rp.assigned_at DESC
+                    """, (route,))
+                else:
+                    cursor.execute("""
+                        SELECT rp.email, rp.permission_type, rp.assigned_at, rp.assigned_by, rp.route_path
+                        FROM rbac.route_permissions rp
+                        WHERE rp.is_active = TRUE
+                        ORDER BY rp.assigned_at DESC
+                    """)
+                rows = cursor.fetchall()
+                result = []
+                for r in rows:
+                    perm = dict(r)
+                    if perm.get('assigned_at'):
+                        perm['assigned_at'] = str(perm['assigned_at'])
+                    result.append(perm)
+                return result
+            finally:
+                conn.close()
+
+        result = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
+        if result is None:
+            raise HTTPException(status_code=403, detail="Unauthorized: Admin access required")
+        return {"permissions": result, "total": len(result)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"get_all_route_permissions error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/route-definitions", response_model=List[RouteDefinitionResponse])
 @router.get("/rbac/route-definitions", response_model=List[RouteDefinitionResponse])
@@ -711,17 +773,20 @@ async def approve_request(request_id: int, req: ReviewAccessRequestRequest, emai
         if success:
             # Trigger confirmation email
             try:
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(
-                    None, 
-                    send_request_outcome_email, 
-                    res_data["email"], 
-                    res_data["name"], 
-                    res_data["requested_route"], 
-                    "approved", 
-                    request_id, 
-                    res_data["requested_permission"]
+                loop = asyncio.get_running_loop()
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        thread_pool,
+                        send_request_outcome_email,
+                        res_data["email"],
+                        res_data["name"],
+                        res_data["requested_route"],
+                        "approved",
+                        request_id,
+                        res_data["requested_permission"]
+                    )
                 )
+                logger.info(f"Approval email scheduled for {res_data['email']}")
             except Exception as e:
                 logger.error(f"Outcome email failed: {e}")
             return {"success": True, "message": "Request approved and permission assigned"}
@@ -768,17 +833,20 @@ async def reject_request(request_id: int, req: ReviewAccessRequestRequest, email
         if success:
             # Trigger rejection email
             try:
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(
-                    None, 
-                    send_request_outcome_email, 
-                    res_data["email"], 
-                    res_data["name"], 
-                    res_data["requested_route"], 
-                    "rejected", 
-                    request_id, 
-                    res_data["requested_permission"]
+                loop = asyncio.get_running_loop()
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        thread_pool,
+                        send_request_outcome_email,
+                        res_data["email"],
+                        res_data["name"],
+                        res_data["requested_route"],
+                        "rejected",
+                        request_id,
+                        res_data["requested_permission"]
+                    )
                 )
+                logger.info(f"Rejection email scheduled for {res_data['email']}")
             except Exception as e:
                 logger.error(f"Outcome email failed: {e}")
             return {"success": True, "message": "Request rejected"}
@@ -831,4 +899,139 @@ async def revoke_permission(req: RevokePermissionRequest, email: str):
         return {"success": success}
     except Exception as e:
         logger.error(f"Revoke error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# Admin Management Endpoints
+# ============================================================================
+
+@router.get("/admin/platform-admins", response_model=Dict[str, Any])
+async def get_platform_admins(email: str):
+    """List all platform admins from rbac.user_roles."""
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
+            if not conn: return None
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute("SELECT 1 FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (email,))
+                if not cursor.fetchone(): return None
+                cursor.execute("""
+                    SELECT email, role, granted_by, granted_at
+                    FROM rbac.user_roles
+                    ORDER BY granted_at DESC
+                """)
+                rows = cursor.fetchall()
+                result = []
+                for r in rows:
+                    d = dict(r)
+                    if d.get('granted_at'): d['granted_at'] = str(d['granted_at'])
+                    result.append(d)
+                return result
+            finally:
+                conn.close()
+        result = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
+        if result is None:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+        return {"admins": result, "total": len(result)}
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"get_platform_admins error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/admin/grant-role", response_model=Dict[str, Any])
+async def grant_platform_role(req: GrantRoleRequest, email: str):
+    """Grant a global platform role (e.g. admin) to a user."""
+    try:
+        def do_grant():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
+            if not conn: return False
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute("SELECT 1 FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (email,))
+                if not cursor.fetchone(): return False
+                cursor.execute("""
+                    INSERT INTO rbac.user_roles (email, role, granted_by)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (email, role) DO UPDATE
+                        SET granted_by = EXCLUDED.granted_by,
+                            granted_at = CURRENT_TIMESTAMP
+                """, (req.target_email.lower(), req.role, email))
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+        ok = await asyncio.get_event_loop().run_in_executor(thread_pool, do_grant)
+        if ok is False:
+            raise HTTPException(status_code=403, detail="Unauthorized or DB error")
+        log_audit_event(email, "admin_granted", {"target_email": req.target_email, "role": req.role})
+        return {"success": True, "message": f"Role '{req.role}' granted to {req.target_email}"}
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"grant_platform_role error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/admin/revoke-role", response_model=Dict[str, Any])
+async def revoke_platform_role(req: RevokeRoleRequest, email: str):
+    """Revoke a global platform role from a user."""
+    try:
+        def do_revoke():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
+            if not conn: return False
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute("SELECT 1 FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (email,))
+                if not cursor.fetchone(): return False
+                # Safety: cannot remove the last admin
+                cursor.execute("SELECT COUNT(*) FROM rbac.user_roles WHERE role = 'admin'")
+                count = cursor.fetchone()[0]
+                if count <= 1 and req.target_email.lower() == email.lower(): return False
+                cursor.execute("DELETE FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (req.target_email,))
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+        ok = await asyncio.get_event_loop().run_in_executor(thread_pool, do_revoke)
+        if ok is False:
+            raise HTTPException(status_code=403, detail="Unauthorized or cannot remove last admin")
+        log_audit_event(email, "admin_revoked", {"target_email": req.target_email})
+        return {"success": True, "message": f"Admin role revoked for {req.target_email}"}
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"revoke_platform_role error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/admin/all-users", response_model=Dict[str, Any])
+async def get_all_platform_users(email: str):
+    """Return all users across all route permissions (admin view)."""
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
+            if not conn: return None
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute("SELECT 1 FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (email,))
+                if not cursor.fetchone(): return None
+                cursor.execute("""
+                    SELECT rp.email, rp.route_path, rp.permission_type, rp.assigned_at, rp.assigned_by
+                    FROM rbac.route_permissions rp
+                    WHERE rp.is_active = TRUE
+                    ORDER BY rp.email, rp.assigned_at DESC
+                """)
+                rows = cursor.fetchall()
+                result = []
+                for r in rows:
+                    d = dict(r)
+                    if d.get('assigned_at'): d['assigned_at'] = str(d['assigned_at'])
+                    result.append(d)
+                return result
+            finally:
+                conn.close()
+        result = await asyncio.get_event_loop().run_in_executor(thread_pool, fetch)
+        if result is None:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+        return {"users": result, "total": len(result)}
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"get_all_platform_users error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

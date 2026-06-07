@@ -374,14 +374,14 @@ const WebsiteData = () => {
               </CardHeader>
               <CardContent className="px-0 py-0">
                 {websiteData.length > 0 ? (
-                  <div className="rounded-md border" style={{ borderColor: '#000000' }}>
-                    <Table>
-                      <TableHeader>
+                  <div className="rounded-md border max-h-[60vh] overflow-y-auto relative" style={{ borderColor: '#000000' }}>
+                    <Table className="relative w-full border-collapse">
+                      <TableHeader className="sticky top-0 bg-white z-10 shadow-[0_1px_0_0_rgba(0,0,0,0.1)]">
                         <TableRow style={{ backgroundColor: 'rgba(30, 64, 175, 0.1)' }}>
                           {columnNames.map((column) => (
                             <TableHead
                               key={column}
-                              className="font-bold"
+                              className="font-bold border-r border-gray-200"
                               style={{ color: '#000000' }}
                             >
                               {column}
@@ -406,6 +406,7 @@ const WebsiteData = () => {
                             {columnNames.map((column) => (
                               <TableCell
                                 key={column}
+                                className="border-r border-gray-200"
                                 style={{ color: '#000000' }}
                               >
                                 {column.toLowerCase().includes("website") || column.toLowerCase().includes("url") ? (

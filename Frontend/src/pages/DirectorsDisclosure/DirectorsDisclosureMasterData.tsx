@@ -24,6 +24,7 @@ import {
 import FamilyInfoModal from "./FamilyInfoModal";
 import ReactCrop, { centerCrop, makeAspectCrop, Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import { useAuth } from "@/contexts/AuthContext";
 
 // Add interface for director profile
 interface DirectorProfile {
@@ -69,6 +70,8 @@ interface ImageCropData {
 }
 
 const DirectorsDisclosureMasterData = () => {
+  const { canAdmin } = useAuth();
+  const isAdminMode = canAdmin('/directors-disclosure');
   const [directors, setDirectors] = useState<Director[]>([]);
   const [filteredDirectors, setFilteredDirectors] = useState<Director[]>([]);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -761,16 +764,18 @@ const DirectorsDisclosureMasterData = () => {
                   Export Selected ({selectedDins.size})
                 </Button>
               )}
-              <Button
-                onClick={() => {
-                  setFormData({ name: "", din: "", pan: "" });
-                  setIsAddDialogOpen(true);
-                }}
-                className="h-14 px-8 rounded-2xl bg-[#75479C] hover:bg-[#5e397d] text-white font-bold flex gap-3 shadow-lg shadow-purple-200 transition-all whitespace-nowrap"
-              >
-                <Plus size={20} />
-                Add director
-              </Button>
+              {isAdminMode && (
+                <Button
+                  onClick={() => {
+                    setFormData({ name: "", din: "", pan: "" });
+                    setIsAddDialogOpen(true);
+                  }}
+                  className="h-14 px-8 rounded-2xl bg-[#75479C] hover:bg-[#5e397d] text-white font-bold flex gap-3 shadow-lg shadow-purple-200 transition-all whitespace-nowrap"
+                >
+                  <Plus size={20} />
+                  Add director
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -943,26 +948,30 @@ const DirectorsDisclosureMasterData = () => {
                               <Users className="h-3 w-3" />
                               Family Info
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEditDialog(director)}
-                              className="gap-1"
-                              style={{ borderColor: '#0B74B0', color: '#0B74B0' }}
-                            >
-                              <Edit className="h-3 w-3" />
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDeleteDirector(director.id)}
-                              className="gap-1"
-                              style={{ borderColor: '#BD3861', color: '#BD3861' }}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Delete
-                            </Button>
+                            {isAdminMode && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openEditDialog(director)}
+                                  className="gap-1"
+                                  style={{ borderColor: '#0B74B0', color: '#0B74B0' }}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteDirector(director.id)}
+                                  className="gap-1"
+                                  style={{ borderColor: '#BD3861', color: '#BD3861' }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Delete
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1170,17 +1179,19 @@ const DirectorsDisclosureMasterData = () => {
                   )}
 
                   {/* Upload Icon Overlay */}
-                  <button
-                    onClick={triggerFileInput}
-                    className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 border-2 border-white rounded-full w-9 h-9 flex items-center justify-center transition-colors duration-200"
-                    disabled={isUploading}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="17 8 12 3 7 8"></polyline>
-                      <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                  </button>
+                  {isAdminMode && (
+                    <button
+                      onClick={triggerFileInput}
+                      className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 border-2 border-white rounded-full w-9 h-9 flex items-center justify-center transition-colors duration-200"
+                      disabled={isUploading}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+                    </button>
+                  )}
 
                   {/* Hidden File Input */}
                   <input
@@ -1230,12 +1241,14 @@ const DirectorsDisclosureMasterData = () => {
                     </Button>
                   </>
                 ) : (
-                  <Button
-                    onClick={() => setIsEditingProfile(true)}
-                    style={{ backgroundColor: '#75479C', color: 'white' }}
-                  >
-                    Edit Profile
-                  </Button>
+                  isAdminMode && (
+                    <Button
+                      onClick={() => setIsEditingProfile(true)}
+                      style={{ backgroundColor: '#75479C', color: 'white' }}
+                    >
+                      Edit Profile
+                    </Button>
+                  )
                 )}
               </div>
 

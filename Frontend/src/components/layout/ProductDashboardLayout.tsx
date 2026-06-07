@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
-  Wifi,
   LucideIcon,
   X,
 } from "lucide-react";

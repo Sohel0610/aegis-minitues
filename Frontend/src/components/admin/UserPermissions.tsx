@@ -1,6 +1,6 @@
 /**
  * User Permissions Component
- * View and manage all user permissions with role switching and search
+ * Proper table view: Application Scope | Active User | Assigned Role | Assignment Date | Actions
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,372 +10,393 @@ import {
     assignPermission,
     revokePermission,
     getRouteDefinitions,
-    type RouteDefinition
+    type RouteDefinition,
 } from '@/services/permissionService';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Input }  from '@/components/ui/input';
+import { Label }  from '@/components/ui/label';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+    Dialog, DialogContent, DialogDescription,
+    DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-    DialogFooter,
-} from "@/components/ui/dialog";
-import { cn } from '@/lib/utils';
-import {
-    Search,
-    UserPlus,
-    Trash2,
-    RefreshCcw,
-    Shield,
-    ShieldCheck,
-    Check,
-    AlertCircle,
-    Loader2,
-    ChevronRight,
-    Users
+    Search, UserPlus, Trash2, RefreshCcw,
+    Shield, ShieldCheck, Edit3, Loader2,
+    Users, AlertTriangle, ChevronDown, Calendar, Globe,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+type Role = 'view' | 'edit' | 'admin';
+
+const ROLE: Record<Role, { label: string; bg: string; text: string; ring: string }> = {
+    view:  { label: 'Viewer', bg: 'bg-blue-50',   text: 'text-blue-700',   ring: 'ring-blue-200/60' },
+    edit:  { label: 'Editor', bg: 'bg-amber-50',  text: 'text-amber-700',  ring: 'ring-amber-200/60' },
+    admin: { label: 'Admin',  bg: 'bg-purple-50', text: 'text-purple-700', ring: 'ring-purple-200/60' },
+};
+
+const fmtDate = (iso: string) => {
+    if (!iso) return '—';
+    try {
+        const d = new Date(iso.includes('Z') || iso.includes('+') ? iso : iso + 'Z');
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch { return iso; }
+};
+
+const TH = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
+    <th className={cn('px-4 py-3 text-left text-[11px] font-extrabold text-gray-400 uppercase tracking-widest whitespace-nowrap', className)}>
+        {children}
+    </th>
+);
 
 export const UserPermissions: React.FC = () => {
     const { user } = useAuth();
-    const [selectedRoute, setSelectedRoute] = useState('/bse-alerts');
-    const [routeDefinitions, setRouteDefinitions] = useState<RouteDefinition[]>([]);
-    const [permissions, setPermissions] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedRoute, setSelectedRoute]     = useState('');
+    const [routes, setRoutes]                   = useState<RouteDefinition[]>([]);
+    const [permissions, setPermissions]         = useState<any[]>([]);
+    const [loading, setLoading]                 = useState(false);
+    const [routesLoading, setRoutesLoading]     = useState(true);
+    const [error, setError]                     = useState<string | null>(null);
+    const [search, setSearch]                   = useState('');
 
-    // Add User State
-    const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-    const [newUserEmail, setNewUserEmail] = useState('');
-    const [newUserRole, setNewUserRole] = useState<'view' | 'admin' | 'edit'>('view');
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    // Add-user dialog
+    const [addOpen, setAddOpen]     = useState(false);
+    const [newEmail, setNewEmail]   = useState('');
+    const [newRole, setNewRole]     = useState<Role>('view');
+    const [adding, setAdding]       = useState(false);
+
+    // Revoke dialog
+    const [revokeTarget, setRevokeTarget] = useState<{ email: string } | null>(null);
+    const [revoking, setRevoking]         = useState(false);
 
     const loadRoutes = async () => {
         if (!user) return;
+        setRoutesLoading(true);
         try {
-            const routes = await getRouteDefinitions(user.email);
-            setRouteDefinitions(routes);
-            if (routes.length > 0 && !routes.find(r => r.route_path === selectedRoute)) {
-                setSelectedRoute(routes[0].route_path);
-            }
-        } catch (err) {
-            console.error('Failed to load route definitions:', err);
-            toast.error('Failed to load application list');
-        }
+            const data = await getRouteDefinitions(user.email);
+            setRoutes(data);
+            if (data.length > 0) setSelectedRoute(s => s || data[0].route_path);
+        } catch { toast.error('Failed to load application list'); }
+        finally { setRoutesLoading(false); }
     };
 
     const loadPermissions = async () => {
-        if (!user) return;
-
-        setLoading(true);
+        if (!user || !selectedRoute) return;
+        setLoading(true); setError(null);
         try {
             const data = await getRoutePermissions(user.email, selectedRoute);
             setPermissions(data.permissions || []);
         } catch (err) {
-            console.error('Failed to load permissions:', err);
-            toast.error('Failed to load user permissions');
-        } finally {
-            setLoading(false);
-        }
+            const msg = err instanceof Error ? err.message : 'Failed to load permissions';
+            setError(msg); toast.error(msg);
+        } finally { setLoading(false); }
     };
 
-    useEffect(() => {
-        loadRoutes();
-    }, [user]);
+    useEffect(() => { loadRoutes(); }, [user]);
+    useEffect(() => { if (selectedRoute) loadPermissions(); }, [selectedRoute, user]);
 
-    useEffect(() => {
-        loadPermissions();
-    }, [selectedRoute, user]);
-
-    const handleRoleSwitch = async (targetEmail: string, newRole: 'view' | 'admin' | 'edit') => {
+    const handleRoleChange = async (email: string, role: Role) => {
         if (!user) return;
-
         try {
-            setLoading(true);
-            await assignPermission(user.email, targetEmail, selectedRoute, newRole, `Role changed to ${newRole}`);
-            toast.success(`Permission updated for ${targetEmail}`);
-            await loadPermissions();
+            await assignPermission(user.email, email, selectedRoute, role);
+            toast.success(`Role updated to ${ROLE[role].label} for ${email}`);
+            setPermissions(p => p.map(x => x.email === email ? { ...x, permission_type: role } : x));
         } catch (err) {
-            console.error('Failed to update permission:', err);
-            toast.error('Failed to update permission');
-        } finally {
-            setLoading(false);
+            toast.error(err instanceof Error ? err.message : 'Failed to update role');
+            loadPermissions();
         }
     };
 
-    const handleRevoke = async (targetEmail: string) => {
-        if (!user) return;
-
-        if (!confirm(`Are you sure you want to revoke all access for ${targetEmail} on this application?`)) {
-            return;
-        }
-
+    const handleRevoke = async () => {
+        if (!user || !revokeTarget) return;
+        setRevoking(true);
         try {
-            setLoading(true);
-            await revokePermission(user.email, targetEmail, selectedRoute);
-            toast.success(`Access revoked for ${targetEmail}`);
-            await loadPermissions();
-        } catch (err) {
-            console.error('Failed to revoke permission:', err);
-            toast.error('Failed to revoke permission');
-        } finally {
-            setLoading(false);
-        }
+            await revokePermission(user.email, revokeTarget.email, selectedRoute);
+            toast.success(`Access revoked for ${revokeTarget.email}`);
+            setRevokeTarget(null);
+            loadPermissions();
+        } catch (err) { toast.error(err instanceof Error ? err.message : 'Revoke failed'); }
+        finally { setRevoking(false); }
     };
 
-    const handleAddUser = async () => {
-        if (!user || !newUserEmail) return;
-
-        setIsSubmitting(true);
+    const handleAdd = async () => {
+        if (!user || !newEmail.trim()) return;
+        setAdding(true);
         try {
-            await assignPermission(user.email, newUserEmail, selectedRoute, newUserRole, 'Directly added by admin');
-            toast.success(`User ${newUserEmail} added successfully`);
-            setNewUserEmail('');
-            setIsAddUserOpen(false);
-            await loadPermissions();
-        } catch (err) {
-            console.error('Failed to add user:', err);
-            toast.error(err instanceof Error ? err.message : 'Failed to add user');
-        } finally {
-            setIsSubmitting(false);
-        }
+            await assignPermission(user.email, newEmail.trim(), selectedRoute, newRole);
+            toast.success(`${newEmail.trim()} added as ${ROLE[newRole].label}`);
+            setNewEmail(''); setAddOpen(false); loadPermissions();
+        } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to add user'); }
+        finally { setAdding(false); }
     };
 
-    const filteredPermissions = permissions.filter(p =>
-        p.email.toLowerCase().includes(searchQuery.toLowerCase())
+    const filtered = permissions.filter(p =>
+        p.email?.toLowerCase().includes(search.toLowerCase())
     );
 
-    const currentRouteDef = routeDefinitions.find(r => r.route_path === selectedRoute);
+    const currentApp = routes.find(r => r.route_path === selectedRoute);
 
     return (
-        <div className="space-y-6 h-full flex flex-col">
-            {/* Controls Header */}
-            <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 px-6 pt-6">
-                <div className="flex-1 space-y-2">
-                    <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Application Scope</Label>
-                    <div className="relative max-w-sm">
-                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/60" />
-                        <select
-                            value={selectedRoute}
-                            onChange={(e) => setSelectedRoute(e.target.value)}
-                            className="w-full h-11 pl-10 pr-4 bg-gray-50/50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-semibold text-[#002B49] appearance-none"
-                        >
-                            {routeDefinitions.map((route) => (
-                                <option key={route.route_path} value={route.route_path}>
-                                    {route.route_name}
-                                </option>
-                            ))}
-                        </select>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <ChevronRight className="h-4 w-4 text-gray-400 rotate-90" />
-                        </div>
+        <div className="flex flex-col">
+            {/* ── Header ── */}
+            <div className="flex flex-col gap-4 p-5 border-b border-gray-100">
+                {/* Row 1: title + add button */}
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 className="text-base font-extrabold text-[#002B49]">User Permissions</h2>
+                        <p className="text-[11px] text-gray-400 font-medium mt-0.5">
+                            Manage per-application access across the platform
+                        </p>
                     </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                            placeholder="Filter by email..."
-                            className="pl-9 w-full sm:w-64 h-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white transition-all text-sm font-medium"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-
-                    <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                    <Dialog open={addOpen} onOpenChange={setAddOpen}>
                         <DialogTrigger asChild>
-                            <Button className="h-11 px-5 gap-2 rounded-xl shadow-lg shadow-primary/10 transition-transform active:scale-[0.98]">
-                                <UserPlus className="h-4 w-4 " />
-                                <span className="text-sm font-bold">Grant Access</span>
+                            <Button className="gap-2 h-9 px-4 rounded-xl font-bold text-sm shadow-md shadow-primary/10">
+                                <UserPlus className="h-4 w-4" /> Grant Access
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-md rounded-2xl border-none shadow-2xl">
                             <DialogHeader>
-                                <DialogTitle className="text-xl font-extrabold text-[#002B49] tracking-tight">Add New Access</DialogTitle>
-                                <DialogDescription className="text-gray-500 font-medium pt-1">
-                                    Set permissions for <strong>{currentRouteDef?.route_name || selectedRoute}</strong>
+                                <DialogTitle className="text-lg font-extrabold text-[#002B49]">Grant User Access</DialogTitle>
+                                <DialogDescription className="text-sm text-gray-500">
+                                    Assign access for <strong>{currentApp?.route_name || selectedRoute}</strong>
                                 </DialogDescription>
                             </DialogHeader>
-                            <div className="space-y-5 py-6">
-                                <div className="space-y-2">
-                                    <Label htmlFor="email" className="text-xs font-bold text-gray-500 uppercase tracking-widest px-1">Email ID</Label>
+                            <div className="space-y-5 py-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Email Address</Label>
                                     <Input
-                                        id="email"
                                         placeholder="employee@adani.com"
-                                        className="h-12 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white"
-                                        value={newUserEmail}
-                                        onChange={(e) => setNewUserEmail(e.target.value)}
+                                        className="h-11 rounded-xl border-gray-200 bg-gray-50 focus:bg-white"
+                                        value={newEmail}
+                                        onChange={e => setNewEmail(e.target.value)}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest px-1">Role Assignment</Label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            type="button"
-                                            className={cn(
-                                                "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all group",
-                                                newUserRole === 'view'
-                                                    ? "border-primary bg-primary/5 shadow-[0_0_0_1px_rgba(0,93,164,0.1)]"
-                                                    : "border-gray-50 bg-white hover:border-gray-200"
-                                            )}
-                                            onClick={() => setNewUserRole('view')}
-                                        >
-                                            <div className={cn(
-                                                "p-2 rounded-full",
-                                                newUserRole === 'view' ? "bg-primary text-white" : "bg-gray-100 text-gray-400 group-hover:bg-gray-200"
-                                            )}>
-                                                <Shield className="h-5 w-5" />
-                                            </div>
-                                            <div className="text-center">
-                                                <p className={cn("text-sm font-bold", newUserRole === 'view' ? "text-[#002B49]" : "text-gray-600")}>Viewer</p>
-                                                <p className="text-[10px] text-gray-400 font-medium">Read-only access</p>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={cn(
-                                                "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all group",
-                                                newUserRole === 'admin'
-                                                    ? "border-primary bg-primary/5 shadow-[0_0_0_1px_rgba(0,93,164,0.1)]"
-                                                    : "border-gray-50 bg-white hover:border-gray-200"
-                                            )}
-                                            onClick={() => setNewUserRole('admin')}
-                                        >
-                                            <div className={cn(
-                                                "p-2 rounded-full",
-                                                newUserRole === 'admin' ? "bg-primary text-white" : "bg-gray-100 text-gray-400 group-hover:bg-gray-200"
-                                            )}>
-                                                <ShieldCheck className="h-5 w-5" />
-                                            </div>
-                                            <div className="text-center">
-                                                <p className={cn("text-sm font-bold", newUserRole === 'admin' ? "text-[#002B49]" : "text-gray-600")}>Admin</p>
-                                                <p className="text-[10px] text-gray-400 font-medium">Full management</p>
-                                            </div>
-                                        </button>
+                                    <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Assign Role</Label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {(Object.keys(ROLE) as Role[]).map(r => (
+                                            <button
+                                                key={r} type="button"
+                                                onClick={() => setNewRole(r)}
+                                                className={cn(
+                                                    'flex flex-col items-center gap-2 py-3 rounded-xl border-2 transition-all',
+                                                    newRole === r ? 'border-primary bg-primary/5' : 'border-gray-100 hover:border-gray-200'
+                                                )}
+                                            >
+                                                <div className={cn('p-1.5 rounded-full', newRole === r ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400')}>
+                                                    {r === 'view' ? <Shield className="h-4 w-4" /> : r === 'edit' ? <Edit3 className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                                                </div>
+                                                <p className={cn('text-xs font-bold', newRole === r ? 'text-[#002B49]' : 'text-gray-500')}>{ROLE[r].label}</p>
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                             <DialogFooter className="gap-2">
-                                <Button variant="ghost" className="rounded-xl h-12 font-bold flex-1" onClick={() => setIsAddUserOpen(false)}>Cancel</Button>
-                                <Button className="rounded-xl h-12 font-bold flex-1" onClick={handleAddUser} disabled={isSubmitting || !newUserEmail}>
-                                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                    Assign Access
+                                <Button variant="ghost" className="flex-1 rounded-xl h-11 font-bold" onClick={() => setAddOpen(false)}>Cancel</Button>
+                                <Button className="flex-1 rounded-xl h-11 font-bold" onClick={handleAdd} disabled={adding || !newEmail.trim()}>
+                                    {adding && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Assign Access
                                 </Button>
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+                </div>
 
-                    <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl border-gray-100 bg-gray-50 text-gray-400 hover:text-primary hover:bg-primary/5 transition-all active:rotate-180 duration-500" onClick={loadPermissions}>
-                        <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                    </Button>
+                {/* Row 2: Application Scope selector + search + refresh */}
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Application Scope */}
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                            <Globe className="h-3 w-3" /> Application Scope
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={selectedRoute}
+                                onChange={e => setSelectedRoute(e.target.value)}
+                                disabled={routesLoading}
+                                className="h-9 pl-3 pr-8 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-[#002B49] appearance-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all disabled:opacity-50 min-w-[220px]"
+                            >
+                                {routesLoading
+                                    ? <option>Loading applications…</option>
+                                    : routes.length === 0
+                                        ? <option value="">No applications found</option>
+                                        : routes.map(r => <option key={r.route_path} value={r.route_path}>{r.route_name}</option>)
+                                }
+                            </select>
+                            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                        </div>
+                    </div>
+
+                    {/* Search */}
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Search Users</label>
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                            <Input
+                                placeholder="Filter by email…"
+                                className="pl-8 h-9 w-52 rounded-xl border-gray-200 bg-white text-sm"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Refresh */}
+                    <button
+                        onClick={loadPermissions}
+                        className="self-end h-9 w-9 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200 text-gray-400 hover:text-primary hover:bg-primary/5 transition-all"
+                    >
+                        <RefreshCcw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+                    </button>
+
+                    {/* Count badge */}
+                    <div className="self-end ml-auto flex items-center gap-1.5 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-xl">
+                        <Users className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="text-[12px] font-bold text-gray-600">{filtered.length} User{filtered.length !== 1 ? 's' : ''}</span>
+                    </div>
                 </div>
             </div>
 
-            {/* Permissions Table Region */}
-            <div className="flex-1 overflow-hidden px-6 pb-6">
-                <div className="h-full border border-gray-100 rounded-2xl overflow-hidden flex flex-col bg-gray-50/30">
-                    <Table>
-                        <TableHeader className="bg-white sticky top-0 z-10 border-b border-gray-100">
-                            <TableRow className="hover:bg-transparent border-none">
-                                <TableHead className="text-xs font-bold text-gray-400 uppercase tracking-widest h-14 pl-6">Active User</TableHead>
-                                <TableHead className="text-xs font-bold text-gray-400 uppercase tracking-widest h-14 text-center">Assigned Role</TableHead>
-                                <TableHead className="text-xs font-bold text-gray-400 uppercase tracking-widest h-14 whitespace-nowrap">Assignment Date</TableHead>
-                                <TableHead className="text-xs font-bold text-gray-400 uppercase tracking-widest h-14 text-right pr-8">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody className="bg-white divide-y divide-gray-50">
-                            {filteredPermissions.length > 0 ? (
-                                filteredPermissions.map((perm) => (
-                                    <TableRow key={perm.email} className="group hover:bg-[#F8FAFC]/50 transition-colors border-none">
-                                        <TableCell className="py-4 pl-6">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-bold text-[#002B49] leading-tight">{perm.email}</span>
-                                                <span className="text-[10px] text-gray-400 font-medium">Mapped User</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-4">
-                                            <div className="flex items-center justify-center">
-                                                <div className="inline-flex p-1 bg-gray-100/80 rounded-xl gap-1 ring-1 ring-inset ring-gray-200/50">
-                                                    <button
-                                                        onClick={() => handleRoleSwitch(perm.email, 'view')}
-                                                        className={cn(
-                                                            "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                                                            perm.permission_type === 'view'
-                                                                ? "bg-white text-primary shadow-sm ring-1 ring-gray-200"
-                                                                : "text-gray-400 hover:text-gray-600"
-                                                        )}
-                                                    >
-                                                        Viewer
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleRoleSwitch(perm.email, 'admin')}
-                                                        className={cn(
-                                                            "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                                                            perm.permission_type === 'admin'
-                                                                ? "bg-white text-primary shadow-sm ring-1 ring-gray-200"
-                                                                : "text-gray-400 hover:text-gray-600"
-                                                        )}
-                                                    >
-                                                        Admin
-                                                    </button>
+            {/* ── Table ── */}
+            <div className="overflow-x-auto">
+                {loading ? (
+                    <div className="flex items-center justify-center py-24 gap-3">
+                        <Loader2 className="h-7 w-7 animate-spin text-primary/30" />
+                        <p className="text-sm text-gray-400 font-medium">Loading user permissions…</p>
+                    </div>
+                ) : error ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-4">
+                        <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center">
+                            <AlertTriangle className="h-6 w-6 text-red-400" />
+                        </div>
+                        <p className="text-sm font-bold text-[#002B49]">Failed To Load Permissions</p>
+                        <p className="text-xs text-gray-400 max-w-xs text-center">{error}</p>
+                        <Button onClick={loadPermissions} size="sm" className="gap-2 rounded-xl">
+                            <RefreshCcw className="h-3.5 w-3.5" /> Retry
+                        </Button>
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-24 gap-3">
+                        <div className="h-16 w-16 bg-gray-50 rounded-full flex items-center justify-center border-2 border-dashed border-gray-100">
+                            <Users className="h-7 w-7 text-gray-200" />
+                        </div>
+                        <p className="text-sm font-bold text-[#002B49]">No Users Found</p>
+                        <p className="text-xs text-gray-400">{search ? 'Try a different search term.' : 'No users have access to this application yet.'}</p>
+                        {!search && (
+                            <Button size="sm" className="gap-2 rounded-xl mt-1" onClick={() => setAddOpen(true)}>
+                                <UserPlus className="h-3.5 w-3.5" /> Add First User
+                            </Button>
+                        )}
+                    </div>
+                ) : (
+                    <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                                <TH className="pl-6">Active User</TH>
+                                <TH>Application Scope</TH>
+                                <TH>Assigned Role</TH>
+                                <TH>Assignment Date</TH>
+                                <TH>Assigned By</TH>
+                                <TH className="text-right pr-6">Actions</TH>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {filtered.map(perm => {
+                                const role = (perm.permission_type || 'view') as Role;
+                                const cfg  = ROLE[role] || ROLE.view;
+                                return (
+                                    <tr key={perm.email} className="group hover:bg-gray-50/60 transition-colors">
+                                        {/* Active User */}
+                                        <td className="px-4 py-3.5 pl-6">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="h-8 w-8 rounded-lg bg-primary/5 ring-1 ring-primary/10 flex items-center justify-center font-black text-primary text-xs flex-shrink-0">
+                                                    {perm.email?.charAt(0)?.toUpperCase()}
                                                 </div>
+                                                <p className="text-[13px] font-semibold text-[#002B49] truncate max-w-[180px]">{perm.email}</p>
                                             </div>
-                                        </TableCell>
-                                        <TableCell className="py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-[12px] font-bold text-gray-600">
-                                                    {new Date(perm.assigned_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                        </td>
+                                        {/* Application Scope */}
+                                        <td className="px-4 py-3.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <Globe className="h-3 w-3 text-gray-300 flex-shrink-0" />
+                                                <span className="text-[12px] font-semibold text-gray-600 truncate max-w-[140px]">
+                                                    {currentApp?.route_name || selectedRoute.replace(/^\//, '')}
                                                 </span>
-                                                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">Verified</span>
                                             </div>
-                                        </TableCell>
-                                        <TableCell className="py-4 text-right pr-8">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-9 w-9 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                onClick={() => handleRevoke(perm.email)}
+                                            <p className="text-[10px] text-gray-400 mt-0.5 pl-4">{selectedRoute}</p>
+                                        </td>
+                                        {/* Assigned Role — 3-way toggle */}
+                                        <td className="px-4 py-3.5">
+                                            <div className="flex items-center gap-2">
+                                                <div className="inline-flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                                                    {(Object.keys(ROLE) as Role[]).map(r => (
+                                                        <button
+                                                            key={r}
+                                                            onClick={() => role !== r && handleRoleChange(perm.email, r)}
+                                                            className={cn(
+                                                                'px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all',
+                                                                role === r
+                                                                    ? 'bg-white text-[#002B49] shadow-sm ring-1 ring-gray-200'
+                                                                    : 'text-gray-400 hover:text-gray-600'
+                                                            )}
+                                                        >{ROLE[r].label}</button>
+                                                    ))}
+                                                </div>
+                                                <span className={cn('hidden sm:inline-flex px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ring-1 ring-inset', cfg.bg, cfg.text, cfg.ring)}>
+                                                    {cfg.label}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        {/* Assignment Date */}
+                                        <td className="px-4 py-3.5">
+                                            <div className="flex items-center gap-1.5 text-[12px] text-gray-600 font-medium">
+                                                <Calendar className="h-3 w-3 text-gray-300 flex-shrink-0" />
+                                                {fmtDate(perm.assigned_at)}
+                                            </div>
+                                        </td>
+                                        {/* Assigned By */}
+                                        <td className="px-4 py-3.5">
+                                            <p className="text-[12px] text-gray-500 font-medium truncate max-w-[130px]">
+                                                {perm.assigned_by || '—'}
+                                            </p>
+                                        </td>
+                                        {/* Actions */}
+                                        <td className="px-4 py-3.5 pr-6 text-right">
+                                            <button
+                                                onClick={() => setRevokeTarget({ email: perm.email })}
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
+                                                title="Revoke access"
                                             >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow className="hover:bg-transparent border-none">
-                                    <TableCell colSpan={4} className="h-80 text-center">
-                                        <div className="flex flex-col items-center justify-center gap-4 animate-in fade-in zoom-in duration-500">
-                                            <div className="h-20 w-20 rounded-full bg-gray-50 flex items-center justify-center mb-2">
-                                                <Search className="h-8 w-8 text-gray-200" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-bold text-[#002B49]">No results found</p>
-                                                <p className="text-xs text-gray-400 font-medium">Try adjusting your filter or adding a new user.</p>
-                                            </div>
-                                            <Button variant="outline" size="sm" className="h-9 rounded-lg border-gray-200" onClick={() => setSearchQuery('')}>
-                                                Clear Search
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
+                                                <Trash2 className="h-3.5 w-3.5" /> Revoke
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
             </div>
+
+            {/* ── Revoke Confirm Modal ── */}
+            <Dialog open={!!revokeTarget} onOpenChange={open => !open && setRevokeTarget(null)}>
+                <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-extrabold text-[#002B49]">Revoke Access?</DialogTitle>
+                        <DialogDescription className="text-sm text-gray-500 pt-1">
+                            Remove all access for <strong>{revokeTarget?.email}</strong> from{' '}
+                            <strong>{currentApp?.route_name || selectedRoute}</strong>. They can re-apply later.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button variant="ghost" className="flex-1 rounded-xl h-11 font-bold" onClick={() => setRevokeTarget(null)}>Cancel</Button>
+                        <Button variant="destructive" className="flex-1 rounded-xl h-11 font-bold bg-red-500 hover:bg-red-600" onClick={handleRevoke} disabled={revoking}>
+                            {revoking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                            Revoke Access
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

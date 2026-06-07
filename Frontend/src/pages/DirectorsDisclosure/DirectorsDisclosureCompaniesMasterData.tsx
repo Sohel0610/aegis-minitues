@@ -33,11 +33,14 @@ interface Company {
 interface CompanyComplianceStatus {
   din: string;
   name: string;
+  designation?: string;
+  appointment_date?: string;
   dir8_status: "Filed" | "Pending";
   mbp1_status: "Filed" | "Pending";
   dir8_file: string | null;
   mbp1_file: string | null;
   last_updated: string;
+  is_adani?: boolean;
 }
 
 interface CompanyComplianceResponse {
@@ -560,7 +563,21 @@ const DirectorsDisclosureCompaniesMasterData = () => {
                                 {d.is_adani ? 'Group' : 'External'}
                               </span>
                             </div>
-                            <p className="text-[10px] text-gray-400 font-mono">DIN: {d.din}</p>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-400 mt-0.5">
+                              <span className="font-mono">DIN: {d.din}</span>
+                              {d.designation && (
+                                <>
+                                  <span className="text-gray-300 font-normal">•</span>
+                                  <span className="font-medium text-purple-600 bg-purple-50 px-1 py-0.25 rounded">{d.designation}</span>
+                                </>
+                              )}
+                              {d.appointment_date && d.appointment_date !== "N/A" && (
+                                <>
+                                  <span className="text-gray-300 font-normal">•</span>
+                                  <span>Appointed: {d.appointment_date}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
