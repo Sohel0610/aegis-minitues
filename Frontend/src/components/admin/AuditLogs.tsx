@@ -33,6 +33,9 @@ const EVENT_META: Record<string, { label: string; bg: string; text: string; ring
     access_requested:    { label: 'Requested',  bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200/60',   Icon: Clock       },
     access_approved:     { label: 'Approved',   bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200/60', Icon: CheckCircle },
     access_rejected:     { label: 'Rejected',   bg: 'bg-red-50',     text: 'text-red-700',     ring: 'ring-red-200/60',     Icon: XCircle     },
+    login:               { label: 'Login',      bg: 'bg-indigo-50',  text: 'text-indigo-700',  ring: 'ring-indigo-200/60',  Icon: CheckCircle },
+    admin_granted:       { label: 'Admin Added', bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200/60', Icon: CheckCircle },
+    admin_revoked:       { label: 'Admin Revoked', bg: 'bg-red-50',  text: 'text-red-700',     ring: 'ring-red-200/60',     Icon: XCircle     },
 };
 
 const DEFAULT_META = { label: 'System', bg: 'bg-gray-50', text: 'text-gray-600', ring: 'ring-gray-200/60', Icon: Activity };
@@ -202,21 +205,34 @@ export const AuditLogs: React.FC = () => {
                                                 <p className="text-[12px] text-gray-500 font-medium truncate">{det.raw}</p>
                                             ) : (
                                                 <div className="space-y-0.5">
-                                                    {(det.target_email || det.user_email) && (
+                                                    {log.event_type === 'login' ? (
                                                         <p className="text-[11px] text-gray-600 font-semibold truncate">
-                                                            Target: <span className="text-[#002B49]">{det.target_email || det.user_email}</span>
+                                                            SSO Login: <span className="text-emerald-600">Success</span>
                                                         </p>
-                                                    )}
-                                                    {det.route && (
-                                                        <p className="text-[11px] text-gray-400 font-medium truncate">Route: {det.route}</p>
-                                                    )}
-                                                    {det.permission_type && (
-                                                        <span className="inline-block px-1.5 py-0.5 bg-primary/5 text-primary rounded text-[10px] font-bold uppercase">
-                                                            {det.permission_type}
-                                                        </span>
-                                                    )}
-                                                    {!det.target_email && !det.user_email && !det.route && (
-                                                        <p className="text-[11px] text-gray-400 italic">System event</p>
+                                                    ) : (
+                                                        <>
+                                                            {(det.target_email || det.user_email) && (
+                                                                <p className="text-[11px] text-gray-600 font-semibold truncate">
+                                                                    Target: <span className="text-[#002B49]">{det.target_email || det.user_email}</span>
+                                                                </p>
+                                                            )}
+                                                            {det.role && (
+                                                                <p className="text-[11px] text-gray-500 truncate">
+                                                                    Role: <span className="text-purple-600 font-semibold uppercase">{det.role}</span>
+                                                                </p>
+                                                            )}
+                                                            {det.route && (
+                                                                <p className="text-[11px] text-gray-400 font-medium truncate">Route: {det.route}</p>
+                                                            )}
+                                                            {det.permission_type && (
+                                                                <span className="inline-block px-1.5 py-0.5 bg-primary/5 text-primary rounded text-[10px] font-bold uppercase">
+                                                                    {det.permission_type}
+                                                                </span>
+                                                            )}
+                                                            {!det.target_email && !det.user_email && !det.route && !det.role && (
+                                                                <p className="text-[11px] text-gray-400 italic">System event</p>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             )}

@@ -53,6 +53,21 @@ def init_rbac_db():
                     UNIQUE(email, role)
                 )
             """)
+            # Ensure granted_by and granted_at exist (migration for older tables)
+            cursor.execute("""
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='rbac' AND table_name='user_roles' AND column_name='granted_by') THEN
+                        ALTER TABLE rbac.user_roles ADD COLUMN granted_by TEXT;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='rbac' AND table_name='user_roles' AND column_name='granted_at') THEN
+                        ALTER TABLE rbac.user_roles ADD COLUMN granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='rbac' AND table_name='user_roles' AND column_name='assigned_at') THEN
+                            UPDATE rbac.user_roles SET granted_at = assigned_at;
+                        END IF;
+                    END IF;
+                END $$;
+            """)
             
             # Seed initial admin if empty
             cursor.execute("SELECT COUNT(*) FROM rbac.user_roles WHERE email = %s", ("cogn206112@adani.com",))
