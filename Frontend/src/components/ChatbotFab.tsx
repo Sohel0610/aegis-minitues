@@ -432,13 +432,13 @@ export default function ChatbotFab() {
       {/* CHAT WINDOW */}
       {open && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/20" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-transparent" onClick={() => setOpen(false)} />
           <div className={expanded ? "absolute inset-4" : "absolute bottom-6 right-6 w-[480px]"}>
             <Card className="h-full rounded-2xl overflow-hidden border-2" style={{ borderColor: "#0B74B0" }}>
               <CardHeader className="relative h-20 bg-gradient-to-r from-[#0B74B0] via-[#4A5FA8] to-[#75479C] text-white shadow-lg">
                 <div className="flex items-center justify-between h-full px-2">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                       <TrendingUp size={24} className="text-white" />
                     </div>
                     <div>
