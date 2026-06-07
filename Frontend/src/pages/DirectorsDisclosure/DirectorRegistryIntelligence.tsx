@@ -84,11 +84,11 @@ const DirectorRegistryIntelligence = () => {
       const res = await fetch(`/api/director-intelligence/associations/${din}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Filter out resigned, inactive or non-active board seats
+        // Filter out resigned, inactive or amalgamated board seats
         const activeAssociations = data.filter((a: Association) => {
           if (!a.status) return true;
           const statusLower = a.status.toLowerCase().trim();
-          return !statusLower.includes("resigned") && !statusLower.includes("inactive");
+          return !statusLower.includes("resigned") && !statusLower.includes("inactive") && !statusLower.includes("amalgamated");
         });
         setAssociations(activeAssociations);
       } else {
