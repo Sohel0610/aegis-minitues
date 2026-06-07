@@ -160,7 +160,7 @@ const HierarchyStructure = () => {
                 Back to Home
               </Button>
             </Link>
-            <h1 className="text-xl font-bold text-primary">Agent Organogram - Secretrial</h1>
+            <h1 className="text-xl font-bold text-primary">Agent Organogram - Secretarial</h1>
             <div className="w-24" />
           </div>
         </div>
