@@ -247,23 +247,28 @@ def init_rbac_pg_tables():
             """)
             # Seed default routes
             default_routes = [
-                ("/data-source", "Data Source", "excel"),
-                ("/analytics", "Analytics Dashboard", "analytics"),
-                ("/director-analysis", "Director Analysis", "director_analysis"),
-                ("/directors-disclosure", "Directors Disclosure", "directors_disclosure"),
-                ("/minutes", "Minutes Preparation", "minutes"),
-                ("/rbi-sebi-compliance", "RBI/SEBI Compliance", "rbi"),
-                ("/admin-panel", "Admin Control Center", "admin"),
-                ("/insider-trading", "Insider Trading Monitor", "insider_trading"),
-                ("/director-intelligence", "Director Intelligence", "director_intelligence"),
-                ("/institutional-risk", "Institutional Risk", "institutional_risk")
+                ("/bse-alerts", "BSE Analysis", "bse"),
+                ("/rbi-dashboard", "RBI Analysis", "rbi"),
+                ("/sebi-dashboard", "SEBI Analysis", "sebi"),
+                ("/insider-trading", "Insider Trading", "insider_trading"),
+                ("/directors-disclosure", "Directors' Disclosure", "directors_disclosure"),
+                ("/minutes-preparation", "Minutes Generator", "minutes_preparation")
             ]
+            
+            # Clean up old route definitions and permissions that are not in the new 6 routes
+            cursor.execute("DELETE FROM rbac.route_definitions WHERE route_path NOT IN (%s, %s, %s, %s, %s, %s)",
+                           tuple(r[0] for r in default_routes))
+            cursor.execute("DELETE FROM rbac.route_permissions WHERE route_path NOT IN (%s, %s, %s, %s, %s, %s)",
+                           tuple(r[0] for r in default_routes))
             
             for path, name, module in default_routes:
                 cursor.execute("""
                     INSERT INTO rbac.route_definitions (route_path, route_name, display_name, module_name)
                     VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (route_path) DO NOTHING
+                    ON CONFLICT (route_path) DO UPDATE
+                    SET display_name = EXCLUDED.display_name,
+                        route_name = EXCLUDED.route_name,
+                        module_name = EXCLUDED.module_name
                 """, (path, name, name, module))
 
             conn.commit()
