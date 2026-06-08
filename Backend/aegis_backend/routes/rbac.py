@@ -5,6 +5,7 @@ No more SQLite legacy.
 """
 
 from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 import os
@@ -890,6 +891,124 @@ def send_request_outcome_email(email, name, route, status, request_id, perm):
         )
     except Exception as e:
         logger.error(f"Outcome Email Error: {e}")
+
+@router.get("/access-requests/email-action", response_class=HTMLResponse)
+async def process_email_action(id: int, action: str, email: str):
+    """Handle approve/reject actions clicked directly from admin emails."""
+    try:
+        if action not in ("approve", "reject"):
+            return HTMLResponse(content="<h2>Invalid action</h2>", status_code=400)
+            
+        def process():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_RBAC'))
+            if not conn: return False, "Database connection failed"
+            cursor = get_pg_cursor(conn)
+            try:
+                # 1. Verify Admin
+                cursor.execute("SELECT 1 FROM rbac.user_roles WHERE LOWER(email) = LOWER(%s) AND role = 'admin'", (email,))
+                if not cursor.fetchone():
+                    return False, "Unauthorized: Only administrators can process requests"
+                
+                # 2. Get Request Details
+                cursor.execute("SELECT * FROM rbac.access_requests WHERE id = %s AND status = 'pending'", (id,))
+                request = cursor.fetchone()
+                if not request:
+                    return False, "Request not found or already processed"
+                
+                # 3. Update Request Status & Assign Permission if approved
+                status_val = "approved" if action == "approve" else "rejected"
+                cursor.execute("""
+                    UPDATE rbac.access_requests 
+                    SET status = %s, reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, review_notes = 'Processed via email link'
+                    WHERE id = %s
+                """, (status_val, email, id))
+                
+                if action == "approve":
+                    cursor.execute("""
+                        INSERT INTO rbac.route_permissions (email, route_path, permission_type, assigned_by, notes)
+                        VALUES (%s, %s, %s, %s, 'Approved via email link')
+                        ON CONFLICT (email, route_path) 
+                        DO UPDATE SET permission_type = EXCLUDED.permission_type, notes = EXCLUDED.notes, is_active = TRUE
+                    """, (request["email"], request["requested_route"], request["requested_permission"], email))
+                
+                conn.commit()
+                return True, request
+            finally:
+                conn.close()
+        
+        success, res_data = await asyncio.get_event_loop().run_in_executor(thread_pool, process)
+        if success:
+            # Trigger outcome email in background
+            try:
+                status_val = "approved" if action == "approve" else "rejected"
+                loop = asyncio.get_running_loop()
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        thread_pool,
+                        send_request_outcome_email,
+                        res_data["email"],
+                        res_data["name"],
+                        res_data["requested_route"],
+                        status_val,
+                        id,
+                        res_data["requested_permission"]
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Email notification dispatch failed: {e}")
+                
+            action_past = "approved" if action == "approve" else "declined"
+            border_color = "#10b981" if action == "approve" else "#ef4444"
+            title_color = "#10b981" if action == "approve" else "#ef4444"
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Access Request Processed</title>
+                <style>
+                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 50px; background-color: #f8fafc; color: #1e293b; }}
+                    .card {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-top: 5px solid {border_color}; }}
+                    h1 {{ color: {title_color}; margin-top: 0; }}
+                    p {{ font-size: 16px; line-height: 1.5; color: #475569; }}
+                    .btn {{ display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #005696; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; }}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>Request {action_past.title()}</h1>
+                    <p>Access request <strong>#AGS-{id:04d}</strong> for user <strong>{res_data['email']}</strong> has been successfully <strong>{action_past}</strong>.</p>
+                    <p>The user has been notified via email.</p>
+                    <a href="https://aegis.adani.com" class="btn">Go to AEGIS Portal</a>
+                </div>
+            </body>
+            </html>
+            """
+            return HTMLResponse(content=html_content)
+        else:
+            return HTMLResponse(content=f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Error Processing Request</title>
+                <style>
+                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 50px; background-color: #f8fafc; color: #1e293b; }}
+                    .card {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-top: 5px solid #ef4444; }}
+                    h1 {{ color: #ef4444; margin-top: 0; }}
+                    p {{ font-size: 16px; line-height: 1.5; color: #475569; }}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>Operation Failed</h1>
+                    <p>{res_data}</p>
+                </div>
+            </body>
+            </html>
+            """, status_code=400)
+    except Exception as e:
+        logger.error(f"Email action endpoint error: {e}")
+        return HTMLResponse(content="<h2>Internal Server Error occurred</h2>", status_code=500)
+
 @router.delete("/permissions/revoke", response_model=Dict[str, Any])
 async def revoke_permission(req: RevokePermissionRequest, email: str):
     """Revoke a route permission from a user."""

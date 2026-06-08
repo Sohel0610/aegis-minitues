@@ -319,6 +319,87 @@ def get_user_confirmation_template(requester_name, requested_route, status, requ
     </table>
 </body>
 </html>"""
+    elif status == "pending":
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Request Received - {app_name}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Arial, sans-serif;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table border="0" cellpadding="0" cellspacing="0" width="700" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(251, 176, 64, 0.1);">
+                    <!-- Accent Bar -->
+                    <tr><td height="5" style="background: #FBB040;"></td></tr>
+                    <!-- Header -->
+                    <tr>
+                        <td align="center" style="background-color: #005696; padding: 25px 30px;">
+                            <h1 style="color: #ffffff; font-size: 28px; font-weight: 800; margin: 0; letter-spacing: 2px;">AEGIS</h1>
+                            <p style="color: rgba(255,255,255,0.9); font-size: 13px; margin: 5px 0 0; text-transform: uppercase;">Request Received</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 30px 50px 20px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td>
+                                        <p style="font-size: 12px; color: #005696; font-family: monospace; margin: 0;">Request ID: {formatted_id}</p>
+                                    </td>
+                                    <td align="right">
+                                        <p style="font-size: 11px; color: #64748b; margin: 0;">{timestamp}</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            <h2 style="font-size: 20px; color: #1e293b; margin: 20px 0 10px;">Hello {requester_name},</h2>
+                            <div style="text-align: center; margin: 20px 0;">
+                                <div style="display: inline-block; background-color: #FBB040; color: #ffffff; padding: 10px 22px; border-radius: 25px; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">⏳ Pending Review</div>
+                            </div>
+                            <div style="background-color: #fffde7; border-left: 6px solid #FBB040; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
+                                <p style="font-size: 16px; color: #713f12; margin: 0; line-height: 1.5;">
+                                    Your request for access to <strong>{app_name}</strong> has been received and is currently <strong>pending review</strong>.
+                                </p>
+                            </div>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+                                <tr>
+                                    <td width="50%" style="padding: 20px; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">
+                                        <span style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 3px;">Application</span>
+                                        <div style="font-size: 15px; color: #1e293b; font-weight: 700;">{app_name}</div>
+                                    </td>
+                                    <td width="50%" style="padding: 20px; background-color: #ffffff;">
+                                        <span style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 3px;">Status</span>
+                                        <div style="font-size: 15px; color: #d97706; font-weight: 700;">Pending Review</div>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="font-size: 14px; color: #475569; line-height: 1.6; margin-top: 25px;">
+                                You will receive another email notification as soon as the administrator reviews and takes action on your request.
+                            </p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 30px 50px;">
+                            <div style="border-left: 4px solid #005696; padding-left: 20px; margin-bottom: 20px;">
+                                <p style="font-size: 14px; color: #64748b; margin: 0 0 3px;">Warm regards,</p>
+                                <p style="font-size: 16px; color: #005696; font-weight: 700; margin: 0 0 3px;">Renewables AI Team</p>
+                                <p style="font-size: 13px; color: #475569; margin: 0;">Helpdesk: <strong>57769</strong></p>
+                            </div>
+                            <p style="font-size: 11px; text-align: center; color: #94a3b8; margin: 0; line-height: 1.5;">
+                                Automated message from AEGIS. Keep for your records.<br>
+                                <strong style="color: #005696; font-style: italic; font-size: 13px;">Growth with Goodness</strong>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"""
     else:
         return f"""<!DOCTYPE html>
 <html>
