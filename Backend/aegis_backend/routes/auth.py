@@ -17,6 +17,7 @@ import secrets
 import hashlib
 import urllib.parse
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
+from utils.session_token import issue_session_token
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +202,8 @@ async def azure_ad_callback(code: str = Query(...), state: str = Query(...)):
             finally:
                 conn.close()
 
-        target_url = f"/?token={secrets.token_urlsafe(32)}&email={email}&name={urllib.parse.quote(name or '')}&has_access={user_perms.get('has_any_access', False)}&is_admin={user_perms.get('is_admin', False)}"
+        session_token = issue_session_token(email, name)
+        target_url = f"/?token={session_token}&email={email}&name={urllib.parse.quote(name or '')}&has_access={user_perms.get('has_any_access', False)}&is_admin={user_perms.get('is_admin', False)}"
         return RedirectResponse(url=target_url)
     except Exception as e:
         logger.error(f"Callback error: {e}")

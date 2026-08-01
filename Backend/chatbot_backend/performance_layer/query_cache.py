@@ -1,299 +1,74 @@
-"""
-Query Cache - LRU cache with TTL for query results
-Improves response time for repeated queries
-"""
-
-from typing import Any, Optional, Dict
-from dataclasses import dataclass
+"""PostgreSQL-backed per-user semantic query cache."""
+from collections import OrderedDict
 from datetime import datetime, timedelta
 import hashlib
 import json
-import sqlite3
-from collections import OrderedDict
-
-
-@dataclass
-class CacheEntry:
-    """Cache entry with TTL"""
-    key: str
-    value: Any
-    created_at: datetime
-    ttl_seconds: int
-    hit_count: int = 0
-    
-    def is_expired(self) -> bool:
-        """Check if cache entry is expired"""
-        age = (datetime.utcnow() - self.created_at).total_seconds()
-        return age > self.ttl_seconds
-
+from typing import Any, Dict, Optional
+from sqlalchemy import text
+from chatbot_backend.data_layer.models import engine
 
 class QueryCache:
-    """
-    LRU cache with TTL for query results
-    Stores results in memory with SQLite persistence
-    """
-    
-    def __init__(
-        self,
-        max_size: int = 1000,
-        default_ttl: int = 300,  # 5 minutes
-        db_path: str = "query_cache.db"
-    ):
-        """
-        Initialize query cache
-        
-        Args:
-            max_size: Maximum number of entries in cache
-            default_ttl: Default TTL in seconds
-            db_path: Path to SQLite database for persistence
-        """
-        self.max_size = max_size
-        self.default_ttl = default_ttl
-        self.db_path = db_path
-        
-        # In-memory LRU cache
-        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
-        
-        # Statistics
-        self._hits = 0
-        self._misses = 0
-        
-        # Initialize database
+    def __init__(self, max_size: int = 1000, default_ttl: int = 300):
+        self.max_size, self.default_ttl = max_size, default_ttl
+        self._cache = OrderedDict()
+        self._hits = self._misses = 0
         self._init_database()
-    
+
     def _init_database(self):
-        """Initialize SQLite database for cache persistence"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS query_cache (
-                cache_key TEXT PRIMARY KEY,
-                cache_value TEXT,
-                created_at TEXT,
-                ttl_seconds INTEGER,
-                hit_count INTEGER DEFAULT 0
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_created_at 
-            ON query_cache(created_at)
-        ''')
-        
-        conn.commit()
-        conn.close()
-    
-    def get(self, query: str, database: str = "all") -> Optional[Any]:
-        """
-        Get cached result for query
-        
-        Args:
-            query: User query
-            database: Database filter
-            
-        Returns:
-            Cached result or None if not found/expired
-        """
-        cache_key = self._generate_key(query, database)
-        
-        # Check in-memory cache first
-        if cache_key in self._cache:
-            entry = self._cache[cache_key]
-            
-            # Check if expired
-            if entry.is_expired():
-                # Remove expired entry
-                del self._cache[cache_key]
-                self._remove_from_db(cache_key)
-                self._misses += 1
-                return None
-            
-            # Move to end (LRU)
-            self._cache.move_to_end(cache_key)
-            
-            # Update hit count
-            entry.hit_count += 1
+        with engine.begin() as conn:
+            conn.execute(text("""CREATE TABLE IF NOT EXISTS chatbot_query_cache (
+                cache_key_hash TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT 'anonymous', database_scope TEXT NOT NULL,
+                query_text TEXT NOT NULL, cache_value JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                expires_at TIMESTAMPTZ NOT NULL, hit_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(cache_key_hash, user_id, database_scope))"""))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chatbot_cache_expiry ON chatbot_query_cache(expires_at)"))
+
+    @staticmethod
+    def _key(query, database, user_id):
+        normal = " ".join(query.lower().split())
+        return hashlib.sha256(f"{user_id}:{database}:{normal}".encode()).hexdigest()
+
+    @staticmethod
+    def _similar(a: str, b: str) -> float:
+        # Token Jaccard is deterministic and works when an embedding service is unavailable.
+        left, right = set(a.lower().split()), set(b.lower().split())
+        return len(left & right) / len(left | right) if left or right else 0.0
+
+    def get(self, query: str, database: str = "all", user_id: str = "anonymous") -> Optional[Any]:
+        key = self._key(query, database, user_id)
+        if key in self._cache:
+            self._hits += 1; return self._cache[key]
+        with engine.begin() as conn:
+            row = conn.execute(text("SELECT cache_value FROM chatbot_query_cache WHERE cache_key_hash=:key AND user_id=:user AND database_scope=:db AND expires_at>NOW()"), {"key": key, "user": user_id, "db": database}).scalar()
+            if row is None:
+                # semantic dedup for rephrased requests from the same user/scope
+                candidates = conn.execute(text("SELECT cache_value,query_text FROM chatbot_query_cache WHERE user_id=:user AND database_scope=:db AND expires_at>NOW() ORDER BY created_at DESC LIMIT 100"), {"user": user_id, "db": database}).mappings().all()
+                row = next((candidate["cache_value"] for candidate in candidates if self._similar(query, candidate["query_text"]) >= .95), None)
+            if row is None:
+                self._misses += 1; return None
             self._hits += 1
-            
-            return entry.value
-        
-        # Check database
-        entry = self._load_from_db(cache_key)
-        if entry and not entry.is_expired():
-            # Load into memory
-            self._cache[cache_key] = entry
-            self._hits += 1
-            return entry.value
-        
-        self._misses += 1
-        return None
-    
-    def set(
-        self,
-        query: str,
-        result: Any,
-        database: str = "all",
-        ttl: Optional[int] = None
-    ):
-        """
-        Cache query result
-        
-        Args:
-            query: User query
-            result: Query result to cache
-            database: Database filter
-            ttl: Time-to-live in seconds (None = use default)
-        """
-        cache_key = self._generate_key(query, database)
-        ttl_seconds = ttl if ttl is not None else self.default_ttl
-        
-        entry = CacheEntry(
-            key=cache_key,
-            value=result,
-            created_at=datetime.utcnow(),
-            ttl_seconds=ttl_seconds,
-            hit_count=0
-        )
-        
-        # Add to memory cache
-        self._cache[cache_key] = entry
-        self._cache.move_to_end(cache_key)
-        
-        # Evict oldest if over max size
-        if len(self._cache) > self.max_size:
-            oldest_key, _ = self._cache.popitem(last=False)
-            self._remove_from_db(oldest_key)
-        
-        # Persist to database
-        self._save_to_db(entry)
-    
-    def invalidate(self, query: Optional[str] = None, database: Optional[str] = None):
-        """
-        Invalidate cache entries
-        
-        Args:
-            query: Specific query to invalidate (None = invalidate all)
-            database: Database filter (None = all databases)
-        """
-        if query:
-            cache_key = self._generate_key(query, database or "all")
-            if cache_key in self._cache:
-                del self._cache[cache_key]
-            self._remove_from_db(cache_key)
-        else:
-            # Invalidate all
-            self._cache.clear()
-            self._clear_db()
-    
+            return row if isinstance(row, dict) else json.loads(row)
+
+    def set(self, query: str, result: Any, database: str = "all", ttl: Optional[int] = None, user_id: str = "anonymous"):
+        try: value = json.dumps(result)
+        except (TypeError, ValueError): return
+        key, seconds = self._key(query, database, user_id), ttl or self.default_ttl
+        with engine.begin() as conn:
+            conn.execute(text("""INSERT INTO chatbot_query_cache(cache_key_hash,user_id,database_scope,query_text,cache_value,expires_at)
+                VALUES(:key,:user,:db,:query,CAST(:value AS jsonb),NOW() + (:ttl * INTERVAL '1 second'))
+                ON CONFLICT(cache_key_hash,user_id,database_scope) DO UPDATE SET cache_value=EXCLUDED.cache_value,expires_at=EXCLUDED.expires_at,created_at=NOW()"""), {"key":key,"user":user_id,"db":database,"query":query,"value":value,"ttl":seconds})
+
+    def invalidate(self, query=None, database=None, user_id="anonymous"):
+        with engine.begin() as conn:
+            if query: conn.execute(text("DELETE FROM chatbot_query_cache WHERE cache_key_hash=:key AND user_id=:user AND database_scope=:db"), {"key":self._key(query,database or "all",user_id),"user":user_id,"db":database or "all"})
+            else: conn.execute(text("DELETE FROM chatbot_query_cache WHERE user_id=:user"), {"user":user_id})
+
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
-        total_requests = self._hits + self._misses
-        hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
-        
-        return {
-            "hits": self._hits,
-            "misses": self._misses,
-            "total_requests": total_requests,
-            "hit_rate": f"{hit_rate:.2f}%",
-            "cache_size": len(self._cache),
-            "max_size": self.max_size
-        }
-    
-    def _generate_key(self, query: str, database: str) -> str:
-        """Generate cache key from query and database"""
-        # Normalize query (lowercase, strip whitespace)
-        normalized = query.lower().strip()
-        
-        # Create hash
-        key_string = f"{normalized}:{database}"
-        return hashlib.md5(key_string.encode()).hexdigest()
-    
-    def _save_to_db(self, entry: CacheEntry):
-        """Save cache entry to database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Serialize value to JSON
-        try:
-            value_json = json.dumps(entry.value)
-        except:
-            # If not JSON serializable, skip database persistence
-            conn.close()
-            return
-        
-        cursor.execute(
-            'INSERT OR REPLACE INTO query_cache '
-            '(cache_key, cache_value, created_at, ttl_seconds, hit_count) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (
-                entry.key,
-                value_json,
-                entry.created_at.isoformat(),
-                entry.ttl_seconds,
-                entry.hit_count
-            )
-        )
-        
-        conn.commit()
-        conn.close()
-    
-    def _load_from_db(self, cache_key: str) -> Optional[CacheEntry]:
-        """Load cache entry from database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            'SELECT cache_value, created_at, ttl_seconds, hit_count '
-            'FROM query_cache WHERE cache_key = ?',
-            (cache_key,)
-        )
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row is None:
-            return None
-        
-        try:
-            value = json.loads(row[0])
-            created_at = datetime.fromisoformat(row[1])
-            ttl_seconds = row[2]
-            hit_count = row[3]
-            
-            return CacheEntry(
-                key=cache_key,
-                value=value,
-                created_at=created_at,
-                ttl_seconds=ttl_seconds,
-                hit_count=hit_count
-            )
-        except:
-            return None
-    
-    def _remove_from_db(self, cache_key: str):
-        """Remove cache entry from database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM query_cache WHERE cache_key = ?', (cache_key,))
-        conn.commit()
-        conn.close()
-    
-    def _clear_db(self):
-        """Clear all cache entries from database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM query_cache')
-        conn.commit()
-        conn.close()
+        total = self._hits + self._misses
+        return {"hits":self._hits,"misses":self._misses,"hit_rate": f"{(100*self._hits/total) if total else 0:.2f}%"}
 
-
-# Global instance
 _query_cache = None
-
 def get_query_cache() -> QueryCache:
-    """Get singleton instance of QueryCache"""
     global _query_cache
-    if _query_cache is None:
-        _query_cache = QueryCache()
+    if _query_cache is None: _query_cache = QueryCache()
     return _query_cache

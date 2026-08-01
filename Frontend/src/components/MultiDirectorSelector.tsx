@@ -1,14 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useMemo } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Search, User, Hash, X as CloseIcon } from 'lucide-react';
+import { Search, X as CloseIcon, Plus } from 'lucide-react';
 
 interface Director {
   id?: number;
   name: string;
   din: string;
+  status?: string;
   created_at?: string;
 }
 
@@ -18,99 +19,125 @@ interface MultiDirectorSelectorProps {
   value: Director[];
   onChange: (directors: Director[]) => void;
   placeholder?: string;
+  companyName?: string;
 }
 
-const MultiDirectorSelector = ({ 
+const MultiDirectorSelector: React.FC<MultiDirectorSelectorProps> = ({ 
   id, 
   label, 
   value, 
   onChange, 
-  placeholder = "Type director name to add"
-}: MultiDirectorSelectorProps) => {
+  placeholder = "Search director name or DIN...",
+  companyName
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [inputValue, setInputValue] = useState('');
-  const [directorsData, setDirectorsData] = useState<Director[]>([]);
+  const [companyDirectors, setCompanyDirectors] = useState<Director[]>([]);
+  const [masterDirectors, setMasterDirectors] = useState<Director[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Filter directors based on search term and exclude already selected ones
-  const filteredDirectors = useMemo(() => {
-    if (!searchTerm) {
-      // Show first 10 directors when no search term, excluding already selected ones
-      const selectedNames = new Set(value.map(d => d.name));
-      const availableDirectors = directorsData.filter(d => !selectedNames.has(d.name));
-      return availableDirectors.slice(0, 10);
-    }
-    
-    // For client-side filtering
-    const term = searchTerm.toLowerCase();
-    const selectedNames = new Set(value.map(d => d.name));
-    const filtered = directorsData.filter(director => 
-      (director.name.toLowerCase().includes(term) || 
-      director.din.includes(term)) &&
-      !selectedNames.has(director.name)
-    ).slice(0, 20); // Limit to 20 results
-    
-    return filtered;
-  }, [searchTerm, directorsData, value]);
-
-  // Fetch directors from backend based on search term
+  // Fetch company-specific directors on mount or when companyName changes
   useEffect(() => {
-    const fetchDirectors = async () => {
-      // Don't fetch if search term is empty
-      if (!searchTerm) {
-        setDirectorsData([]);
-        return;
-      }
-      
+    if (!companyName) return;
+
+    const fetchCompanyDirectors = async () => {
       setIsLoading(true);
-      setError(null);
-      
       try {
-        // Use the full backend URL as per the memory
-        const response = await fetch(`/directors`);
+        const response = await fetch(`/api/companies/${encodeURIComponent(companyName)}/directors`);
         if (response.ok) {
           const result = await response.json();
-          // Extract directors from the data field
           const directors = Array.isArray(result.data) ? result.data : [];
-          // Map to the expected format (name and din only)
-          const mappedDirectors = directors.map((d: any) => ({
+          const mapped = directors.map((d: any) => ({
             name: d.name,
             din: d.din
           }));
-          setDirectorsData(mappedDirectors);
-        } else {
-          setError('Failed to fetch directors');
-          setDirectorsData([]);
+          setCompanyDirectors(mapped);
+          
+          if (value.length === 0 && mapped.length > 0) {
+            onChange(mapped);
+          }
         }
       } catch (err) {
-        console.error('Error fetching directors:', err);
-        setError('Error fetching directors');
-        setDirectorsData([]);
+        console.error('Error fetching company directors:', err);
       } finally {
         setIsLoading(false);
       }
     };
 
-    // Debounce the API call
+    fetchCompanyDirectors();
+  }, [companyName]);
+
+  // Fetch master directors when search term is entered
+  useEffect(() => {
+    if (!searchTerm) {
+      setMasterDirectors([]);
+      return;
+    }
+    
+    const fetchMasterDirectors = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`/api/directors-master`);
+        if (response.ok) {
+          const result = await response.json();
+          const directors = Array.isArray(result.data) ? result.data : [];
+          const mapped = directors.map((d: any) => ({
+            name: d.name,
+            din: d.din
+          }));
+          setMasterDirectors(mapped);
+        } else {
+          setError('Failed to fetch directors');
+          setMasterDirectors([]);
+        }
+      } catch (err) {
+        console.error('Error fetching directors:', err);
+        setError('Error fetching directors');
+        setMasterDirectors([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     const debounceTimer = setTimeout(() => {
-      fetchDirectors();
+      fetchMasterDirectors();
     }, 300);
 
     return () => clearTimeout(debounceTimer);
   }, [searchTerm]);
 
+  const availableDirectors = useMemo(() => {
+    const selectedNames = new Set(value.map(d => d.name.toLowerCase()));
+    const combined = [...companyDirectors, ...masterDirectors];
+    const uniqueMap = new Map<string, Director>();
+    
+    combined.forEach(d => {
+      if (!selectedNames.has(d.name.toLowerCase()) && !uniqueMap.has(d.name.toLowerCase())) {
+        uniqueMap.set(d.name.toLowerCase(), d);
+      }
+    });
+
+    const list = Array.from(uniqueMap.values());
+    if (!searchTerm) {
+      return list.slice(0, 10);
+    }
+    const term = searchTerm.toLowerCase();
+    return list.filter(d => d.name.toLowerCase().includes(term) || d.din.includes(term)).slice(0, 20);
+  }, [companyDirectors, masterDirectors, value, searchTerm]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
     setSearchTerm(newValue);
-    setIsOpen(!!newValue);
+    setIsOpen(true);
   };
 
   const handleDirectorSelect = (director: Director) => {
-    // Check if director is already selected
-    if (!value.some(d => d.name === director.name && d.din === director.din)) {
+    if (!value.some(d => d.name.toLowerCase() === director.name.toLowerCase())) {
       onChange([...value, director]);
     }
     setInputValue('');
@@ -129,43 +156,73 @@ const MultiDirectorSelector = ({
   };
 
   const handleInputBlur = () => {
-    // Delay closing to allow for clicks on dropdown items
     setTimeout(() => setIsOpen(false), 200);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    // Add director on Enter key if there's a matching director
-    if (e.key === 'Enter' && inputValue && filteredDirectors.length > 0) {
-      handleDirectorSelect(filteredDirectors[0]);
-      e.preventDefault();
-    }
-  };
+  const unselectedCompanyDirectors = useMemo(() => {
+    const selectedNames = new Set(value.map(d => d.name.toLowerCase()));
+    return companyDirectors.filter(d => !selectedNames.has(d.name.toLowerCase()));
+  }, [companyDirectors, value]);
 
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <Label htmlFor={id} className="text-xs font-semibold text-slate-700">
+          {label}
+        </Label>
+        <span className="text-[11px] text-slate-500 font-medium">
+          {value.length} {value.length === 1 ? 'director' : 'directors'} selected
+        </span>
+      </div>
       
-      {/* Selected Directors */}
+      {/* Registered Board Members for selected company */}
+      {companyName && unselectedCompanyDirectors.length > 0 && (
+        <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/80 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
+            <span>Registered Board Members for {companyName}:</span>
+            <button
+              type="button"
+              onClick={() => onChange([...value, ...unselectedCompanyDirectors])}
+              className="text-[11px] text-blue-600 hover:underline font-semibold"
+            >
+              + Add All ({unselectedCompanyDirectors.length})
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {unselectedCompanyDirectors.map((director, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleDirectorSelect(director)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              >
+                <Plus className="h-3 w-3 text-slate-400" />
+                {director.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Selected Directors Chips */}
       {value.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50/50 rounded-lg border border-slate-200/60">
           {value.map((director, index) => (
             <div 
               key={`${director.name}-${index}`} 
-              className="flex items-center bg-blue-100 rounded-full px-3 py-1 text-sm"
+              className="flex items-center bg-white border border-slate-200 shadow-2xs rounded-md px-2.5 py-1 text-xs text-slate-800 gap-1.5"
             >
-              <User className="h-3 w-3 mr-1 text-blue-600" />
-              <span className="font-medium">{director.name}</span>
-              <span className="mx-1 text-gray-400">•</span>
-              <span className="text-gray-600">DIN: {director.din}</span>
-              <Button
+              <span className="font-semibold text-slate-800">{director.name}</span>
+              {director.din && (
+                <span className="text-[10px] text-slate-400 font-mono">#{director.din}</span>
+              )}
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                className="h-4 w-4 p-0 ml-2 text-gray-500 hover:text-gray-700"
+                className="h-4 w-4 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors ml-0.5"
                 onClick={() => removeDirector(index)}
               >
                 <CloseIcon className="h-3 w-3" />
-              </Button>
+              </button>
             </div>
           ))}
         </div>
@@ -174,56 +231,51 @@ const MultiDirectorSelector = ({
       {/* Input with dropdown */}
       <div className="relative">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <Input
             id={id}
             value={inputValue}
             onChange={handleInputChange}
             onFocus={handleInputFocus}
             onBlur={handleInputBlur}
-            onKeyDown={handleKeyPress}
             placeholder={placeholder}
-            className="pl-10"
+            className="pl-9 h-9 bg-white border-slate-200 focus:border-blue-500 rounded-lg text-xs"
           />
         </div>
         
-        {isOpen && (isLoading || error || filteredDirectors.length > 0) && (
-          <Card className="absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto">
+        {isOpen && (isLoading || error || availableDirectors.length > 0) && (
+          <Card className="absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto shadow-2xl bg-white text-slate-900 border border-slate-200 rounded-lg">
             <CardContent className="p-0">
               {isLoading && (
-                <div className="p-3 text-center text-gray-500">
-                  Loading directors...
+                <div className="p-3 text-center text-xs text-slate-500">
+                  Searching directors registry...
                 </div>
               )}
               
               {error && (
-                <div className="p-3 text-center text-red-500">
+                <div className="p-3 text-center text-xs text-red-500 font-medium">
                   {error}
                 </div>
               )}
               
-              {!isLoading && !error && filteredDirectors.length > 0 && (
-                filteredDirectors.map((director, index) => (
+              {!isLoading && !error && availableDirectors.length > 0 && (
+                availableDirectors.map((director, index) => (
                   <div
                     key={`${director.din}-${index}`}
-                    className="flex items-center justify-between p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                    onMouseDown={() => handleDirectorSelect(director)} // Use onMouseDown to prevent blur
+                    className="flex items-center justify-between p-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors"
+                    onMouseDown={() => handleDirectorSelect(director)}
                   >
-                    <div className="flex items-center">
-                      <User className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="font-medium">{director.name}</span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Hash className="h-3 w-3 mr-1" />
-                      <span>{director.din}</span>
-                    </div>
+                    <span className="font-semibold text-xs text-slate-800">{director.name}</span>
+                    {director.din && (
+                      <span className="text-xs text-slate-400 font-mono">#{director.din}</span>
+                    )}
                   </div>
                 ))
               )}
               
-              {!isLoading && !error && filteredDirectors.length === 0 && searchTerm && (
-                <div className="p-3 text-center text-gray-500">
-                  No directors found
+              {!isLoading && !error && availableDirectors.length === 0 && searchTerm && (
+                <div className="p-3 text-center text-xs text-slate-400">
+                  No matching directors found.
                 </div>
               )}
             </CardContent>

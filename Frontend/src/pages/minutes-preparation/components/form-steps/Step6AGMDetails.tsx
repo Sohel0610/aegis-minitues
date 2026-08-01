@@ -24,30 +24,6 @@ export const Step6AGMDetails: React.FC<StepProps> = (props) => {
                   <CardTitle>AGM Details</CardTitle>
                   <CardDescription>Annual General Meeting information</CardDescription>
                 </CardHeader>
-                {isStepValid && !isStepValid() && (
-                  <div className="px-6 pb-4">
-                    <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-700 text-sm">
-                      Please fill in all required fields marked with an asterisk (*) to continue.
-                      {/* Debug info - remove in production */}
-                      <div className="mt-2 text-xs">
-                        AGM Number: '{formData.agmNumber}' ({formData.agmNumber ? 'filled' : 'empty'})
-                        <br />
-                        AGM Date: {formData.agmYear}-{formData.agmMonth}-{formData.agmDay}
-                        <br />
-                        AGM Time: '{formData.agmTime}' ({formData.agmTime ? 'filled' : 'empty'})
-                        <br />
-                        Registered Office: '{formData.registeredOfficeAddress}' ({formData.registeredOfficeAddress ? 'filled' : 'empty'})
-                        <br />
-                        Validation: agmNumber={!(!formData.agmNumber || formData.agmNumber.trim() === '')},
-                        agmYear={formData.agmYear > 0},
-                        agmMonth={formData.agmMonth >= 1 && formData.agmMonth <= 12},
-                        agmDay={formData.agmDay >= 1 && formData.agmDay <= 31},
-                        agmTime={!(!formData.agmTime || formData.agmTime.trim() === '')},
-                        registeredOffice={!(!formData.registeredOfficeAddress || formData.registeredOfficeAddress.trim() === '')}
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="agmNumber">AGM Number *</Label>
@@ -68,9 +44,9 @@ export const Step6AGMDetails: React.FC<StepProps> = (props) => {
                         }
                       }}
                       placeholder="e.g., 10"
-                      className={!formData.agmNumber || formData.agmNumber.trim() === '' ? 'border-red-500' : ''}
+                      className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Enter a number and it will be automatically converted to ordinal (e.g., 10 → 10th)
                     </p>
                   </div>
@@ -96,9 +72,9 @@ export const Step6AGMDetails: React.FC<StepProps> = (props) => {
                           }));
                         }
                       }}
-                      className={!(formData.agmYear > 0 && formData.agmMonth >= 1 && formData.agmMonth <= 12 && formData.agmDay >= 1 && formData.agmDay <= 31) ? 'border-red-500' : ''}
+                      className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Select the AGM date
                     </p>
                   </div>
@@ -113,7 +89,7 @@ export const Step6AGMDetails: React.FC<StepProps> = (props) => {
                       max="18:00"
                       value={formData.agmTime}
                       onChange={(e) => setFormData(prev => ({ ...prev, agmTime: e.target.value }))}
-                      className={!formData.agmTime || formData.agmTime.trim() === '' ? 'border-red-500' : ''}
+                      className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                     />
                     <p className="text-sm text-muted-foreground">
                       Select the time of the AGM (9:00 AM to 6:00 PM only)

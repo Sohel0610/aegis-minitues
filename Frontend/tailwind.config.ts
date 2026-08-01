@@ -15,6 +15,7 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Adani', 'system-ui', 'sans-serif'],
+        mono: ['Adani', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",

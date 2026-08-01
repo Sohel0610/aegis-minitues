@@ -1,37 +1,135 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Download, Users, Calendar, Clock, MapPin, AlertCircle, Eye, Plus, X, BookOpen } from 'lucide-react';
+import { FileText, Download, Building, UserCheck, Eye, Plus, X, Search } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Home, FileSpreadsheet, History } from 'lucide-react';
-// Import template structures
 import templateStructures from '@/template_structures.json';
 import { getMinutesNavItems } from '@/constants/minutesNavigation';
 import { useToast } from "@/components/ui/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useVertical } from '@/contexts/VerticalContext';
+
+// Floating Auto-Suggest Director Input Component
+const DirectorInputRow: React.FC<{
+  index: number;
+  director: { name: string; din: string };
+  masterDirectors: any[];
+  onNameChange: (index: number, name: string, din?: string) => void;
+  onDinChange: (index: number, din: string) => void;
+  onRemove: (index: number) => void;
+  canRemove: boolean;
+}> = ({ index, director, masterDirectors, onNameChange, onDinChange, onRemove, canRemove }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState(director.name);
+
+  useEffect(() => {
+    setQuery(director.name);
+  }, [director.name]);
+
+  const filtered = useMemo(() => {
+    if (!query || query.trim().length === 0) return masterDirectors.slice(0, 8);
+    const q = query.toLowerCase().trim();
+    return masterDirectors.filter(d =>
+      d.name?.toLowerCase().includes(q) || d.din?.includes(q)
+    ).slice(0, 8);
+  }, [query, masterDirectors]);
+
+  const handleSelect = (d: any) => {
+    setQuery(d.name);
+    onNameChange(index, d.name, d.din);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+      <div className="flex-1 relative">
+        <Input
+          value={query}
+          onChange={(e) => {
+            const val = e.target.value;
+            setQuery(val);
+            onNameChange(index, val);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          placeholder={`Director ${index + 1} Name (type to search...)`}
+          className="bg-white border-slate-200 h-8 text-xs font-semibold text-slate-800"
+        />
+        {isOpen && filtered.length > 0 && (
+          <div className="absolute left-0 right-0 top-9 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto py-1">
+            {filtered.map((d: any, idx: number) => (
+              <div
+                key={idx}
+                onMouseDown={() => handleSelect(d)}
+                className="px-3 py-1.5 hover:bg-blue-50 cursor-pointer flex justify-between items-center text-xs transition-colors border-b border-slate-100 last:border-0"
+              >
+                <div className="flex items-center gap-1.5">
+                  <UserCheck className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                  <span className="font-bold text-slate-900">{d.name}</span>
+                </div>
+                <span className="font-mono text-[10px] text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded font-semibold">
+                  DIN: {d.din}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="w-36">
+        <Input
+          value={director.din}
+          onChange={(e) => onDinChange(index, e.target.value)}
+          placeholder="DIN (8 Digits)"
+          className="bg-white border-slate-200 h-8 text-xs font-mono text-slate-700 font-semibold"
+        />
+      </div>
+      {canRemove && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onRemove(index)}
+          className="h-8 w-8 p-0 text-slate-400 hover:text-red-700"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
+};
 
 const TemplateRenderer = () => {
   const navigationItems = getMinutesNavItems('renderer');
   const { toast } = useToast();
+  const { selectedCompany: ctxCompany } = useVertical();
 
+  const [dbTemplates, setDbTemplates] = useState<any[]>([]);
+  const [masterDirectors, setMasterDirectors] = useState<any[]>([]);
+  const [templateContent, setTemplateContent] = useState<any[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // State for form data
+  // Dynamic Form State
   const [formData, setFormData] = useState({
-    template: 'Q1', // Default to Q1 template
+    template: '',
     companyName: '',
-    meetingNumber: '',
+    meetingNumber: '1st',
     meetingType: 'Board of Directors',
-    meetingDay: '',
-    meetingDate: '',
-    meetingStartTime: '',
-    meetingEndTime: '',
-    meetingPlace: '',
+    meetingDay: 'Monday',
+    meetingDate: new Date().toISOString().split('T')[0],
+    meetingStartTime: '10:00',
+    meetingEndTime: '11:30',
+    meetingPlace: 'Adani Corporate House, Ahmedabad',
     chairmanName: '',
-    directors: [{ name: '', din: '' }],
+    directors: [
+      { name: '', din: '' },
+      { name: '', din: '' }
+    ],
     authorisedOfficer: '',
     previousMeetingDate: '',
     auditorPaymentAmount: '',
@@ -44,73 +142,136 @@ const TemplateRenderer = () => {
     agmPlace: '',
     recordingDate: new Date().toISOString().split('T')[0],
     signingDate: new Date().toISOString().split('T')[0],
-    quorum: '',
-    previousMinutes: '',
-    concerns: '',
-    declarations: '',
-    auditorPayment: '',
-    financialStatements: '',
-    directorsReport: '',
+    quorum: 'Valid Quorum Present',
+    previousMinutes: 'Confirmed and Signed',
+    concerns: 'None',
+    declarations: 'Received and Noted',
+    auditorPayment: 'Approved',
+    financialStatements: 'Approved',
+    directorsReport: 'Approved',
   });
 
-  // State for validation errors
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  // Fetch Database Templates & Master Directors
+  useEffect(() => {
+    const fetchDbTemplates = async () => {
+      try {
+        const res = await fetch('/api/templates');
+        if (res.ok) {
+          const data = await res.json();
+          setDbTemplates(data.data || []);
+          if (data.data && data.data.length > 0 && !formData.template) {
+            setFormData(prev => ({ ...prev, template: data.data[0].name }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch templates from DB", err);
+      }
+    };
 
-  // State for submission status
-  const [isSubmitting, setIsSubmitting] = useState(false);
+    const fetchMasterDirectors = async () => {
+      try {
+        const res = await fetch('/api/directors');
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data.data || []);
+          setMasterDirectors(list);
+        }
+      } catch (err) {
+        console.error("Failed to fetch master directors", err);
+      }
+    };
 
-  // State for template preview
-  const [templateContent, setTemplateContent] = useState<any[]>([]);
+    fetchDbTemplates();
+    fetchMasterDirectors();
+  }, []);
 
-  // Handle input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  // Sync with active company from global VerticalContext
+  useEffect(() => {
+    if (ctxCompany && ctxCompany.name) {
+      handleCompanyChange(ctxCompany.name);
+    }
+  }, [ctxCompany]);
 
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
+  // When Company Name changes, auto-fetch registered directors dynamically
+  const handleCompanyChange = async (cName: string) => {
+    setFormData(prev => ({ ...prev, companyName: cName }));
+    if (!cName.trim()) return;
+
+    try {
+      const res = await fetch(`/api/companies/${encodeURIComponent(cName)}/directors`);
+      if (res.ok) {
+        const data = await res.json();
+        const dirs = data.data || (Array.isArray(data) ? data : []);
+        if (dirs.length > 0) {
+          const fetchedDirs = dirs.map((d: any) => ({
+            name: d.name || '',
+            din: d.din || ''
+          }));
+          setFormData(prev => ({
+            ...prev,
+            directors: fetchedDirs,
+            chairmanName: fetchedDirs[0]?.name || prev.chairmanName
+          }));
+          toast({
+            title: "Directors Loaded",
+            description: `Auto-loaded ${fetchedDirs.length} directors for ${cName}.`
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch company directors", err);
     }
   };
 
-  // Handle select changes
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-
-    // Clear error when user makes a selection
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
+  const handleDirectorNameChange = (index: number, nameValue: string, explicitDin?: string) => {
+    let matchedDin = explicitDin;
+    if (!matchedDin && nameValue.trim().length > 0) {
+      const q = nameValue.toLowerCase().trim();
+      const matched = masterDirectors.find(d =>
+        d.name?.toLowerCase().trim() === q ||
+        d.name?.toLowerCase().includes(q)
+      );
+      if (matched) matchedDin = matched.din;
     }
-  };
 
-  // Handle director changes
-  const handleDirectorChange = (index: number, field: string, value: string) => {
     setFormData(prev => {
-      const newDirectors = [...prev.directors];
-      newDirectors[index] = { ...newDirectors[index], [field]: value };
-      return { ...prev, directors: newDirectors };
+      const newDirs = [...prev.directors];
+      newDirs[index] = {
+        name: nameValue,
+        din: matchedDin || newDirs[index].din
+      };
+      return { ...prev, directors: newDirs };
     });
 
-    // Clear error when user starts typing
-    const errorKey = `director${field.charAt(0).toUpperCase() + field.slice(1)}${index}`;
-    if (errors[errorKey]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[errorKey];
-        return newErrors;
+    if (matchedDin) {
+      toast({
+        title: "DIN Auto-Populated",
+        description: `Linked DIN ${matchedDin} for ${nameValue}.`
       });
+
+      // Fetch real Director Disclosure details (MBP-1 & DIR-8)
+      fetch(`/api/directors/${encodeURIComponent(matchedDin)}/disclosure-details`)
+        .then(res => res.ok ? res.json() : null)
+        .then(details => {
+          if (details && details.mbp1_disclosure_text) {
+            toast({
+              title: "Director Disclosure Loaded",
+              description: `Fetched MBP-1 interest & DIR-8 status for ${nameValue}.`
+            });
+          }
+        })
+        .catch(err => console.error("Error fetching director disclosure details:", err));
     }
   };
 
-  // Add a new director
+  const handleDirectorDinChange = (index: number, dinValue: string) => {
+    setFormData(prev => {
+      const newDirs = [...prev.directors];
+      newDirs[index] = { ...newDirs[index], din: dinValue };
+      return { ...prev, directors: newDirs };
+    });
+  };
+
   const addDirector = () => {
     setFormData(prev => ({
       ...prev,
@@ -118,128 +279,140 @@ const TemplateRenderer = () => {
     }));
   };
 
-  // Remove a director
   const removeDirector = (index: number) => {
     setFormData(prev => {
-      const newDirectors = [...prev.directors];
-      newDirectors.splice(index, 1);
-      return { ...prev, directors: newDirectors };
-    });
-
-    // Remove errors for this director
-    setErrors(prev => {
-      const newErrors = { ...prev };
-      delete newErrors[`directorName${index}`];
-      delete newErrors[`directorDin${index}`];
-      return newErrors;
+      const newDirs = [...prev.directors];
+      newDirs.splice(index, 1);
+      return { ...prev, directors: newDirs };
     });
   };
 
-  // Validation function
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
+  const numberToIndianRupeesWords = (numStr: string): string => {
+    const clean = numStr.replace(/[^0-9]/g, '');
+    if (!clean || clean === '0') return '';
+    const num = parseInt(clean, 10);
+    if (isNaN(num) || num <= 0) return '';
 
-    // Validate template selection
-    if (!formData.template) {
-      newErrors.template = 'Please select a template';
+    const single = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const double = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    const formatLessThanThousand = (n: number): string => {
+      let str = '';
+      if (n >= 100) {
+        str += single[Math.floor(n / 100)] + ' Hundred ';
+        n %= 100;
+      }
+      if (n >= 10 && n < 20) {
+        str += double[n - 10] + ' ';
+      } else {
+        if (n >= 20) {
+          str += tens[Math.floor(n / 10)] + ' ';
+          n %= 10;
+        }
+        if (n > 0) {
+          str += single[n] + ' ';
+        }
+      }
+      return str.trim();
+    };
+
+    let word = '';
+    let n = num;
+
+    if (Math.floor(n / 10000000) > 0) {
+      word += formatLessThanThousand(Math.floor(n / 10000000)) + ' Crore ';
+      n %= 10000000;
+    }
+    if (Math.floor(n / 100000) > 0) {
+      word += formatLessThanThousand(Math.floor(n / 100000)) + ' Lakhs ';
+      n %= 100000;
+    }
+    if (Math.floor(n / 1000) > 0) {
+      word += formatLessThanThousand(Math.floor(n / 1000)) + ' Thousand ';
+      n %= 1000;
+    }
+    if (n > 0) {
+      word += formatLessThanThousand(n);
     }
 
-    // Required fields validation
-    if (!formData.companyName.trim()) {
-      newErrors.companyName = 'Company name is required';
-    }
+    return `Rupees ${word.trim()} Only`;
+  };
 
-    if (!formData.meetingNumber.trim()) {
-      newErrors.meetingNumber = 'Meeting number is required';
-    }
-
-    if (!formData.meetingDate) {
-      newErrors.meetingDate = 'Meeting date is required';
-    }
-
-    if (!formData.meetingStartTime) {
-      newErrors.meetingStartTime = 'Start time is required';
-    }
-
-    if (!formData.meetingEndTime) {
-      newErrors.meetingEndTime = 'End time is required';
-    }
-
-    if (!formData.meetingPlace.trim()) {
-      newErrors.meetingPlace = 'Meeting place is required';
-    }
-
-    if (!formData.chairmanName.trim()) {
-      newErrors.chairmanName = 'Chairman name is required';
-    }
-
-    // Validate directors
-    if (formData.directors.length === 0) {
-      newErrors.directors = 'At least one director is required';
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    if (name === 'auditorPaymentAmount') {
+      const words = numberToIndianRupeesWords(value);
+      setFormData(prev => ({
+        ...prev,
+        auditorPaymentAmount: value,
+        auditorPaymentWords: words || prev.auditorPaymentWords
+      }));
     } else {
-      formData.directors.forEach((director, index) => {
-        if (!director.name.trim()) {
-          newErrors[`directorName${index}`] = `Director ${index + 1} name is required`;
-        }
-        if (!director.din.trim()) {
-          newErrors[`directorDin${index}`] = `Director ${index + 1} DIN is required`;
-        }
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+    if (errors[name]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
       });
     }
-
-    // Validate financial year
-    if (!formData.financialYear.trim()) {
-      newErrors.financialYear = 'Financial year is required';
-    } else if (!/^\d{4}$/.test(formData.financialYear)) {
-      newErrors.financialYear = 'Financial year must be a 4-digit number';
-    }
-
-    // Validate dates
-    if (formData.meetingDate && formData.previousMeetingDate) {
-      const meetingDate = new Date(formData.meetingDate);
-      const previousMeetingDate = new Date(formData.previousMeetingDate);
-      if (meetingDate < previousMeetingDate) {
-        newErrors.meetingDate = 'Meeting date must be after previous meeting date';
-      }
-    }
-
-    // Validate AGM date if provided
-    if (formData.agmDate && formData.meetingDate) {
-      const meetingDate = new Date(formData.meetingDate);
-      const agmDate = new Date(formData.agmDate);
-      if (agmDate < meetingDate) {
-        newErrors.agmDate = 'AGM date must be after meeting date';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
-  // Handle form submission
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+  };
+
+  // Smart Template Content Resolver
+  useEffect(() => {
+    const loadTemplateContent = () => {
+      try {
+        const selected = formData.template;
+        if (!selected) return;
+
+        let structure = templateStructures[selected as keyof typeof templateStructures];
+
+        if (!structure || structure.length === 0) {
+          if (selected.includes('28.07.2025') || selected.includes('Q2')) {
+            structure = templateStructures['Q2'];
+          } else if (selected.includes('28.10.2025') || selected.includes('Q3')) {
+            structure = templateStructures['Q3'];
+          } else if (selected.includes('23.01.2026') || selected.includes('Q4')) {
+            structure = templateStructures['Q4'];
+          } else {
+            structure = templateStructures['Q1'];
+          }
+        }
+        setTemplateContent(structure || []);
+      } catch (error) {
+        console.error('Error loading template structure:', error);
+        setTemplateContent([]);
+      }
+    };
+    loadTemplateContent();
+  }, [formData.template]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate form
-    if (!validateForm()) {
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      // Use the full backend URL for the API call
       const response = await fetch('/api/generate-minutes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
 
       if (response.ok) {
         const result = await response.json();
-        // Trigger download of the generated file
         const downloadUrl = `/api/templates/download/${result.filename}`;
         const link = document.createElement('a');
         link.href = downloadUrl;
@@ -247,46 +420,19 @@ const TemplateRenderer = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        toast({ title: "Success", description: "Minutes document generated successfully!" });
+        toast({ title: "Document Generated", description: "Your official minutes DOCX file has been downloaded." });
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: `Error generating minutes document: ${error.detail}`, variant: "destructive" });
+        toast({ title: "Generation Error", description: error.detail || "Failed to generate document.", variant: "destructive" });
       }
     } catch (error) {
       console.error('Error:', error);
-      toast({ title: "Error", description: "Error generating minutes document.", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to connect to server.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Load template content
-  const loadTemplateContent = async () => {
-    try {
-      // Get the template structure based on the selected template
-      const structure = templateStructures[formData.template as keyof typeof templateStructures] || [];
-      setTemplateContent(structure);
-    } catch (error) {
-      console.error('Error loading template content:', error);
-      setTemplateContent([]);
-    }
-  };
-
-  // Load template content when template selection changes
-  useEffect(() => {
-    loadTemplateContent();
-  }, [formData.template]);
-
-  // Get form value with proper typing
-  const getFormValue = (fieldName: string): string => {
-    const value = formData[fieldName as keyof typeof formData];
-    if (Array.isArray(value)) {
-      return ''; // Return empty string for array values (directors)
-    }
-    return value as string || '';
-  };
-
-  // Map placeholder names to form field names
   const placeholderToFieldMap: Record<string, string> = {
     '[No. of Meeting]': 'meetingNumber',
     '[Type of Meeting]': 'meetingType',
@@ -305,45 +451,43 @@ const TemplateRenderer = () => {
     '[Signing Date]': 'signingDate'
   };
 
-  // Render template content with placeholders
-  const renderTemplateContent = () => {
+  const getFormValue = (fieldName: string): string => {
+    const val = formData[fieldName as keyof typeof formData];
+    if (Array.isArray(val)) return '';
+    return (val as string) || '';
+  };
+
+  const renderTemplatePreview = () => {
     if (templateContent.length === 0) {
       return (
-        <div className="flex items-center justify-center h-64 text-muted-foreground">
-          <div className="text-center">
-            <FileText className="h-12 w-12 mx-auto mb-2" />
-            <p>Select a template to preview</p>
-          </div>
+        <div className="flex flex-col items-center justify-center h-64 text-slate-400 text-xs space-y-2">
+          <FileText className="h-10 w-10 text-slate-300" />
+          <p>Select an official template to preview</p>
         </div>
       );
     }
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 text-xs leading-relaxed text-slate-800 font-sans">
         {templateContent.map((element, index) => {
           if (element.type === 'paragraph') {
             return (
               <p key={index} className="mb-2">
                 {element.segments.map((segment: any, segIndex: number) => {
                   if (segment.is_placeholder) {
-                    const fieldName = placeholderToFieldMap[segment.text] || segment.text.replace(/[[\]]/g, '');
-
-                    // Special handling for different types of placeholders
                     if (segment.text === '[from MCA]') {
-                      // For director placeholders, show the first director's name
                       return (
                         <span key={segIndex} className="inline-block mx-1">
                           <Input
                             type="text"
                             value={formData.directors[0]?.name || ''}
-                            onChange={(e) => handleDirectorChange(0, 'name', e.target.value)}
+                            onChange={(e) => handleDirectorNameChange(0, e.target.value)}
                             placeholder="Director Name"
-                            className="w-32 inline-block mx-1 text-sm"
+                            className="w-36 h-7 inline-block text-xs bg-blue-50/60 border-blue-300 text-blue-900 font-semibold focus:bg-white"
                           />
                         </span>
                       );
                     } else if (segment.text === '[Manual]') {
-                      // For Manual placeholders, use chairmanName
                       return (
                         <span key={segIndex} className="inline-block mx-1">
                           <Input
@@ -351,20 +495,27 @@ const TemplateRenderer = () => {
                             value={formData.chairmanName}
                             onChange={(e) => handleInputChange({ target: { name: 'chairmanName', value: e.target.value } } as any)}
                             placeholder="Chairman Name"
-                            className="w-32 inline-block mx-1 text-sm"
+                            className="w-36 h-7 inline-block text-xs bg-blue-50/60 border-blue-300 text-blue-900 font-semibold focus:bg-white"
                           />
                         </span>
                       );
                     } else {
-                      // For other placeholders, map to appropriate form fields
+                      const fieldName = placeholderToFieldMap[segment.text] || segment.text.replace(/[[\]]/g, '');
                       return (
                         <span key={segIndex} className="inline-block mx-1">
                           <Input
                             type={fieldName.includes('Date') ? 'date' : 'text'}
                             value={getFormValue(fieldName)}
-                            onChange={(e) => handleInputChange({ target: { name: fieldName, value: e.target.value } } as any)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (fieldName === 'companyName') {
+                                handleCompanyChange(val);
+                              } else {
+                                setFormData(prev => ({ ...prev, [fieldName]: val }));
+                              }
+                            }}
                             placeholder={segment.text}
-                            className="w-32 inline-block mx-1 text-sm"
+                            className="w-36 h-7 inline-block text-xs bg-blue-50/60 border-blue-300 text-blue-900 font-semibold focus:bg-white"
                           />
                         </span>
                       );
@@ -377,44 +528,19 @@ const TemplateRenderer = () => {
             );
           } else if (element.type === 'table') {
             return (
-              <div key={index} className="mb-4">
-                <h3 className="font-semibold mb-2">Directors:</h3>
-                {formData.directors.map((director, dirIndex) => (
-                  <div key={dirIndex} className="flex gap-2 mb-2">
-                    <Input
-                      value={director.name}
-                      onChange={(e) => handleDirectorChange(dirIndex, 'name', e.target.value)}
-                      placeholder="Director Name"
-                      className="flex-1"
-                    />
-                    <Input
-                      value={director.din}
-                      onChange={(e) => handleDirectorChange(dirIndex, 'din', e.target.value)}
-                      placeholder="DIN"
-                      className="w-32"
-                    />
-                    {formData.directors.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => removeDirector(dirIndex)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addDirector}
-                  className="mt-2"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Director
-                </Button>
+              <div key={index} className="my-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <h4 className="font-bold text-slate-800 text-xs mb-2">Board Directors Attendance Table:</h4>
+                <div className="space-y-1.5">
+                  {formData.directors.map((d, dIdx) => (
+                    <div key={dIdx} className="flex gap-2 items-center text-xs">
+                      <span className="w-5 font-bold text-slate-400">{dIdx + 1}.</span>
+                      <span className="font-semibold text-slate-800 flex-1">{d.name || "Director Name"}</span>
+                      <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 border border-blue-200 rounded font-semibold">
+                        DIN: {d.din || "--------"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           }
@@ -425,644 +551,342 @@ const TemplateRenderer = () => {
   };
 
   return (
-    <ProductDashboardLayout
-      productName="Generate Minutes"
-      productRoute="/minutes-preparation"
-      navigationItems={navigationItems}
-    >
-      <div className="container mx-auto py-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">Template Renderer</h1>
-            <p className="text-muted-foreground">Preview templates and fill in placeholders directly</p>
+    <ProductDashboardLayout productName="Generate Minutes" productRoute="/minutes-preparation" navigationItems={navigationItems}>
+      <div className="p-4 h-[calc(100vh-65px)] overflow-hidden">
+        <div className="border border-slate-200 rounded-xl bg-white shadow-xs p-4 flex flex-col h-full overflow-hidden space-y-3">
+
+          {/* Header Bar */}
+          <div className="pb-3 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 shrink-0">
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Template Renderer</h1>
+              <p className="text-xs text-slate-500 mt-0.5">Live document preview and statutory metadata entry.</p>
+            </div>
+
+            {/* Template Selection Dropdown */}
+            <div className="w-full md:w-80 shrink-0">
+              <Select
+                value={formData.template}
+                onValueChange={(val) => handleSelectChange('template', val)}
+              >
+                <SelectTrigger className="bg-white border-slate-200 text-xs h-9 rounded-lg font-semibold text-slate-800">
+                  <SelectValue placeholder="Select Official Template" />
+                </SelectTrigger>
+                <SelectContent className="bg-white max-h-[300px]">
+                  {dbTemplates.map((t) => {
+                    const rawName = t.name || t;
+                    let companyPrefix = 'Adani Group';
+                    if (rawName.startsWith('AGEL')) companyPrefix = 'AGEL';
+                    else if (rawName.startsWith('AGE(UP)L')) companyPrefix = 'AGE(UP)L';
+                    else if (rawName.includes('AGE25BL')) companyPrefix = 'AGE25BL';
+
+                    let category = 'Board Meeting';
+                    if (rawName.includes('- AC -') || rawName.toLowerCase().includes('audit')) category = 'Audit Committee';
+                    else if (rawName.toLowerCase().includes('agm')) category = 'AGM';
+
+                    let quarterTag = '';
+                    if (rawName.includes('28.04') || rawName.includes('Q1')) quarterTag = ' (Q1)';
+                    else if (rawName.includes('28.07') || rawName.includes('Q2')) quarterTag = ' (Q2)';
+                    else if (rawName.includes('28.10') || rawName.includes('Q3')) quarterTag = ' (Q3)';
+                    else if (rawName.includes('23.01') || rawName.includes('Q4')) quarterTag = ' (Q4)';
+
+                    const cleanTitle = `${companyPrefix} — ${category}${quarterTag}`;
+
+                    return (
+                      <SelectItem key={t.id || rawName} value={rawName} className="bg-white text-xs py-1.5">
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className="font-semibold text-slate-800">{cleanTitle}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">
+                            {category}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Template Preview Panel */}
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="h-6 w-6" />
-                Template Preview
-              </CardTitle>
-              <CardDescription>
-                Preview of the selected template with placeholder locations
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="border rounded-lg p-4 min-h-[400px] bg-muted/10">
-                {renderTemplateContent()}
-              </div>
+          {/* Main 50/50 Non-scrolling Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 overflow-hidden">
 
-              <div className="mt-4 space-y-2">
-                <Label htmlFor="template">Select Template</Label>
-                <Select
-                  value={formData.template}
-                  onValueChange={(value) => handleSelectChange('template', value)}
-                >
-                  <SelectTrigger className={`bg-white ${errors.template ? "border-red-500" : ""}`}>
-                    <SelectValue placeholder="Select a template" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    <SelectItem value="Q1" className="bg-white">Q1 Meeting Template</SelectItem>
-                    <SelectItem value="Q2" className="bg-white">Q2 Meeting Template</SelectItem>
-                    <SelectItem value="Q3" className="bg-white">Q3 Meeting Template</SelectItem>
-                    <SelectItem value="Q4" className="bg-white">Q4 Meeting Template</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.template && (
-                  <div className="text-red-500 text-sm flex items-center gap-1">
-                    <AlertCircle className="h-4 w-4" />
-                    {errors.template}
+            {/* LEFT COLUMN: Live Document Paper Preview (6 Cols) */}
+            <div className="lg:col-span-6 flex flex-col overflow-hidden h-full">
+              <Card className="border border-slate-200 shadow-none bg-white rounded-xl overflow-hidden flex-1 flex flex-col h-full">
+                <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-2.5 px-4 shrink-0 flex flex-row items-center justify-between">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <Eye className="h-3.5 w-3.5 text-slate-400" />
+                    Template Live Preview Sheet
+                  </CardTitle>
+                  <span className="text-[11px] font-mono text-slate-400 truncate max-w-[200px]">{formData.template}</span>
+                </CardHeader>
+
+                <CardContent className="p-4 flex-1 overflow-y-auto bg-slate-100/40">
+                  <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-xs min-h-full">
+                    {renderTemplatePreview()}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </div>
 
-          {/* Form Panel */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-6 w-6" />
-                Fill Placeholders
-              </CardTitle>
-              <CardDescription>
-                Enter information for the template placeholders
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {Object.keys(errors).length > 0 && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="h-5 w-5 text-red-500" />
-                    <h3 className="font-semibold text-red-800">Please correct the following errors:</h3>
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1 text-red-700">
-                    {Object.entries(errors).map(([key, value]) => (
-                      <li key={key}>{value}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            {/* RIGHT COLUMN: Metadata & Auto-Recommending Directors (6 Cols) */}
+            <div className="lg:col-span-6 flex flex-col overflow-hidden h-full">
+              <Card className="border border-slate-200 shadow-none bg-white rounded-xl overflow-hidden flex-1 flex flex-col h-full">
+                <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-2.5 px-4 shrink-0">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 text-slate-400" />
+                    Meeting Metadata & Attendees
+                  </CardTitle>
+                </CardHeader>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Company & Meeting Metadata */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg">
-                  <div className="md:col-span-2">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Company & Meeting Metadata
-                    </h3>
-                  </div>
+                <CardContent className="p-3.5 flex-1 overflow-hidden flex flex-col">
+                  <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden justify-between space-y-3">
+                    <Tabs defaultValue="attendees" className="flex-1 flex flex-col overflow-hidden">
+                      <TabsList className="grid w-full grid-cols-3 bg-slate-100 p-1 mb-3 rounded-lg shrink-0">
+                        <TabsTrigger value="company" className="rounded-md py-1 text-xs font-semibold">Meeting Info</TabsTrigger>
+                        <TabsTrigger value="attendees" className="rounded-md py-1 text-xs font-semibold">Directors & DIN</TabsTrigger>
+                        <TabsTrigger value="details" className="rounded-md py-1 text-xs font-semibold">Financials</TabsTrigger>
+                      </TabsList>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="companyName">Company Name *</Label>
-                    <Input
-                      id="companyName"
-                      name="companyName"
-                      value={formData.companyName}
-                      onChange={handleInputChange}
-                      placeholder="Enter company name"
-                      className={errors.companyName ? "border-red-500" : ""}
-                    />
-                    {errors.companyName && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.companyName}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingNumber">Meeting Number *</Label>
-                    <Input
-                      id="meetingNumber"
-                      name="meetingNumber"
-                      value={formData.meetingNumber}
-                      onChange={handleInputChange}
-                      placeholder="e.g., 1st, 2nd, 3rd"
-                      className={errors.meetingNumber ? "border-red-500" : ""}
-                    />
-                    {errors.meetingNumber && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.meetingNumber}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingType">Meeting Type</Label>
-                    <Select
-                      value={formData.meetingType}
-                      onValueChange={(value) => handleSelectChange('meetingType', value)}
-                    >
-                      <SelectTrigger className="bg-white">
-                        <SelectValue placeholder="Select meeting type" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="Board of Directors" className="bg-white">Board of Directors</SelectItem>
-                        <SelectItem value="Committee Meeting" className="bg-white">Committee Meeting</SelectItem>
-                        <SelectItem value="Annual General Meeting" className="bg-white">Annual General Meeting</SelectItem>
-                        <SelectItem value="Extraordinary General Meeting" className="bg-white">Extraordinary General Meeting</SelectItem>
-                        <SelectItem value="Quarterly Meeting" className="bg-white">Quarterly Meeting</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingDay">Day of Meeting</Label>
-                    <Input
-                      id="meetingDay"
-                      name="meetingDay"
-                      value={formData.meetingDay}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Monday"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingDate">Date of Meeting *</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="meetingDate"
-                        name="meetingDate"
-                        type="date"
-                        value={formData.meetingDate}
-                        onChange={handleInputChange}
-                        className={`pl-10 ${errors.meetingDate ? "border-red-500" : ""}`}
-                      />
-                    </div>
-                    {errors.meetingDate && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.meetingDate}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingStartTime">Time: COMMENCED AT *</Label>
-                    <div className="relative">
-                      <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="meetingStartTime"
-                        name="meetingStartTime"
-                        type="time"
-                        value={formData.meetingStartTime}
-                        onChange={handleInputChange}
-                        className={`pl-10 ${errors.meetingStartTime ? "border-red-500" : ""}`}
-                      />
-                    </div>
-                    {errors.meetingStartTime && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.meetingStartTime}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingEndTime">Time: CONCLUDED AT *</Label>
-                    <div className="relative">
-                      <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="meetingEndTime"
-                        name="meetingEndTime"
-                        type="time"
-                        value={formData.meetingEndTime}
-                        onChange={handleInputChange}
-                        className={`pl-10 ${errors.meetingEndTime ? "border-red-500" : ""}`}
-                      />
-                    </div>
-                    {errors.meetingEndTime && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.meetingEndTime}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="meetingPlace">Place of Meeting *</Label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="meetingPlace"
-                        name="meetingPlace"
-                        value={formData.meetingPlace}
-                        onChange={handleInputChange}
-                        placeholder="Enter meeting location"
-                        className={`pl-10 ${errors.meetingPlace ? "border-red-500" : ""}`}
-                      />
-                    </div>
-                    {errors.meetingPlace && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.meetingPlace}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Attendees / Directors */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg">
-                  <div className="md:col-span-2">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      Attendees / Directors
-                    </h3>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="chairmanName">Chairman Name *</Label>
-                    <Input
-                      id="chairmanName"
-                      name="chairmanName"
-                      value={formData.chairmanName}
-                      onChange={handleInputChange}
-                      placeholder="Enter chairman name"
-                      className={errors.chairmanName ? "border-red-500" : ""}
-                    />
-                    {errors.chairmanName && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.chairmanName}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Directors *</Label>
-                    {formData.directors.map((director, index) => (
-                      <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                        <div>
-                          <Input
-                            value={director.name}
-                            onChange={(e) => handleDirectorChange(index, 'name', e.target.value)}
-                            placeholder={`Director ${index + 1} name`}
-                            className={errors[`directorName${index}`] ? "border-red-500" : ""}
-                          />
-                          {errors[`directorName${index}`] && (
-                            <div className="text-red-500 text-sm flex items-center gap-1 mt-1">
-                              <AlertCircle className="h-4 w-4" />
-                              {errors[`directorName${index}`]}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
+                      {/* TAB 1: MEETING INFO */}
+                      <TabsContent value="company" className="flex-1 overflow-y-auto pr-1 space-y-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="companyName" className="text-xs font-semibold text-slate-700">Company Name *</Label>
+                          <div className="relative">
+                            <Building className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                             <Input
-                              value={director.din}
-                              onChange={(e) => handleDirectorChange(index, 'din', e.target.value)}
-                              placeholder={`DIN`}
-                              className={errors[`directorDin${index}`] ? "border-red-500" : ""}
+                              id="companyName"
+                              name="companyName"
+                              value={formData.companyName}
+                              onChange={(e) => handleCompanyChange(e.target.value)}
+                              placeholder="Enter or search company..."
+                              className="pl-8 bg-white border-slate-200 h-8 text-xs rounded-lg font-semibold"
                             />
-                            {errors[`directorDin${index}`] && (
-                              <div className="text-red-500 text-sm flex items-center gap-1 mt-1">
-                                <AlertCircle className="h-4 w-4" />
-                                {errors[`directorDin${index}`]}
-                              </div>
-                            )}
                           </div>
-                          {formData.directors.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => removeDirector(index)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          )}
                         </div>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={addDirector}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Director
-                    </Button>
-                    {errors.directors && (
-                      <div className="text-red-500 text-sm flex items-center gap-1 mt-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.directors}
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="authorisedOfficer">Authorised Officer</Label>
-                    <Input
-                      id="authorisedOfficer"
-                      name="authorisedOfficer"
-                      value={formData.authorisedOfficer}
-                      onChange={handleInputChange}
-                      placeholder="Enter authorised officer name"
-                    />
-                  </div>
-                </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="meetingNumber" className="text-xs font-semibold text-slate-700">Meeting Number *</Label>
+                            <Input
+                              id="meetingNumber"
+                              name="meetingNumber"
+                              value={formData.meetingNumber}
+                              onChange={handleInputChange}
+                              placeholder="e.g., 1st, 2nd, 87th"
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="meetingType" className="text-xs font-semibold text-slate-700">Meeting Type</Label>
+                            <Select value={formData.meetingType} onValueChange={(val) => handleSelectChange('meetingType', val)}>
+                              <SelectTrigger className="bg-white border-slate-200 h-8 text-xs rounded-lg">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-white">
+                                <SelectItem value="Board of Directors">Board of Directors</SelectItem>
+                                <SelectItem value="Audit Committee">Audit Committee</SelectItem>
+                                <SelectItem value="Annual General Meeting">Annual General Meeting</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
 
-                {/* Minutes Confirmation & Legal Sections */}
-                <div className="grid grid-cols-1 gap-6 p-4 border rounded-lg">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Minutes Confirmation & Legal Sections</h3>
-                  </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="meetingDay" className="text-xs font-semibold text-slate-700">Day of Meeting</Label>
+                            <Input
+                              id="meetingDay"
+                              name="meetingDay"
+                              value={formData.meetingDay}
+                              onChange={handleInputChange}
+                              placeholder="e.g., Monday"
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="meetingDate" className="text-xs font-semibold text-slate-700">Date of Meeting *</Label>
+                            <Input
+                              id="meetingDate"
+                              name="meetingDate"
+                              type="date"
+                              value={formData.meetingDate}
+                              onChange={handleInputChange}
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                        </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="previousMeetingDate">Previous Meeting Date</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="previousMeetingDate"
-                        name="previousMeetingDate"
-                        type="date"
-                        value={formData.previousMeetingDate}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                      />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="meetingStartTime" className="text-xs font-semibold text-slate-700">Start Time</Label>
+                            <Input
+                              id="meetingStartTime"
+                              name="meetingStartTime"
+                              type="time"
+                              value={formData.meetingStartTime}
+                              onChange={handleInputChange}
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="meetingEndTime" className="text-xs font-semibold text-slate-700">End Time</Label>
+                            <Input
+                              id="meetingEndTime"
+                              name="meetingEndTime"
+                              type="time"
+                              value={formData.meetingEndTime}
+                              onChange={handleInputChange}
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label htmlFor="meetingPlace" className="text-xs font-semibold text-slate-700">Place of Meeting *</Label>
+                          <Input
+                            id="meetingPlace"
+                            name="meetingPlace"
+                            value={formData.meetingPlace}
+                            onChange={handleInputChange}
+                            placeholder="Enter meeting venue..."
+                            className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                          />
+                        </div>
+                      </TabsContent>
+
+                      {/* TAB 2: DIRECTORS & FLOATING AUTO DIN LOOKUP */}
+                      <TabsContent value="attendees" className="flex-1 overflow-y-auto pr-1 space-y-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="chairmanName" className="text-xs font-semibold text-slate-700">Chairman Name *</Label>
+                          <Select
+                            value={formData.chairmanName}
+                            onValueChange={(val) => setFormData(prev => ({ ...prev, chairmanName: val }))}
+                          >
+                            <SelectTrigger className="bg-white border-slate-200 h-8 text-xs rounded-lg font-bold text-slate-900">
+                              <SelectValue placeholder="Select Chairman from company directors..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              {formData.directors && formData.directors.length > 0 ? (
+                                formData.directors.map((d: any, idx: number) => (
+                                  <SelectItem key={idx} value={d.name || `Director ${idx + 1}`} className="text-xs font-medium">
+                                    {d.name || `Director ${idx + 1}`} {d.din ? `(DIN: ${d.din})` : ''}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="Gautam Adani" className="text-xs font-medium">
+                                  Gautam Adani (DIN: 00222019)
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                              <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                              Board Directors & Auto DIN Lookup *
+                            </Label>
+                            <span className="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded">
+                              Type to see floating suggestions
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {formData.directors.map((director, index) => (
+                              <DirectorInputRow
+                                key={index}
+                                index={index}
+                                director={director}
+                                masterDirectors={masterDirectors}
+                                onNameChange={handleDirectorNameChange}
+                                onDinChange={handleDirectorDinChange}
+                                onRemove={removeDirector}
+                                canRemove={formData.directors.length > 1}
+                              />
+                            ))}
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addDirector}
+                            className="w-full h-8 text-xs font-semibold border-dashed border-slate-300 text-slate-700 hover:bg-slate-50"
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1.5" />
+                            Add Director
+                          </Button>
+                        </div>
+                      </TabsContent>
+
+                      {/* TAB 3: DETAILS & FINANCIALS */}
+                      <TabsContent value="details" className="flex-1 overflow-y-auto pr-1 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="financialYear" className="text-xs font-semibold text-slate-700">Financial Year</Label>
+                            <Input
+                              id="financialYear"
+                              name="financialYear"
+                              value={formData.financialYear}
+                              onChange={handleInputChange}
+                              placeholder="e.g., 2026"
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="auditorPaymentAmount" className="text-xs font-semibold text-slate-700">Auditor Payment (₹)</Label>
+                            <Input
+                              id="auditorPaymentAmount"
+                              name="auditorPaymentAmount"
+                              value={formData.auditorPaymentAmount}
+                              onChange={handleInputChange}
+                              placeholder="e.g., 500000"
+                              className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label htmlFor="auditorPaymentWords" className="text-xs font-semibold text-slate-700">Payment Amount (In Words)</Label>
+                          <Input
+                            id="auditorPaymentWords"
+                            name="auditorPaymentWords"
+                            value={formData.auditorPaymentWords}
+                            onChange={handleInputChange}
+                            placeholder="Rupees Five Lakhs Only"
+                            className="bg-white border-slate-200 h-8 text-xs rounded-lg"
+                          />
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+
+                    {/* Bottom Action Button */}
+                    <div className="pt-2 border-t border-slate-100 shrink-0">
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg shadow-xs transition-colors"
+                      >
+                        {isSubmitting ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div>
+                            Generating Document...
+                          </span>
+                        ) : (
+                          <span className="flex items-center justify-center gap-2">
+                            <Download className="h-4 w-4" />
+                            Generate Minutes Document
+                          </span>
+                        )}
+                      </Button>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="quorum">Quorum Assessment</Label>
-                    <Textarea
-                      id="quorum"
-                      name="quorum"
-                      value={formData.quorum}
-                      onChange={handleInputChange}
-                      placeholder="Describe how quorum was assessed and confirmed"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="previousMinutes">Previous Meeting Minutes</Label>
-                    <Textarea
-                      id="previousMinutes"
-                      name="previousMinutes"
-                      value={formData.previousMinutes}
-                      onChange={handleInputChange}
-                      placeholder="Details about confirmation of previous meeting minutes"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="concerns">Concerns/Interests (Section 184)</Label>
-                    <Textarea
-                      id="concerns"
-                      name="concerns"
-                      value={formData.concerns}
-                      onChange={handleInputChange}
-                      placeholder="Details about concerns or interests declared"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="declarations">Declarations (Section 164(2))</Label>
-                    <Textarea
-                      id="declarations"
-                      name="declarations"
-                      value={formData.declarations}
-                      onChange={handleInputChange}
-                      placeholder="Details about declarations received"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-
-                {/* Financial Information */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg">
-                  <div className="md:col-span-2">
-                    <h3 className="text-lg font-semibold mb-4">Financial Information</h3>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="auditorPaymentAmount">Payment to Auditor (Amount)</Label>
-                    <Input
-                      id="auditorPaymentAmount"
-                      name="auditorPaymentAmount"
-                      value={formData.auditorPaymentAmount}
-                      onChange={handleInputChange}
-                      placeholder="e.g., 25000"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="auditorPaymentWords">Payment to Auditor (In Words)</Label>
-                    <Input
-                      id="auditorPaymentWords"
-                      name="auditorPaymentWords"
-                      value={formData.auditorPaymentWords}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Twenty Five Thousand Only"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="financialYear">Financial Year *</Label>
-                    <Input
-                      id="financialYear"
-                      name="financialYear"
-                      value={formData.financialYear}
-                      onChange={handleInputChange}
-                      placeholder="e.g., 2024"
-                      className={errors.financialYear ? "border-red-500" : ""}
-                    />
-                    {errors.financialYear && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.financialYear}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="auditorPayment">Auditor Payment Approval</Label>
-                    <Textarea
-                      id="auditorPayment"
-                      name="auditorPayment"
-                      value={formData.auditorPayment}
-                      onChange={handleInputChange}
-                      placeholder="Details about auditor payment approval"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="financialStatements">Financial Statements Approval</Label>
-                    <Textarea
-                      id="financialStatements"
-                      name="financialStatements"
-                      value={formData.financialStatements}
-                      onChange={handleInputChange}
-                      placeholder="Details about financial statements approval"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="directorsReport">Directors' Report Approval</Label>
-                    <Textarea
-                      id="directorsReport"
-                      name="directorsReport"
-                      value={formData.directorsReport}
-                      onChange={handleInputChange}
-                      placeholder="Details about directors' report approval"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-
-                {/* Annual General Meeting Section */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 border rounded-lg">
-                  <div className="md:col-span-3">
-                    <h3 className="text-lg font-semibold mb-4">Annual General Meeting Section</h3>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="agmNumber">AGM Number</Label>
-                    <Input
-                      id="agmNumber"
-                      name="agmNumber"
-                      value={formData.agmNumber}
-                      onChange={handleInputChange}
-                      placeholder="e.g., 10th"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="agmDay">AGM Day</Label>
-                    <Input
-                      id="agmDay"
-                      name="agmDay"
-                      value={formData.agmDay}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Friday"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="agmDate">AGM Date</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="agmDate"
-                        name="agmDate"
-                        type="date"
-                        value={formData.agmDate}
-                        onChange={handleInputChange}
-                        className={`pl-10 ${errors.agmDate ? "border-red-500" : ""}`}
-                      />
-                    </div>
-                    {errors.agmDate && (
-                      <div className="text-red-500 text-sm flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.agmDate}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="agmTime">AGM Time</Label>
-                    <div className="relative">
-                      <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="agmTime"
-                        name="agmTime"
-                        type="time"
-                        value={formData.agmTime}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="agmPlace">AGM Place</Label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="agmPlace"
-                        name="agmPlace"
-                        value={formData.agmPlace}
-                        onChange={handleInputChange}
-                        placeholder="Enter AGM location"
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer Section */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 border rounded-lg">
-                  <div className="md:col-span-3">
-                    <h3 className="text-lg font-semibold mb-4">Footer Section</h3>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="recordingDate">Date of Recording</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="recordingDate"
-                        name="recordingDate"
-                        type="date"
-                        value={formData.recordingDate}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signingDate">Date of Signing</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="signingDate"
-                        name="signingDate"
-                        type="date"
-                        value={formData.signingDate}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex justify-center pt-4">
-                  <Button
-                    type="submit"
-                    className="flex items-center gap-2 px-6 py-3"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-5 w-5" />
-                        Generate Minutes Document
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     </ProductDashboardLayout>

@@ -3,23 +3,14 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
     SendIcon,
     PlusIcon,
     MessageSquareIcon,
-    HistoryIcon,
-    HomeIcon,
     FileTextIcon,
-    LayoutDashboardIcon,
-    BotIcon,
-    UserIcon,
     UploadIcon,
-    SearchIcon,
     Trash2Icon,
-    FileSpreadsheetIcon,
-    Users,
-    BookOpen
 } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { cn } from '@/lib/utils';
@@ -51,7 +42,6 @@ const MinutesChatbot = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Use authenticated user email instead of hardcoded value
     const userEmail = user?.email || 'guest@aegis.local';
 
     useEffect(() => {
@@ -81,6 +71,28 @@ const MinutesChatbot = () => {
             }
         } catch (err) {
             console.error("Failed to fetch sessions", err);
+        }
+    };
+
+    const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            const resp = await fetch(`/api/minutes-chatbot/session/${sessionId}`, {
+                method: 'DELETE',
+                headers: { 'X-User-Email': userEmail }
+            });
+            if (resp.ok) {
+                setSessions(prev => prev.filter(s => s.id !== sessionId));
+                if (activeSessionId === sessionId) {
+                    const newId = `session_${Date.now()}`;
+                    setActiveSessionId(newId);
+                    setMessages([]);
+                }
+                toast({ title: "Session Deleted", description: "Chat history has been removed." });
+            }
+        } catch (err) {
+            console.error("Failed to delete session", err);
+            toast({ title: "Error", description: "Failed to delete session.", variant: "destructive" });
         }
     };
 
@@ -141,7 +153,6 @@ const MinutesChatbot = () => {
 
             setMessages(prev => [...prev, assistMsg]);
 
-            // Refresh sessions list if new
             if (!sessions.find(s => s.id === activeSessionId)) {
                 setSessions(prev => [{
                     id: activeSessionId, 
@@ -198,88 +209,105 @@ const MinutesChatbot = () => {
             productRoute="/minutes-preparation"
             navigationItems={navigationItems}
         >
-            <div className="flex h-[calc(100vh-120px)] overflow-hidden gap-4 p-2">
-                {/* Sidebar */}
-                <Card className="w-80 flex flex-col shadow-md border-gray-200">
-                    <CardHeader className="pb-4 border-b">
+            <div className="flex h-[calc(100vh-65px)] w-full overflow-hidden bg-slate-50/50">
+                {/* Sidebar Session Drawer */}
+                <div className="w-72 md:w-80 flex flex-col border-r border-slate-200 bg-white shrink-0">
+                    <div className="p-4 border-b border-slate-100 bg-white">
                         <Button
                             onClick={startNewChat}
-                            className="w-full flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                            className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg h-9 shadow-2xs transition-colors"
                         >
                             <PlusIcon className="h-4 w-4" />
-                            New Chat
+                            New Session
                         </Button>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-0 overflow-hidden">
-                        <ScrollArea className="h-full px-2 py-4">
-                            <div className="space-y-2">
-                                <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                        <ScrollArea className="h-full px-3 py-3">
+                            <div className="space-y-1">
+                                <h3 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                                     Recent Sessions
                                 </h3>
                                 {sessions.length === 0 ? (
-                                    <p className="text-xs text-center text-muted-foreground py-10">No chat history yet</p>
+                                    <p className="text-xs text-center text-slate-400 py-10">No chat history yet</p>
                                 ) : (
                                     sessions.map(s => (
-                                        <button
+                                        <div
                                             key={s.id}
                                             onClick={() => setActiveSessionId(s.id)}
                                             className={cn(
-                                                "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left truncate group",
+                                                "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs transition-all text-left truncate group cursor-pointer",
                                                 activeSessionId === s.id
-                                                    ? "bg-blue-50 text-blue-700 font-medium border border-blue-100 shadow-sm"
-                                                    : "hover:bg-gray-50 text-gray-600"
+                                                    ? "bg-slate-100 text-slate-900 font-bold border border-slate-200/80 shadow-2xs"
+                                                    : "hover:bg-slate-50 text-slate-600 font-medium"
                                             )}
                                         >
-                                            <MessageSquareIcon className={cn("h-4 w-4 shrink-0", activeSessionId === s.id ? "text-blue-500" : "text-gray-400")} />
-                                            <span className="truncate">{s.title || s.id.replace('session_', '')}</span>
-                                        </button>
+                                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                <MessageSquareIcon className={cn("h-3.5 w-3.5 shrink-0", activeSessionId === s.id ? "text-slate-900" : "text-slate-400")} />
+                                                <span className="truncate">{s.title || s.id.replace('session_', '')}</span>
+                                            </div>
+                                            <button
+                                                onClick={(e) => deleteSession(s.id, e)}
+                                                title="Delete session"
+                                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200/80 text-slate-400 hover:text-red-600 rounded transition-all shrink-0"
+                                            >
+                                                <Trash2Icon className="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
                                     ))
                                 )}
                             </div>
                         </ScrollArea>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
 
-                {/* Main Chat Area */}
-                <Card className="flex-1 flex flex-col shadow-xl border-gray-200 bg-gray-50/30">
-                    <CardHeader className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10 py-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-100 rounded-lg">
-                                    <BotIcon className="h-5 w-5 text-blue-600" />
-                                </div>
-                                <div>
-                                    <CardTitle className="text-lg">Aegis AI Assistant</CardTitle>
-                                    <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold uppercase">Online</span>
-                                </div>
+                {/* Main Workspace Chat Area */}
+                <div className="flex-1 flex flex-col h-full bg-white overflow-hidden">
+                    <div className="border-b border-slate-200 py-3 px-6 bg-white shrink-0 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-100">
+                                <MessageSquareIcon className="h-4 w-4" />
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs h-8">
-                                    <UploadIcon className="h-3.5 w-3.5 mr-1" />
-                                    Train AI
-                                </Button>
-                                <input type="file" ref={fileInputRef} onChange={handleFileUpload} hidden />
+                            <div>
+                                <h2 className="text-sm font-bold text-slate-900">Meeting Assistant</h2>
+                                <span className="text-[11px] text-slate-500 font-medium">Query minutes, resolutions, and schedules</span>
                             </div>
                         </div>
-                    </CardHeader>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs h-8 border-slate-200 font-semibold rounded-lg bg-white shadow-2xs hover:bg-slate-50">
+                                <UploadIcon className="h-3.5 w-3.5 mr-1.5 text-slate-600" />
+                                Upload Reference File
+                            </Button>
+                            <input type="file" ref={fileInputRef} onChange={handleFileUpload} hidden />
+                        </div>
+                    </div>
 
-                    <CardContent className="flex-1 overflow-hidden p-0 relative">
+                    <div className="flex-1 overflow-hidden relative bg-slate-50/20">
                         <ScrollArea className="h-full p-4 md:p-6" ref={scrollRef}>
                             <div className="max-w-4xl mx-auto space-y-6">
                                 {messages.length === 0 && !isLoading && (
                                     <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-4">
-                                        <div className="p-4 bg-white rounded-full shadow-lg">
-                                            <BotIcon className="h-12 w-12 text-blue-500" />
+                                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shadow-2xs">
+                                            <MessageSquareIcon className="h-7 w-7" />
                                         </div>
-                                        <div className="space-y-2">
-                                            <h2 className="text-2xl font-bold text-gray-800">Hello! I'm your Meeting Assistant</h2>
-                                            <p className="text-gray-500 max-w-sm">
-                                                Ask me anything about your meeting agendas, decisions, or action items. I can analyze uploaded PDF and Word documents.
+                                        <div className="space-y-1">
+                                            <h2 className="text-base font-bold text-slate-900">Meeting Query Hub</h2>
+                                            <p className="text-xs text-slate-500 max-w-sm">
+                                                Ask questions about meeting agendas, decisions, or action items.
                                             </p>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3 mt-8">
-                                            {["Summarize last meeting", "List all action items", "Show me the agenda", "Find decisions on X"].map(q => (
-                                                <Button key={q} variant="outline" className="text-xs h-auto py-2 border-dashed bg-white" onClick={() => setInput(q)}>
+                                        <div className="grid grid-cols-2 gap-2 mt-4 max-w-md">
+                                            {[
+                                                "Summarize last meeting",
+                                                "List all action items",
+                                                "Show me the agenda",
+                                                "Find decisions on resolution"
+                                            ].map(q => (
+                                                <Button 
+                                                    key={q} 
+                                                    variant="outline" 
+                                                    className="text-xs h-auto py-2.5 border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-medium rounded-lg shadow-2xs" 
+                                                    onClick={() => setInput(q)}
+                                                >
                                                     {q}
                                                 </Button>
                                             ))}
@@ -293,27 +321,27 @@ const MinutesChatbot = () => {
                                             "flex gap-3 max-w-[85%]",
                                             m.role === 'user' ? "flex-row-reverse" : "flex-row"
                                         )}>
-                                            <Avatar className={cn("h-8 w-8 mt-1 border-2 shadow-sm", m.role === 'user' ? "border-indigo-100" : "border-blue-100")}>
-                                                <AvatarFallback className={m.role === 'user' ? "bg-indigo-50 text-indigo-700" : "bg-blue-50 text-blue-700"}>
-                                                    {m.role === 'user' ? <UserIcon className="h-4 w-4" /> : <BotIcon className="h-4 w-4" />}
+                                            <Avatar className="h-7 w-7 mt-0.5 border border-slate-200 shadow-2xs">
+                                                <AvatarFallback className={cn("text-[10px] font-bold", m.role === 'user' ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-700")}>
+                                                    {m.role === 'user' ? 'U' : 'A'}
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div className="space-y-2">
                                                 <div className={cn(
-                                                    "p-4 rounded-2xl shadow-sm text-sm leading-relaxed",
+                                                    "p-3.5 rounded-xl shadow-2xs text-xs leading-relaxed",
                                                     m.role === 'user'
-                                                        ? "bg-indigo-600 text-white rounded-tr-none"
-                                                        : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
+                                                        ? "bg-slate-900 text-white rounded-tr-none"
+                                                        : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
                                                 )}>
                                                     <div className="whitespace-pre-wrap">{m.content}</div>
                                                 </div>
 
                                                 {m.sources && m.sources.length > 0 && (
                                                     <div className="flex flex-wrap gap-2 mt-2">
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase mr-1 mt-1">Sources:</span>
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase mr-1 mt-1">Sources:</span>
                                                         {m.sources.map((s, idx) => (
-                                                            <div key={idx} className="bg-gray-100 text-[10px] px-2 py-0.5 rounded-full text-gray-600 border flex items-center gap-1">
-                                                                <FileTextIcon className="h-3 w-3" />
+                                                            <div key={idx} className="bg-slate-100 text-[10px] px-2 py-0.5 rounded-md text-slate-600 border border-slate-200 flex items-center gap-1">
+                                                                <FileTextIcon className="h-3 w-3 text-slate-400" />
                                                                 {s.document}
                                                             </div>
                                                         ))}
@@ -325,43 +353,43 @@ const MinutesChatbot = () => {
                                 ))}
 
                                 {isLoading && (
-                                    <div className="flex gap-3 items-start animate-pulse">
-                                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                            <BotIcon className="h-4 w-4 text-blue-500" />
-                                        </div>
-                                        <div className="bg-white border p-4 rounded-2xl rounded-tl-none shadow-sm space-y-2 w-32">
-                                            <div className="h-2 w-full bg-gray-100 rounded"></div>
-                                            <div className="h-2 w-2/3 bg-gray-100 rounded"></div>
+                                    <div className="flex gap-3 items-start">
+                                        <Avatar className="h-7 w-7 border border-slate-200 shadow-2xs">
+                                            <AvatarFallback className="text-[10px] font-bold bg-slate-100 text-slate-700">A</AvatarFallback>
+                                        </Avatar>
+                                        <div className="bg-white border border-slate-200 p-3.5 rounded-xl rounded-tl-none shadow-2xs space-y-1.5 w-32">
+                                            <div className="h-2 w-full bg-slate-100 rounded animate-pulse"></div>
+                                            <div className="h-2 w-2/3 bg-slate-100 rounded animate-pulse"></div>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </ScrollArea>
-                    </CardContent>
+                    </div>
 
-                    <CardFooter className="p-4 bg-white border-t">
-                        <div className="max-w-4xl mx-auto w-full relative group">
+                    <div className="p-4 bg-white border-t border-slate-200 shrink-0">
+                        <div className="max-w-4xl mx-auto w-full relative">
                             <Input
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                                 placeholder="Message meeting assistant..."
-                                className="pr-14 h-14 rounded-xl border-gray-200 focus:border-blue-500 focus:ring-blue-500 transition-all shadow-sm"
+                                className="pr-12 h-11 rounded-lg border-slate-200 focus:border-slate-400 focus:ring-0 text-xs bg-slate-50/50 focus:bg-white transition-colors"
                             />
                             <Button
                                 size="icon"
                                 onClick={handleSendMessage}
                                 disabled={!input.trim() || isLoading}
                                 className={cn(
-                                    "absolute right-2 top-2 h-10 w-10 rounded-lg transition-all shadow-md",
-                                    input.trim() ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300 pointer-events-none"
+                                    "absolute right-1 top-1 h-9 w-9 rounded-md transition-colors shadow-none",
+                                    input.trim() ? "bg-slate-900 hover:bg-slate-800 text-white" : "bg-slate-100 text-slate-400 pointer-events-none"
                                 )}
                             >
-                                <SendIcon className="h-5 w-5" />
+                                <SendIcon className="h-4 w-4" />
                             </Button>
                         </div>
-                    </CardFooter>
-                </Card>
+                    </div>
+                </div>
             </div>
         </ProductDashboardLayout>
     );

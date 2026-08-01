@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import UserManualModal from "../UserManualModal";
+import { useVertical } from "../../contexts/VerticalContext";
 
 // Adani theme color constants — same as outside design
 const A = {
@@ -42,11 +43,13 @@ const ProductDashboardLayout = ({
   productRoute,
   navigationItems,
 }: ProductDashboardLayoutProps) => {
+  const { selectedCompany, selectedVertical, setSelectedCompany, setSelectedVertical } = useVertical();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isUserManualOpen, setIsUserManualOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
 
   const handleNavigation = (item: NavigationItem): void => {
     if (item.id === "manual") {
@@ -138,175 +141,175 @@ const ProductDashboardLayout = ({
       }}
     >
       {/* Mobile Menu Button */}
-      <button
-        onClick={() => setIsMobileOpen(!isMobileOpen)}
-        style={{
-          display: "none",
-          position: "fixed",
-          top: 16,
-          left: 16,
-          zIndex: 50,
-          padding: 8,
-          borderRadius: 8,
-          background: "rgba(0,102,179,0.1)",
-          border: `1px solid ${A.border}`,
-          cursor: "pointer",
-          color: A.orange,
-        }}
-        className="mobile-menu-btn"
-      >
-        <Menu size={20} />
-      </button>
+      {selectedCompany && (
+        <button
+          onClick={() => setIsMobileOpen(!isMobileOpen)}
+          style={{
+            display: "none",
+            position: "fixed",
+            top: 16,
+            left: 16,
+            zIndex: 50,
+            padding: 8,
+            borderRadius: 8,
+            background: "rgba(0,102,179,0.1)",
+            border: `1px solid ${A.border}`,
+            cursor: "pointer",
+            color: A.orange,
+          }}
+          className="mobile-menu-btn"
+        >
+          <Menu size={20} />
+        </button>
+      )}
 
       {/* Desktop Sidebar */}
-      <aside
-        style={{
-          width: sidebarWidth,
-          minWidth: sidebarWidth,
-          transition:
-            "width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1)",
-          background: "#FFFFFF",
-          borderRight: `1px solid ${A.border}`,
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-          boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Blue accent top bar */}
-        <div
+      {selectedCompany && (
+        <aside
           style={{
-            height: 3,
-            background: `linear-gradient(90deg, ${A.orange}, ${A.orangeLight}, transparent)`,
-            flexShrink: 0,
-          }}
-        />
-
-        {/* Logo */}
-        <div
-          style={{
-            padding: isCollapsed ? "12px 0" : "12px 16px",
+            width: sidebarWidth,
+            minWidth: sidebarWidth,
+            transition:
+              "width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1)",
+            background: "#FFFFFF",
+            borderRight: `1px solid ${A.border}`,
             display: "flex",
-            alignItems: "center",
-            gap: 10,
-            justifyContent: isCollapsed ? "center" : "flex-start",
-            borderBottom: `1px solid ${A.border}`,
-            minHeight: 56,
-            flexShrink: 0,
+            flexDirection: "column",
+            position: "relative",
+            boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
+            overflow: "hidden",
           }}
         >
-          <img
-            src="/adani.svg"
-            alt="Adani"
+          {/* Blue accent top bar */}
+          <div
             style={{
-              height: isCollapsed ? 28 : 32,
-              width: "auto",
+              height: 3,
+              background: `linear-gradient(90deg, ${A.orange}, ${A.orangeLight}, transparent)`,
               flexShrink: 0,
             }}
           />
-          {!isCollapsed && (
-            <div style={{ overflow: "hidden" }}>
-              <div
-                style={{
-                  fontSize: 14,
-                  color: A.text,
-                  fontWeight: 700,
-                  marginTop: 2,
-                }}
-              >
-                {productName}
-              </div>
 
-            </div>
-          )}
-        </div>
-
-        {/* Main nav */}
-        <nav
-          style={{
-            flex: 1,
-            minHeight: 0,
-            padding: "8px 8px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
-            overflowY: "auto",
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-          }}
-        >
-          {!isCollapsed && (
-            <div
-              style={{
-                fontSize: 9.5,
-                color: A.muted,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                fontWeight: 700,
-                padding: "4px 10px 8px",
-              }}
-            >
-              Main Menu
-            </div>
-          )}
-          {mainNavItems.map((item) => renderNavButton(item, isCollapsed))}
-
-          <div style={{ flex: 1 }} />
-
-          {resourceItems.length > 0 && (
-            <>
-              {!isCollapsed && (
-                <div
-                  style={{
-                    fontSize: 9.5,
-                    color: A.muted,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    fontWeight: 700,
-                    padding: "8px 10px 6px",
-                  }}
-                >
-                  Resources
-                </div>
-              )}
-              {resourceItems.map((item) => renderNavButton(item, isCollapsed))}
-            </>
-          )}
-        </nav>
-
-        <div
-          style={{
-            padding: "12px 12px",
-            display: "flex",
-            justifyContent: "flex-end",
-            borderTop: isCollapsed ? "none" : `1px solid ${A.border}`,
-            flexShrink: 0,
-          }}
-        >
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
+          {/* Logo */}
+          <div
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "rgba(0,102,179,0.05)",
-              border: `1px solid ${A.border}`,
+              padding: isCollapsed ? "12px 0" : "12px 16px",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: A.orange,
-              transition: "all 0.2s ease",
+              gap: 10,
+              justifyContent: isCollapsed ? "center" : "flex-start",
+              borderBottom: `1px solid ${A.border}`,
+              minHeight: 56,
+              flexShrink: 0,
             }}
           >
-            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
-      </aside>
+            <img
+              src="/adani.svg"
+              alt="Adani"
+              style={{
+                height: isCollapsed ? 28 : 32,
+                width: "auto",
+                flexShrink: 0,
+              }}
+            />
+            {!isCollapsed && (
+              <div style={{ overflow: "hidden" }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    color: A.text,
+                    fontWeight: 700,
+                    marginTop: 2,
+                  }}
+                >
+                  {productName}
+                </div>
+
+              </div>
+            )}
+          </div>
+
+          {/* Main nav */}
+          <nav
+            style={{
+              flex: 1,
+              minHeight: 0,
+              padding: "8px 8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              overflowY: "auto",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            {!isCollapsed && (
+              <div
+                style={{
+                  fontSize: 9.5,
+                  color: A.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  fontWeight: 700,
+                  padding: "4px 10px 8px",
+                }}
+              >
+                Main Menu
+              </div>
+            )}
+            {mainNavItems.map((item) => renderNavButton(item, isCollapsed))}
+            <div style={{ flex: 1 }} />
+            {!isCollapsed && resourceItems.length > 0 && (
+              <div
+                style={{
+                  fontSize: 9.5,
+                  color: A.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  fontWeight: 700,
+                  padding: "8px 10px 6px",
+                }}
+              >
+                Resources
+              </div>
+            )}
+            {resourceItems.map((item) => renderNavButton(item, isCollapsed))}
+          </nav>
+
+          {/* Collapse button */}
+          <div
+            style={{
+              padding: 10,
+              borderTop: `1px solid ${A.border}`,
+              display: "flex",
+              justifyContent: isCollapsed ? "center" : "flex-end",
+              background: "#FFFFFF",
+              minHeight: 52,
+              flexShrink: 0,
+            }}
+          >
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              style={{
+                padding: 6,
+                borderRadius: "50%",
+                background: "rgba(0,102,179,0.05)",
+                border: `1px solid ${A.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: A.orange,
+                transition: "all 0.2s ease",
+              }}
+            >
+              {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Mobile Sidebar Overlay */}
-      {isMobileOpen && (
+      {selectedCompany && isMobileOpen && (
         <div
           style={{
             position: "fixed",
@@ -384,6 +387,8 @@ const ProductDashboardLayout = ({
                 flexDirection: "column",
                 gap: 2,
                 overflowY: "auto",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
               }}
             >
               <div
@@ -431,8 +436,59 @@ const ProductDashboardLayout = ({
           overflowX: "hidden",
         }}
       >
+        {selectedCompany && (
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderBottom: "1px solid rgba(0,0,0,0.08)",
+              padding: "10px 24px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: "12px",
+              color: "#475569",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <span style={{ background: "#EFF6FF", color: "#1D4ED8", padding: "3px 10px", borderRadius: "12px", fontWeight: 700, fontSize: "11px", letterSpacing: "0.02em" }}>
+                BU: {selectedVertical?.name || "Gas & Utilities"}
+              </span>
+              <span style={{ fontWeight: 700, color: "#0F172A", fontSize: "13px" }}>
+                {selectedCompany.name}
+              </span>
+              {selectedCompany.cin && (
+                <span style={{ color: "#64748B", fontFamily: "monospace", fontSize: "11px" }}>
+                  CIN: {selectedCompany.cin}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setSelectedCompany(null);
+                setSelectedVertical(null);
+                navigate('/minutes-preparation');
+              }}
+              style={{
+                background: "#F8FAFC",
+                border: "1px solid #CBD5E1",
+                borderRadius: "6px",
+                padding: "4px 12px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#0057B8",
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+              className="hover:bg-blue-50 hover:border-blue-300"
+            >
+              Switch Entity
+            </button>
+          </div>
+        )}
         {children}
       </main>
+
 
       {/* User Manual Modal */}
       <UserManualModal

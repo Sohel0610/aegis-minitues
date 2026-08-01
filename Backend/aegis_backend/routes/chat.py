@@ -4,6 +4,8 @@ Integrates intent classification, fuzzy matching, context management, and intell
 """
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+import asyncio
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
@@ -215,6 +217,7 @@ async def chat_message_enhanced(request: ChatRequest):
                 get_context_manager,
                 get_fuzzy_matcher
             )
+            from chatbot_backend.nlu_engine.query_preprocessor import QueryPreprocessor
             from chatbot_backend.response_layer import (
                 get_response_formatter,
                 get_chart_generator
@@ -244,8 +247,9 @@ async def chat_message_enhanced(request: ChatRequest):
             ambiguity_resolver = get_ambiguity_resolver()
             query_cache = get_query_cache()
             
-            # Step 1: Skip cache for chat responses while formatting is being tuned.
-            cache_key = f"v5:{request.message}:{request.database or 'auto'}"
+            cached_response = query_cache.get(request.message, request.database or "all", request.session_id or "anonymous")
+            if cached_response and isinstance(cached_response, dict) and cached_response.get("response"):
+                return ChatResponse(**cached_response)
             
             # Step 2: Resolve pronouns using context
             effective_session_id = (
@@ -253,11 +257,8 @@ async def chat_message_enhanced(request: ChatRequest):
                 if request.session_id and request.session_id != "default_session"
                 else None
             )
-            resolved_query = (
-                context_manager.resolve_pronouns(request.message, effective_session_id)
-                if effective_session_id
-                else request.message
-            )
+            prepared_query = QueryPreprocessor(context_manager).prepare(request.message, effective_session_id)
+            resolved_query = prepared_query.retrieval_query
             logger.info(f"Resolved query: {resolved_query}")
             
             # Step 3: Classify intent
@@ -388,14 +389,15 @@ async def chat_message_enhanced(request: ChatRequest):
                     response_text = str(response_data)
             
             # Step 7: Save to context
-            # context_manager.add_turn(
-            #     session_id=request.session_id,
-            #     user_query=request.message,
-            #     bot_response=response_text[:500],  # Truncate for storage
-            #     intent=intent_result.intent.value,
-            #     entities=[],
-            #     database=database_to_use
-            # )
+            if effective_session_id:
+                context_manager.add_turn(
+                    session_id=effective_session_id,
+                    user_query=request.message,
+                    bot_response=response_text[:2000],
+                    intent=intent_result.intent.value,
+                    entities=intent_result.entities or [],
+                    metadata={"database": database_to_use, "rewritten_query": resolved_query},
+                )
             
             # Step 8: Cache disabled for now to avoid stale response formats.
         
@@ -413,15 +415,45 @@ async def chat_message_enhanced(request: ChatRequest):
                 response_text = str(response_data) if response_data else ""
                 response_type = "text"
         
-        return ChatResponse(
+        confidence = None
+        if nlu_available and isinstance(response_text, str):
+            from chatbot_backend.response_layer.post_processor import post_processor
+            # Structured/table responses are already source data; text is checked.
+            source_records = response_data if isinstance(response_data, list) else []
+            checked = post_processor.process(response_text, source_records)
+            response_text, confidence = checked.response, checked.confidence
+        response = ChatResponse(
             response=response_text,
             database_detected=database_to_use,
             response_type=response_type,
             structured=structured,
             chart_config=chart_config,
-            metadata={"nlu_enabled": nlu_available}
+            metadata={"nlu_enabled": nlu_available, "confidence": confidence}
         )
+        if nlu_available:
+            query_cache.set(request.message, response.dict(), database_to_use, user_id=request.session_id or "anonymous")
+        return response
         
     except Exception as e:
         logger.exception(f"Error in enhanced chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process chat message: {str(e)}")
+
+
+@router.post("/stream")
+async def chat_message_stream(request: ChatRequest):
+    """SSE delivery for browser chat clients.
+
+    Retrieval runs before generation; chunks are then delivered as SSE `token`
+    events so the UI can render progressively and handle `done`/`error` events.
+    """
+    async def events():
+        try:
+            response = await chat_message_enhanced(request)
+            for token in re.findall(r"\S+\s*", response.response):
+                yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
+                await asyncio.sleep(0)
+            yield f"event: metadata\ndata: {json.dumps(response.metadata or {})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+        except Exception:
+            yield "event: error\ndata: {\"message\": \"Chat request failed\"}\n\n"
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

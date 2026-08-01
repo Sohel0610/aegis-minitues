@@ -550,8 +550,9 @@ DO NOT generate or infer information that is not present in the transcript.
                     # Use Python Groq library
                     from groq import Groq
                     
-                    # Initialize Groq client
-                    client = Groq()
+                    # Initialize Groq client with explicit API key from environment
+                    groq_api_key = os.getenv("GROQ_API_KEY")
+                    client = Groq(api_key=groq_api_key) if groq_api_key else Groq()
                     
                     # Check if content is too large and handle appropriately
                     if len(processed_content) > LLM_CONFIG["max_input_chars"]:

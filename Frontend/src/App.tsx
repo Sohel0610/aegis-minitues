@@ -63,6 +63,7 @@ import DirectorsDisclosureDataSource from "./pages/DirectorsDisclosure/Directors
 import { AccessRequest } from "./pages/AccessRequest";
 import { AdminPanel } from "./pages/AdminPanel";
 import { AccessDenied } from "./components/RouteGuard";
+import { VerticalProvider } from "./contexts/VerticalContext";
 
 const queryClient = new QueryClient();
 
@@ -73,7 +74,8 @@ const App = () => (
       <SonnerToaster />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
+          <VerticalProvider>
+            <Routes>
             {/* Main landing page */}
             <Route path="/" element={<LandingPage />} />
 
@@ -252,6 +254,11 @@ const App = () => (
                 <Templates />
               </ProtectedRoute>
             } />
+            <Route path="/minutes-preparation/places" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <MinutesPreparation />
+              </ProtectedRoute>
+            } />
             <Route path="/minutes-preparation/renderer" element={
               <ProtectedRoute requiredRoute="/minutes-preparation">
                 <TemplateRenderer />
@@ -280,6 +287,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </VerticalProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

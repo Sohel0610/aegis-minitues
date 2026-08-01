@@ -272,6 +272,14 @@ def init_rbac_pg_tables():
                         module_name = EXCLUDED.module_name
                 """, (path, name, name, module))
 
+            # Seed platform admins mandated by BRD (admin master access)
+            for admin_email in ADMIN_EMAILS:
+                cursor.execute("""
+                    INSERT INTO rbac.user_roles (email, role, granted_by)
+                    VALUES (%s, 'admin', 'System Seed')
+                    ON CONFLICT DO NOTHING
+                """, (admin_email.lower(),))
+
             conn.commit()
             logger.info("RBAC PostgreSQL tables verified and seeded")
         except Exception as e:

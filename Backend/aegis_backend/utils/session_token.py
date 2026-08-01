@@ -29,7 +29,10 @@ _DEV_FALLBACK_SECRET = "aegis-dev-only-do-not-use-in-prod"
 
 
 def _get_secret() -> str:
-    secret = os.getenv("AEGIS_SESSION_SECRET")
+    # SESSION_SECRET was used by earlier Aegis deployments.  Accept it during
+    # migration so enabling SSO does not silently invalidate every session;
+    # new deployments should use the explicitly named AEGIS_SESSION_SECRET.
+    secret = os.getenv("AEGIS_SESSION_SECRET") or os.getenv("SESSION_SECRET")
     if not secret:
         logger.warning(
             "AEGIS_SESSION_SECRET is not set; using insecure dev fallback. "

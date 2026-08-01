@@ -14,7 +14,7 @@ from chatbot_backend.utils.entity_registry import ENTITY_REGISTRY
 from typing import List, Tuple
 from chatbot_backend.data_layer.models import DailyLog
 from chatbot_backend.indexing_layer.embedding_index import search_similar_notifications, search_sebi_similar, search_rbi_similar
-from chatbot_backend.chat_orchestrator.router_logic import route_query, execute_structured_query
+from chatbot_backend.chat_orchestrator.router_logic import route_query, execute_structured_query, needs_agentic_route, rrf_fuse
 from chatbot_backend.llm_layer.llm_client import chat_completion, generate_system_prompt, format_notifications_for_llm
 from chatbot_backend.utils.db_formatter import convert_to_common_format, format_mixed_notification
 from chatbot_backend.data_layer.db_models import get_sebi_session, get_rbi_session, SEBINotification, RBINotification
@@ -28,6 +28,8 @@ from collections import Counter
 
 # Analytics service
 from chatbot_backend.services.analytics_service import month_wise_notification_count
+from chatbot_backend.indexing_layer.reranker import reranker
+from chatbot_backend.chat_orchestrator.context_builder import context_builder
 
 
 class ChatOrchestrator:
@@ -422,7 +424,7 @@ class ChatOrchestrator:
 
         ranked_notifications = self._rank_notifications_for_question(notifications, user_query)
         top_notifications = ranked_notifications[:8]
-        llm_context = format_notifications_for_llm([format_mixed_notification(n) for n in top_notifications])
+        llm_context = context_builder.notifications([format_mixed_notification(n) for n in top_notifications])
 
         system_prompt = (
             "You are Aegis Intelligence. "
@@ -517,18 +519,32 @@ class ChatOrchestrator:
         if query_intent == "comparison":
             return self._handle_comparison_query(user_query)
 
-        # Step 5: Route Query - INCREASED LIMIT TO GET ALL DATA
-        retrieval_method, sql_results = route_query(
-            user_query,
-            limit=1000,  # GET ALL DATA - NO SKIPPING
-            database=database,
-            strict_entity=strict_entity_canonical,
-            entity_aliases=entity_aliases,
-        )
+        # Step 5: Smart route. Agentic requests call each regulator independently;
+        # normal structured requests use hybrid SQL + semantic RRF fusion.
+        if needs_agentic_route(user_query):
+            selected = [name for name in ("bse", "sebi", "rbi") if name in user_query.lower()] or ["bse", "sebi", "rbi"]
+            tool_rows = []
+            for source in selected:
+                _, structured = route_query(user_query, limit=100, database=source, strict_entity=strict_entity_canonical, entity_aliases=entity_aliases)
+                tool_rows.extend(convert_to_common_format(structured, source))
+                tool_rows.extend(self.semantic_retrieve(user_query, source, limit=30, last_n_days=last_n_days, strict_entity=strict_entity_canonical))
+            notifications = rrf_fuse(tool_rows, [], limit=100)
+            retrieval_method = "agentic"
+            sql_results = []
+        else:
+            notifications = []
+            retrieval_method, sql_results = route_query(
+                user_query, limit=1000, database=database,
+                strict_entity=strict_entity_canonical, entity_aliases=entity_aliases,
+            )
 
         # Step 6: Get Notifications
-        if retrieval_method in ["structured", "date_only"]:
-            notifications = convert_to_common_format(sql_results, database)
+        if retrieval_method == "agentic":
+            print(f" Retrieved {len(notifications)} through regulatory tools")
+        elif retrieval_method in ["structured", "date_only"]:
+            sql_notifications = convert_to_common_format(sql_results, database)
+            semantic_notifications = self.semantic_retrieve(user_query, database, limit=100, last_n_days=last_n_days, strict_entity=strict_entity_canonical)
+            notifications = rrf_fuse(sql_notifications, semantic_notifications, limit=100)
             print(f" Retrieved {len(notifications)} via SQL from {database}")
 
             if entity_aliases:
@@ -554,6 +570,8 @@ class ChatOrchestrator:
                 print(f" [ENTITY_FILTER] {before_count} → {after_count}")
 
         notifications = self._apply_query_specific_filters(notifications, user_query)
+        # The initial retriever optimises recall; this step optimises final relevance.
+        notifications = reranker.rank(user_query, notifications, limit=min(limit * 4, 40))
 
         if not notifications and not self._has_explicit_entity_mention(user_query):
             return self._suggest_company_name_for_query(user_query)

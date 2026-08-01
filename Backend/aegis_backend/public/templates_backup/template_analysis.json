@@ -1,0 +1,44 @@
+{
+  "q2_meeting_template.docx": [
+    "[Auto]",
+    "[Date of Meeting]",
+    "[Day of Meeting]",
+    "[Manual]",
+    "[Name of Company]",
+    "[No. of Meeting]",
+    "[Place of Meeting]",
+    "[Time: COMMENCED AT]",
+    "[Time: CONCLUDED AT]",
+    "[Type of Meeting]",
+    "[from MCA]",
+    "____"
+  ],
+  "q3_meeting_template.docx": [
+    "[Auto]",
+    "[Date of Meeting]",
+    "[Day of Meeting]",
+    "[Manual]",
+    "[Name of Company]",
+    "[No. of Meeting]",
+    "[Place of Meeting]",
+    "[Time: COMMENCED AT]",
+    "[Time: CONCLUDED AT]",
+    "[Type of Meeting]",
+    "[from MCA]",
+    "____"
+  ],
+  "q4_meeting_template.docx": [
+    "[Auto]",
+    "[Date of Meeting]",
+    "[Day of Meeting]",
+    "[Manual]",
+    "[Name of Company]",
+    "[No. of Meeting]",
+    "[Place of Meeting]",
+    "[Time: COMMENCED AT]",
+    "[Time: CONCLUDED AT]",
+    "[Type of Meeting]",
+    "[from MCA]",
+    "____"
+  ]
+}

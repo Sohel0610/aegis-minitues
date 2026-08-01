@@ -71,20 +71,20 @@ async def lifespan(app: FastAPI):
         conn.close()
 
         # Initialize core directors tables in PostgreSQL
-        from routes.director_data_analysis import init_database
+        # from routes.director_data_analysis import init_database
         # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(thread_pool, init_database)
+        # await loop.run_in_executor(thread_pool, init_database)
 
         # Initialize chatbot database
         from chatbot_minutes.database import init_db as init_chatbot_db
         init_chatbot_db()
 
         # Initialize RBAC tables
-        from routes.rbac import init_rbac_pg_tables
-        from routes.user_management import init_rbac_db
-        await loop.run_in_executor(thread_pool, init_rbac_pg_tables)
-        await loop.run_in_executor(thread_pool, init_rbac_db)
+        # from routes.rbac import init_rbac_pg_tables
+        # from routes.user_management import init_rbac_db
+        # await loop.run_in_executor(thread_pool, init_rbac_pg_tables)
+        # await loop.run_in_executor(thread_pool, init_rbac_db)
 
         logger.info("Directors data, chatbot, and RBAC databases initialized")
         yield

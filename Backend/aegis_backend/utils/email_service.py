@@ -14,8 +14,10 @@ SMTP_USER = "no-reply-ai-agel@adani.com"
 # SMTP_PASS = "" # Not provided, assuming no password needed for port 25 or handled by server whitelist
 # Admin Emails - Access requests will be sent to all addresses in this list
 ADMIN_EMAILS = [
-    "Abhishek.MahadevMane@adani.com", 
-    # Add extra admin emails here (e.g., "admin2@adani.com")
+    "Abhishek.MahadevMane@adani.com",
+    "Pragnesh.Darji@adani.com",
+    "Kamlesh.Bhagia@adani.com",
+    "Puneet.Bansal@adani.com",
 ]
 BASE_URL = "https://aegis.adani.com"
 
