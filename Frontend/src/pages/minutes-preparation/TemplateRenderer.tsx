@@ -116,7 +116,7 @@ const TemplateRenderer = () => {
 
   // Dynamic Form State
   const [formData, setFormData] = useState({
-    template: '',
+    template: '87. AGEL - BM - 28.04.2025.docx',
     companyName: '',
     meetingNumber: '1st',
     meetingType: 'Board of Directors',
@@ -158,9 +158,13 @@ const TemplateRenderer = () => {
         const res = await fetch('/api/templates');
         if (res.ok) {
           const data = await res.json();
-          setDbTemplates(data.data || []);
-          if (data.data && data.data.length > 0 && !formData.template) {
-            setFormData(prev => ({ ...prev, template: data.data[0].name }));
+          const list = data.data || [];
+          setDbTemplates(list);
+          if (list.length > 0) {
+            const firstT = list[0]?.name || list[0];
+            if (firstT && typeof firstT === 'string') {
+              setFormData(prev => ({ ...prev, template: prev.template || firstT }));
+            }
           }
         }
       } catch (err) {

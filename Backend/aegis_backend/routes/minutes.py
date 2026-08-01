@@ -338,40 +338,42 @@ def init_minutes_pg():
             if cursor.fetchone()['count'] == 0:
                 logger.info("Seeding default verticals...")
                 verticals = [
-                    ('Energy', 'ENG'),
+                    ('Renewables', 'REN'),
                     ('Ports & Logistics', 'PRT'),
-                    ('Gas & Utilities', 'GAS'),
                     ('Infrastructure', 'INF'),
-                    ('Digital & Media', 'DIG')
+                    ('Transmission & Distribution', 'TRD'),
+                    ('Realty', 'RLT'),
+                    ('Cement', 'CEM'),
+                    ('Airport', 'AIR'),
+                    ('Natural Resources', 'NAT'),
+                    ('Thermal Power', 'THP'),
+                    ('Promoter', 'PRO'),
+                    ('PLL', 'PLL'),
+                    ('Solar Manufacturing', 'SOL'),
+                    ('Gas Distribution', 'GAS'),
+                    ('Data Centre', 'DAT'),
+                    ('Others', 'OTH')
                 ]
                 for name, code in verticals:
-                    cursor.execute("INSERT INTO verticals (name, code) VALUES (%s, %s)", (name, code))
+                    try:
+                        cursor.execute("INSERT INTO verticals (name, code) VALUES (%s, %s)", (name, code))
+                    except Exception:
+                        pass
 
-            # Seed default Companies under Verticals
-            cursor.execute("SELECT COUNT(*) as count FROM companies")
-            if cursor.fetchone()['count'] == 0:
-                logger.info("Seeding default companies...")
-                # We fetch vertical IDs
-                cursor.execute("SELECT id, name FROM verticals")
-                v_map = {r['name']: r['id'] for r in cursor.fetchall()}
-                
-                companies = [
-                    ('Adani Green Energy Ltd.', 'L40106GJ2015PLC082851', 'Public', v_map.get('Energy'), 'Active'),
-                    ('Adani Power Ltd.', 'L40100GJ1996PLC030533', 'Public', v_map.get('Energy'), 'Active'),
-                    ('Adani Energy Solutions Ltd.', 'L40120GJ2013PLC077218', 'Public', v_map.get('Energy'), 'Active'),
-                    ('Adani Ports and Special Economic Zone Ltd.', 'L63090GJ1998PLC034182', 'Public', v_map.get('Ports & Logistics'), 'Active'),
-                    ('Adani Logistics Ltd.', 'U63090GJ2005PLC046481', 'Private', v_map.get('Ports & Logistics'), 'Active'),
-                    ('Adani Total Gas Ltd.', 'L40100GJ2005PLC046553', 'Public', v_map.get('Gas & Utilities'), 'Active'),
-                    ('Adani Enterprises Ltd.', 'L51100GJ1993PLC019006', 'Public', v_map.get('Infrastructure'), 'Active'),
-                    ('Adani Wilmar Ltd.', 'L15140GJ1999PLC035320', 'Public', v_map.get('Infrastructure'), 'Active'),
-                    ('Adani Digital Labs Private Ltd.', 'U72900DL2021PTC386026', 'Private', v_map.get('Digital & Media'), 'Active')
-                ]
-                for name, cin, ctype, v_id, status in companies:
-                    if v_id:
-                        cursor.execute(
-                            "INSERT INTO companies (name, cin, type, vertical_id, status) VALUES (%s, %s, %s, %s, %s)",
-                            (name, cin, ctype, v_id, status)
-                        )
+            # Auto-run Excel import if available and database is empty/small
+            try:
+                cursor.execute("SELECT COUNT(*) as count FROM companies")
+                c_cnt = cursor.fetchone()['count']
+                if c_cnt < 50:
+                    excel_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Vertical and Entity name.xlsx"))
+                    if os.path.exists(excel_file):
+                        logger.info(f"Triggering automatic Excel migration from {excel_file}...")
+                        import subprocess
+                        mig_script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Backend", "migrate_excel_to_db.py"))
+                        if os.path.exists(mig_script):
+                            subprocess.Popen(["python", mig_script])
+            except Exception as _mig_err:
+                logger.warning(f"Auto Excel migration check failed: {_mig_err}")
             
             # Resolution Templates
             cursor.execute("""
@@ -379,6 +381,20 @@ def init_minutes_pg():
                     id SERIAL PRIMARY KEY,
                     template_name TEXT UNIQUE,
                     resolution_text TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Templates Repository Metadata
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS templates (
+                    id SERIAL PRIMARY KEY,
+                    template_name TEXT UNIQUE,
+                    category TEXT,
+                    company_name TEXT,
+                    quarter TEXT,
+                    file_path TEXT,
+                    file_size BIGINT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -442,6 +458,23 @@ def init_minutes_pg():
                     name TEXT NOT NULL,
                     din TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Fallback schema for external board members (synced from statutory MBP-1/DIR-8 files)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS external_board_members (
+                    id SERIAL PRIMARY KEY,
+                    din TEXT NOT NULL,
+                    name TEXT,
+                    cin TEXT NOT NULL DEFAULT '',
+                    company_name TEXT,
+                    designation TEXT DEFAULT 'Director',
+                    appointment_date TEXT,
+                    status TEXT DEFAULT 'Active',
+                    source TEXT DEFAULT 'DISCLOSURE_DOCS',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(din, company_name)
                 )
             """)
 
@@ -1627,6 +1660,7 @@ class CompanyResponse(BaseModel):
     type: Optional[str] = None
     vertical_id: Optional[int] = None
     status: Optional[str] = None
+    secretary_name: Optional[str] = None
 
 class VerticalsListResponse(BaseModel):
     data: List[VerticalResponse]
@@ -1667,14 +1701,14 @@ async def get_vertical_companies(vertical_id: int, q: Optional[str] = None, limi
             try:
                 if q:
                     cursor.execute("""
-                        SELECT id, name, cin, type, vertical_id, status FROM companies 
+                        SELECT id, name, cin, type, vertical_id, status, secretary_name FROM companies 
                         WHERE vertical_id = %s AND UPPER(name) LIKE UPPER(%s)
                         ORDER BY name
                         LIMIT %s OFFSET %s
                     """, (vertical_id, f"%{q}%", limit, offset))
                 else:
                     cursor.execute("""
-                        SELECT id, name, cin, type, vertical_id, status FROM companies 
+                        SELECT id, name, cin, type, vertical_id, status, secretary_name FROM companies 
                         WHERE vertical_id = %s
                         ORDER BY name
                         LIMIT %s OFFSET %s
@@ -1688,7 +1722,7 @@ async def get_vertical_companies(vertical_id: int, q: Optional[str] = None, limi
                     cursor.execute("SELECT COUNT(*) as count FROM companies WHERE vertical_id = %s", (vertical_id,))
                 total = cursor.fetchone()['count'] or 0
 
-                return [CompanyResponse(id=r['id'], name=r['name'], cin=r['cin'], type=r['type'], vertical_id=r['vertical_id'], status=r['status']) for r in rows], total
+                return [CompanyResponse(id=r['id'], name=r['name'], cin=r['cin'], type=r['type'], vertical_id=r['vertical_id'], status=r['status'], secretary_name=r['secretary_name']) for r in rows], total
             finally:
                 conn.close()
         data, count = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)

@@ -52,8 +52,13 @@ def generate_code(name, existing_codes):
     return code
 
 def migrate():
-    excel_path = os.path.abspath(r"d:\MOM\Vertical and Entity name.xlsx")
-    db_path = os.path.abspath(r"d:\MOM\Backend\aegis_backend\public\local_fallback.db")
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    excel_path = os.getenv("EXCEL_PATH", os.path.join(base_dir, "Vertical and Entity name.xlsx"))
+    db_path = os.getenv("DB_PATH", os.path.join(os.path.join(base_dir, "Backend", "aegis_backend", "public", "local_fallback.db")))
+    if not os.path.exists(excel_path):
+        excel_path = os.path.abspath(r"d:\minutes\Vertical and Entity name.xlsx")
+    if not os.path.exists(os.path.dirname(db_path)):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
     print(f"Opening workbook: {excel_path}")
     wb = load_workbook(excel_path, read_only=True)
