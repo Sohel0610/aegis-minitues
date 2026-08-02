@@ -769,8 +769,8 @@ class MinutesGenerationRequest(BaseModel):
     meetingEndTime: str = ""
     meetingPlace: str = ""
     chairmanName: str = ""
-    presentDirectors: List[Dict[str, str]] = []
-    inAttendance: List[Dict[str, str]] = []
+    presentDirectors: List[Dict[str, Any]] = []
+    inAttendance: List[Dict[str, Any]] = []
     companySecretary: str = ""
     previousMeetingDate: str = ""
     authorisedOfficer: str = ""
@@ -797,7 +797,7 @@ class MinutesGenerationRequest(BaseModel):
     customTemplateFilename: Optional[str] = None
     vertical_name: Optional[str] = "Energy"
     # TemplateRenderer sends directors as a list too
-    directors: List[Dict[str, str]] = []
+    directors: List[Dict[str, Any]] = []
 
 
 @router.post("/generate-minutes")
@@ -841,8 +841,11 @@ async def generate_minutes(request: MinutesGenerationRequest):
         def generate_document():
             doc = Document(template_path)
 
-            # Merge presentDirectors and directors (TemplateRenderer sends 'directors')
+            # Merge presentDirectors and directors, then filter by status
             all_directors = request.presentDirectors or request.directors or []
+            present_directors = [d for d in all_directors if d.get('status', 'Present') != 'Leave of Absence']
+            absent_directors = [d for d in all_directors if d.get('status') == 'Leave of Absence']
+            directors = present_directors if present_directors else all_directors
 
             # Get non-chairman director for signature tables
             non_chairman = [d for d in all_directors if d.get('name') != request.chairmanName]
@@ -1454,7 +1457,7 @@ async def generate_minutes(request: MinutesGenerationRequest):
                                 cell.text = ""
                             row_idx += 1
 
-                # 2. Update Paragraph-based attendance lists & remove extra XML nodes
+                # 2. Update Paragraph-based attendance lists & remove extra sample paragraphs
                 in_present_section = False
                 dir_paras = []
                 next_para = None
@@ -1473,14 +1476,32 @@ async def generate_minutes(request: MinutesGenerationRequest):
                             dir_paras.append(para)
 
                 existing_count = len(dir_paras)
-                for idx in range(max(len(directors), existing_count)):
-                    if idx < len(directors):
-                        d = directors[idx]
+                for idx in range(max(len(present_directors), existing_count)):
+                    if idx < len(present_directors):
+                        d = present_directors[idx]
                         d_name = d.get('name', '')
                         d_role = "Chairman" if d_name == request.chairmanName else (d.get('designation') or d.get('role') or "Director")
                         formatted_line = f"{idx + 1}.\t{d_name}\t\t-\t{d_role}"
                         if idx < existing_count:
-                            dir_paras[idx].text = formatted_line
+                            target_p = dir_paras[idx]
+                            if target_p.runs:
+                                first_run = target_p.runs[0]
+                                f_name = first_run.font.name
+                                f_size = first_run.font.size
+                                is_b = first_run.bold
+                                is_i = first_run.italic
+                                for r in target_p.runs[1:]:
+                                    try:
+                                        r._element.getparent().remove(r._element)
+                                    except Exception:
+                                        pass
+                                first_run.text = formatted_line
+                                if f_name: first_run.font.name = f_name
+                                if f_size: first_run.font.size = f_size
+                                if is_b is not None: first_run.bold = is_b
+                                if is_i is not None: first_run.italic = is_i
+                            else:
+                                target_p.text = formatted_line
                         else:
                             if next_para:
                                 next_para.insert_paragraph_before(formatted_line)
@@ -1493,6 +1514,26 @@ async def generate_minutes(request: MinutesGenerationRequest):
                                 p_elem.getparent().remove(p_elem)
                             except Exception:
                                 dir_paras[idx].text = ""
+
+                # 3. Dynamic Leave of Absence Section Update
+                if absent_directors:
+                    absent_names = []
+                    for d in absent_directors:
+                        n = d.get('name', '').strip()
+                        if n:
+                            if not n.startswith(('Mr.', 'Mrs.', 'Ms.', 'Dr.')):
+                                n = f"Mr. {n}"
+                            absent_names.append(n)
+                    if absent_names:
+                        if len(absent_names) == 1:
+                            absent_str = absent_names[0]
+                        else:
+                            absent_str = ", ".join(absent_names[:-1]) + " and " + absent_names[-1]
+                        loa_text = f"Leave of absence was granted to {absent_str} upon request."
+
+                        for para in doc.paragraphs:
+                            if "leave of absence was granted to" in para.text.lower():
+                                para.text = loa_text
 
             # 3. Dynamic Resolutions Replacement (structure-preserving: text + tables)
             if request.resolutions and request.resolutions.strip():

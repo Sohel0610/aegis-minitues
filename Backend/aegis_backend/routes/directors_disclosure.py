@@ -26,7 +26,7 @@ from routes.director_changes import log_director_change
 from routes.director_family_info import get_family_info_for_director, update_director_family_info
 
 # Import our PostgreSQL service
-from utils.pgsql_service import get_pg_connection, get_pg_cursor
+from utils.pgsql_service import get_pg_connection, get_pg_cursor, SQLiteConnectionWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -326,15 +326,56 @@ async def get_directors_disclosures():
 async def get_directors_master():
     """Get the master list of directors (PostgreSQL / SQLite fallback)."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
-    if not pg_conn: raise HTTPException(status_code=500, detail="DB connection failed")
+    if not pg_conn:
+        return DirectorsMasterResponse(data=[], count=0)
     cursor = get_pg_cursor(pg_conn)
     try:
         use_sqlite = os.getenv("USE_SQLITE_FALLBACK", "False").lower() in ("true", "1", "yes")
-        if use_sqlite:
+        is_sqlite = use_sqlite or isinstance(pg_conn, SQLiteConnectionWrapper)
+        if is_sqlite:
+            data = []
+            try:
+                cursor.execute("""
+                    SELECT DISTINCT name, COALESCE(din, '') as din
+                    FROM (
+                        SELECT name, din FROM external_board_members WHERE name IS NOT NULL AND TRIM(name) != ''
+                        UNION
+                        SELECT name, din FROM company_directors WHERE name IS NOT NULL AND TRIM(name) != ''
+                    )
+                    ORDER BY name
+                """)
+                rows = cursor.fetchall()
+                for idx, r in enumerate(rows):
+                    data.append({
+                        "id": idx + 1,
+                        "name": r["name"],
+                        "din": r["din"] or "N/A",
+                        "pan": "N/A",
+                        "din_status": "Active",
+                        "gender": "N/A",
+                        "is_kmp": False,
+                        "created_at": datetime.now().isoformat()
+                    })
+                return DirectorsMasterResponse(data=data, count=len(data))
+            except Exception as sql_err:
+                logger.warning(f"SQLite fallback directors query failed: {sql_err}")
+                return DirectorsMasterResponse(data=[], count=0)
+
+        try:
             cursor.execute("""
-                SELECT id, name, din, created_at
-                FROM directors
-                ORDER BY name
+                SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan,
+                       EXISTS (
+                           SELECT 1 FROM directors_master.external_board_members ea
+                           WHERE TRIM(ea.din) = TRIM(d.din)
+                           AND TRIM(UPPER(ea.designation)) IN (
+                               'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
+                               'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
+                           )
+                           AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                       ) as is_kmp
+                FROM directors_master.directors d
+                LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
+                ORDER BY d.name
             """)
             rows = cursor.fetchall()
             data = []
@@ -343,45 +384,48 @@ async def get_directors_master():
                     "id": r["id"],
                     "name": r["name"],
                     "din": r["din"] or "N/A",
+                    "pan": r["pan"],
+                    "din_status": r["din_status"],
+                    "gender": r["gender"],
+                    "is_kmp": bool(r["is_kmp"]),
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
+                })
+            return DirectorsMasterResponse(data=data, count=len(data))
+        except Exception as pg_err:
+            logger.warning(f"PostgreSQL directors query failed: {pg_err}. Trying SQLite fallback query.")
+            cursor.execute("""
+                SELECT DISTINCT name, COALESCE(din, '') as din
+                FROM (
+                    SELECT name, din FROM external_board_members WHERE name IS NOT NULL AND TRIM(name) != ''
+                    UNION
+                    SELECT name, din FROM company_directors WHERE name IS NOT NULL AND TRIM(name) != ''
+                )
+                ORDER BY name
+            """)
+            rows = cursor.fetchall()
+            data = []
+            for idx, r in enumerate(rows):
+                data.append({
+                    "id": idx + 1,
+                    "name": r["name"],
+                    "din": r["din"] or "N/A",
                     "pan": "N/A",
                     "din_status": "Active",
                     "gender": "N/A",
                     "is_kmp": False,
-                    "created_at": str(r["created_at"]) if r["created_at"] else datetime.now().isoformat()
+                    "created_at": datetime.now().isoformat()
                 })
             return DirectorsMasterResponse(data=data, count=len(data))
-
-        cursor.execute("""
-            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan,
-                   EXISTS (
-                       SELECT 1 FROM directors_master.external_board_members ea
-                       WHERE TRIM(ea.din) = TRIM(d.din)
-                       AND TRIM(UPPER(ea.designation)) IN (
-                           'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
-                           'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
-                       )
-                       AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
-                   ) as is_kmp
-            FROM directors_master.directors d
-            LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
-            ORDER BY d.name
-        """)
-        rows = cursor.fetchall()
-        data = []
-        for r in rows:
-            data.append({
-                "id": r["id"],
-                "name": r["name"],
-                "din": r["din"] or "N/A",
-                "pan": r["pan"],
-                "din_status": r["din_status"],
-                "gender": r["gender"],
-                "is_kmp": bool(r["is_kmp"]),
-                "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
-            })
-        return DirectorsMasterResponse(data=data, count=len(data))
+    except Exception as general_err:
+        logger.error(f"Error fetching directors master: {general_err}")
+        return DirectorsMasterResponse(data=[], count=0)
     finally:
-        cursor.close(); pg_conn.close()
+        if cursor:
+            try: cursor.close()
+            except Exception: pass
+        if pg_conn:
+            try: pg_conn.close()
+            except Exception: pass
 
 @router.get("/directors-disclosures/{id}/summary", response_model=DocumentSummaryResponse)
 async def get_disclosure_summary(id: int):

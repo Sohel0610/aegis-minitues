@@ -761,9 +761,14 @@ const FormBasedGenerator: React.FC = () => {
           toast({ title: "Success", description: result.message || 'Document generated successfully!' });
         } else {
           const error = await response.json();
-          throw new Error(error.detail || 'Failed to generate document');
+          const detailMsg = typeof error.detail === 'string'
+            ? error.detail
+            : Array.isArray(error.detail)
+              ? error.detail.map((d: any) => `${d.loc?.slice(1).join('.') || 'Error'}: ${d.msg}`).join('; ')
+              : 'Failed to generate document';
+          throw new Error(detailMsg);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error generating document:', error);
         toast({ title: "Generation Error", description: error.message || 'Please try again.', variant: "destructive" });
       } finally {

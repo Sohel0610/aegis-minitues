@@ -174,7 +174,7 @@ const TemplateRenderer = () => {
 
     const fetchMasterDirectors = async () => {
       try {
-        const res = await fetch('/api/directors');
+        const res = await fetch('/api/directors-master');
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.data || []);
@@ -771,15 +771,21 @@ const TemplateRenderer = () => {
                               <SelectValue placeholder="Select Chairman from company directors..." />
                             </SelectTrigger>
                             <SelectContent className="bg-white">
-                              {formData.directors && formData.directors.length > 0 ? (
+                              {formData.directors && formData.directors.length > 0 && formData.directors.some((d: any) => d.name) ? (
                                 formData.directors.map((d: any, idx: number) => (
                                   <SelectItem key={idx} value={d.name || `Director ${idx + 1}`} className="text-xs font-medium">
                                     {d.name || `Director ${idx + 1}`} {d.din ? `(DIN: ${d.din})` : ''}
                                   </SelectItem>
                                 ))
+                              ) : masterDirectors && masterDirectors.length > 0 ? (
+                                masterDirectors.slice(0, 10).map((d: any, idx: number) => (
+                                  <SelectItem key={idx} value={d.name} className="text-xs font-medium">
+                                    {d.name} {d.din ? `(DIN: ${d.din})` : ''}
+                                  </SelectItem>
+                                ))
                               ) : (
-                                <SelectItem value="Gautam Adani" className="text-xs font-medium">
-                                  Gautam Adani (DIN: 00222019)
+                                <SelectItem value="Select Director" className="text-xs font-medium">
+                                  No directors loaded
                                 </SelectItem>
                               )}
                             </SelectContent>
