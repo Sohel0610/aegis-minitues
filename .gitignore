@@ -22,6 +22,8 @@ dist-ssr
 # Aegis Generated Disclosures
 Backend/Director_Disclosure/Output_Disclosures/
 *.docx
+!Backend/aegis_backend/public/templates/
+!Backend/aegis_backend/public/templates/*.docx
 venv/
 
 # Python
