@@ -49,19 +49,17 @@ export default function MinutesPreparation() {
   // Fetch directors for the selected entity: read-only from Disclosure DB + local manual entries
   const fetchDirectorsData = async () => {
     if (!isAuthenticated) return;
-    if (!selectedCompany?.name) {
-      setDirectors([]);
-      setDirectorsNotice('');
-      return;
-    }
-
     setIsLoadingDirectors(true);
     setDirectorsNotice('');
     try {
-      const response = await fetch(`/api/companies/${encodeURIComponent(selectedCompany.name)}/directors`);
+      const url = selectedCompany?.name
+        ? `/api/companies/${encodeURIComponent(selectedCompany.name)}/directors`
+        : '/api/directors';
+      const response = await fetch(url);
       if (response.ok) {
         const result = await response.json();
-        setDirectors(Array.isArray(result) ? result : (result.data || []));
+        const list = Array.isArray(result) ? result : (result.data || []);
+        setDirectors(list);
         setDirectorsNotice(Array.isArray(result) ? '' : (result.message || ''));
       } else {
         console.error('Failed to fetch directors data');
@@ -93,9 +91,19 @@ export default function MinutesPreparation() {
     }
   };
 
+  const [masterDirectors, setMasterDirectors] = useState<any[]>([]);
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+
   useEffect(() => {
     fetchDirectorsData();
     fetchPlacesData();
+    fetch('/api/directors')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.data || []);
+        setMasterDirectors(list);
+      })
+      .catch(err => console.error("Failed to fetch master directors", err));
   }, [isAuthenticated, selectedCompany?.name]);
 
   // Handle navigation to form generator
@@ -104,10 +112,15 @@ export default function MinutesPreparation() {
   };
 
   // Filter directors based on search term
-  const filteredDirectors = directors.filter(director =>
-    director.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (director.din || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDirectors = directors.filter(director => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return true;
+    return (
+      (director.name || '').toLowerCase().includes(term) ||
+      (director.din || '').toLowerCase().includes(term) ||
+      ((director as any).company_name || '').toLowerCase().includes(term)
+    );
+  });
 
   const handleAddDirector = async () => {
     if (!formData.name.trim()) {
@@ -333,7 +346,7 @@ export default function MinutesPreparation() {
                 <p className="text-xs text-slate-500">
                   {selectedCompany?.name
                     ? `Directors of ${selectedCompany.name} — registry data is read-only; manual additions are stored locally`
-                    : 'Select an entity (Switch Entity) to view its board directors'}
+                    : 'Showing all master directors across portfolio entities (Select an entity via Switch Entity to filter)'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -511,14 +524,46 @@ export default function MinutesPreparation() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label htmlFor="add-name">Director Name *</Label>
               <Input
                 id="add-name"
                 value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Enter director name"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData(prev => ({ ...prev, name: val }));
+                  setIsSuggestOpen(true);
+                }}
+                onFocus={() => setIsSuggestOpen(true)}
+                onBlur={() => setTimeout(() => setIsSuggestOpen(false), 200)}
+                placeholder="Type director name to search..."
               />
+              {isSuggestOpen && masterDirectors.length > 0 && (
+                <div className="absolute left-0 right-0 top-[68px] bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto py-1">
+                  {masterDirectors
+                    .filter(d => 
+                      !formData.name ||
+                      d.name?.toLowerCase().includes(formData.name.toLowerCase()) ||
+                      d.din?.includes(formData.name)
+                    )
+                    .slice(0, 8)
+                    .map((d: any, idx: number) => (
+                      <div
+                        key={idx}
+                        onMouseDown={() => {
+                          setFormData({ name: d.name, din: d.din || '' });
+                          setIsSuggestOpen(false);
+                        }}
+                        className="px-3 py-2 hover:bg-blue-50 cursor-pointer flex justify-between items-center text-xs transition-colors border-b border-slate-100 last:border-0"
+                      >
+                        <span className="font-bold text-slate-900">{d.name}</span>
+                        <span className="font-mono text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-semibold border border-blue-200">
+                          DIN: {d.din || '--------'}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-din">DIN *</Label>

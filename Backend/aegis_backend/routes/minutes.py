@@ -842,7 +842,17 @@ async def generate_minutes(request: MinutesGenerationRequest):
             doc = Document(template_path)
 
             # Merge presentDirectors and directors, then filter by status
-            all_directors = request.presentDirectors or request.directors or []
+            raw_directors = request.presentDirectors or request.directors or []
+            seen_d_names = set()
+            all_directors = []
+            for d in raw_directors:
+                d_n = (d.get('name') or '').strip()
+                if d_n and d_n.lower() not in seen_d_names:
+                    seen_d_names.add(d_n.lower())
+                    all_directors.append(d)
+            if not all_directors and raw_directors:
+                all_directors = raw_directors
+
             present_directors = [d for d in all_directors if d.get('status', 'Present') != 'Leave of Absence']
             absent_directors = [d for d in all_directors if d.get('status') == 'Leave of Absence']
             directors = present_directors if present_directors else all_directors
@@ -1355,17 +1365,7 @@ async def generate_minutes(request: MinutesGenerationRequest):
                     target_end = end_time_dot_str if ("." in text and ("P.M." in text or "A.M." in text or "p.m." in text)) else end_time_str
                     text = re.sub(r'(?:concluded|thanks\s+to\s+the\s+chair)\s+at\s+\d{1,2}[\.:]\d{2}\s*(?:AM|PM|a\.m\.|p\.m\.|P\.M\.|A\.M\.)', f'concluded with a vote of thanks to the chair at {target_end}', text, flags=re.IGNORECASE)
 
-                # 6. Generic Director Replacement in internal committee tables & paragraphs
-                if directors:
-                    # Dynamically match honorific + name patterns (e.g. Mr. Ravi Kapoor, Mrs. Nayana Gadhvi, Mr. Vneet S. Jaain)
-                    matched_names = set(re.findall(r'\b(?:Mr\.|Mrs\.|Ms\.|Dr\.)\s+([A-Z][a-zA-Z\.]+(?:\s+[A-Z][a-zA-Z\.]+)+)\b', text))
-                    for idx, old_name in enumerate(matched_names):
-                        mapped_d = directors[idx % len(directors)]
-                        mapped_name = mapped_d.get('name', '')
-                        if mapped_name:
-                            text = text.replace(old_name, mapped_name)
-
-                # 7. Replace sample signing places
+                # 6. Replace sample signing places
                 if request.signingPlace:
                     text = re.sub(r'\b[A-Z][a-z]{2,20}\b(?=\s+CHAIRMAN|\s*Date)', request.signingPlace, text)
 
@@ -1866,6 +1866,58 @@ async def get_company_directors(company_name: str):
         return {"data": data, "count": len(data)}
     except Exception as e:
         logger.error(f"Error fetching company directors: {e}")
+        return {"data": [], "count": 0}
+
+
+@router.get("/directors")
+async def get_all_master_directors(q: Optional[str] = None):
+    """Fetch all master directors across all portfolio entities."""
+    try:
+        def fetch():
+            results = []
+            seen = set()
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if conn:
+                cursor = get_pg_cursor(conn)
+                try:
+                    query = "SELECT DISTINCT name, din, company_name FROM external_board_members"
+                    params = []
+                    if q:
+                        query += " WHERE UPPER(name) LIKE UPPER(%s) OR UPPER(din) LIKE UPPER(%s) OR UPPER(company_name) LIKE UPPER(%s)"
+                        params = [f"%{q}%", f"%{q}%", f"%{q}%"]
+                    query += " ORDER BY name LIMIT 500"
+                    cursor.execute(query, params)
+                    for r in cursor.fetchall():
+                        k = (r["din"] or "").strip() or (r["name"] or "").strip().upper()
+                        if k and k not in seen:
+                            seen.add(k)
+                            results.append({"name": r["name"], "din": r["din"], "company_name": r.get("company_name", ""), "source": "registry"})
+                except Exception as ex:
+                    logger.warning(f"Error fetching external_board_members: {ex}")
+
+                try:
+                    query = "SELECT id, name, din, company_name FROM company_directors"
+                    params = []
+                    if q:
+                        query += " WHERE UPPER(name) LIKE UPPER(%s) OR UPPER(din) LIKE UPPER(%s) OR UPPER(company_name) LIKE UPPER(%s)"
+                        params = [f"%{q}%", f"%{q}%", f"%{q}%"]
+                    query += " ORDER BY name LIMIT 200"
+                    cursor.execute(query, params)
+                    for r in cursor.fetchall():
+                        k = (r["din"] or "").strip() or (r["name"] or "").strip().upper()
+                        if k and k not in seen:
+                            seen.add(k)
+                            results.append({"id": r["id"], "name": r["name"], "din": r["din"], "company_name": r.get("company_name", ""), "source": "local"})
+                except Exception as ex:
+                    logger.warning(f"Error fetching company_directors: {ex}")
+                conn.close()
+            return results
+
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(thread_pool, fetch)
+        return {"data": data, "count": len(data)}
+    except Exception as e:
+        logger.error(f"Error fetching all master directors: {e}")
         return {"data": [], "count": 0}
 
 
