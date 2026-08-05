@@ -316,6 +316,113 @@ class MinutesGenerationRequest(BaseModel):
 
 # --- Database Init ---
 
+def _normalize_company_key(name: Optional[str]) -> str:
+    """Normalize company legal names so Ltd. / Limited / spacing variants match."""
+    s = (name or "").lower()
+    s = re.sub(r"\bprivate\s+limited\b", "pvt ltd", s)
+    s = re.sub(r"\bpvt\.?\s*ltd\.?\b", "pvt ltd", s)
+    s = re.sub(r"\blimited\b", "ltd", s)
+    s = re.sub(r"\bltd\.?\b", "ltd", s)
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+def _company_names_match(a: Optional[str], b: Optional[str]) -> bool:
+    if not a or not b:
+        return False
+    if a.strip().upper() == b.strip().upper():
+        return True
+    return _normalize_company_key(a) == _normalize_company_key(b)
+
+
+def _seed_minutes_directors_from_json(cursor, seed_company: bool = True, seed_external: bool = True) -> int:
+    """Load committed JSON seeds into minutes director tables (for machines without local_fallback.db)."""
+    seed_dir = os.path.join(os.path.dirname(__file__), "..", "public", "seeds")
+    inserted = 0
+
+    if seed_external:
+        ebm_path = os.path.join(seed_dir, "minutes_external_board_members.json")
+        if os.path.exists(ebm_path):
+            with open(ebm_path, encoding="utf-8") as f:
+                payload = json.load(f)
+            for r in payload.get("members") or []:
+                company = (r.get("company_name") or "").strip()
+                name = (r.get("name") or "").strip()
+                if not company or not name:
+                    continue
+                din = (r.get("din") or "").strip() or f"SEED-{company[:12]}-{name[:12]}"
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO external_board_members
+                            (din, name, cin, company_name, designation, appointment_date, status, source)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (
+                            din,
+                            name,
+                            (r.get("cin") or "").strip(),
+                            company,
+                            (r.get("designation") or "Director"),
+                            r.get("appointment_date"),
+                            r.get("status") or "Active",
+                            r.get("source") or "SEED",
+                        ),
+                    )
+                    inserted += 1
+                except Exception:
+                    try:
+                        cursor.execute(
+                            """
+                            INSERT OR IGNORE INTO external_board_members
+                                (din, name, cin, company_name, designation, appointment_date, status, source)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                din,
+                                name,
+                                (r.get("cin") or "").strip(),
+                                company,
+                                (r.get("designation") or "Director"),
+                                r.get("appointment_date"),
+                                r.get("status") or "Active",
+                                r.get("source") or "SEED",
+                            ),
+                        )
+                        inserted += 1
+                    except Exception:
+                        pass
+
+    if seed_company:
+        cd_path = os.path.join(seed_dir, "minutes_company_directors.json")
+        if os.path.exists(cd_path):
+            with open(cd_path, encoding="utf-8") as f:
+                payload = json.load(f)
+            for r in payload.get("directors") or []:
+                company = (r.get("company_name") or "").strip()
+                name = (r.get("name") or "").strip()
+                if not company or not name:
+                    continue
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO company_directors (company_name, name, din, designation)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            company,
+                            name,
+                            (r.get("din") or "").strip(),
+                            (r.get("designation") or "Director"),
+                        ),
+                    )
+                    inserted += 1
+                except Exception:
+                    pass
+
+    return inserted
+
+
 def init_minutes_pg():
     """Initialize minutes tables in PostgreSQL public schema."""
     target_db = os.getenv('POSTGRES_DATABASE_MINUTES')
@@ -529,11 +636,15 @@ def init_minutes_pg():
                     company_name TEXT NOT NULL,
                     name TEXT NOT NULL,
                     din TEXT,
+                    designation TEXT DEFAULT 'Director',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            try:
+                cursor.execute("ALTER TABLE company_directors ADD COLUMN designation TEXT DEFAULT 'Director'")
+            except Exception:
+                pass
 
-            # Fallback schema for external board members (synced from statutory MBP-1/DIR-8 files)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS external_board_members (
                     id SERIAL PRIMARY KEY,
@@ -549,6 +660,23 @@ def init_minutes_pg():
                     UNIQUE(din, company_name)
                 )
             """)
+
+            # Auto-seed directors for local/SQLite if empty (other machines won't have *.db from git)
+            try:
+                cursor.execute("SELECT COUNT(*) as count FROM company_directors")
+                cd_count = cursor.fetchone()["count"] or 0
+                cursor.execute("SELECT COUNT(*) as count FROM external_board_members")
+                ebm_count = cursor.fetchone()["count"] or 0
+                if cd_count == 0 or ebm_count == 0:
+                    seeded = _seed_minutes_directors_from_json(
+                        cursor,
+                        seed_company=(cd_count == 0),
+                        seed_external=(ebm_count == 0),
+                    )
+                    if seeded:
+                        logger.info(f"Auto-seeded minutes director data ({seeded} row(s))")
+            except Exception as seed_err:
+                logger.warning(f"Minutes director auto-seed skipped: {seed_err}")
 
             # Per-meeting attendance records for real meeting/person-wise reporting
             cursor.execute("""
@@ -3626,128 +3754,209 @@ async def get_company_meetings(
 
 @router.get("/companies/{company_name}/directors")
 async def get_company_directors(company_name: str):
-    """Fetch directors for a company: read-only from Director Disclosure DB, merged with local manual overlay."""
+    """
+    Fetch directors for a company dynamically (no hardcoded people).
+    Sources (merged, de-duplicated by DIN/name):
+      1) Director Disclosure DB external_board_members (when Postgres available)
+      2) Minutes DB external_board_members (local/SQLite seed)
+      3) Minutes DB company_directors overlay
+    Company names match with Ltd./Limited normalization.
+    """
     try:
         def fetch():
-            term = company_name.strip()
+            term = (company_name or "").strip()
+            if not term:
+                return []
             results = []
             seen = set()
 
-            # 1. Read-only source: Director Disclosure DB (never written to from minutes pages)
+            def add_row(name, din, designation="Director", source="unknown", row_id=None):
+                name = (name or "").strip()
+                if not name:
+                    return
+                key = (din or "").strip() or name.upper()
+                if key in seen:
+                    for existing in results:
+                        ek = (existing.get("din") or "").strip() or existing["name"].upper()
+                        if ek == key:
+                            cur_d = (existing.get("designation") or "Director")
+                            new_d = designation or "Director"
+                            if cur_d == "Director" and new_d and new_d != "Director":
+                                existing["designation"] = new_d
+                            break
+                    return
+                seen.add(key)
+                results.append({
+                    "name": name,
+                    "din": (din or "").strip(),
+                    "designation": (designation or "Director").strip() or "Director",
+                    "source": source,
+                    "id": row_id,
+                })
+
+            def rows_for_company(rows, name_field="company_name"):
+                matched = []
+                for r in rows or []:
+                    try:
+                        cname = r[name_field]
+                    except Exception:
+                        cname = r.get(name_field) if hasattr(r, 'get') else None
+                    if _company_names_match(term, cname):
+                        matched.append(r)
+                return matched
+
+            # 1. Director Disclosure Postgres (optional)
             conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
             if conn:
                 cursor = get_pg_cursor(conn)
                 try:
-                    cursor.execute("""
-                        SELECT DISTINCT name, din, designation
-                        FROM directors_master.external_board_members
-                        WHERE UPPER(company_name) = UPPER(%s) OR UPPER(company_name) LIKE UPPER(%s)
-                        LIMIT 50
-                    """, (term, f"%{term}%"))
-                    rows = cursor.fetchall()
-                except Exception as ex:
-                    logger.warning(f"External board members query failed for {term}: {ex}")
-                    rows = []
+                    token = re.sub(r"[^A-Za-z0-9 ]", " ", term).split()
+                    distinctive = [w for w in token if len(w) > 3 and w.lower() not in ("adani", "limited", "private", "energy", "green")]
+                    like = f"%{distinctive[-1]}%" if distinctive else (f"%{token[-1]}%" if token else f"%{term}%")
                     try:
-                        cursor.execute("""
-                            SELECT DISTINCT name, din
+                        cursor.execute(
+                            """
+                            SELECT DISTINCT name, din, designation, company_name
                             FROM directors_master.external_board_members
-                            WHERE UPPER(company_name) = UPPER(%s) OR UPPER(company_name) LIKE UPPER(%s)
-                            LIMIT 50
-                        """, (term, f"%{term}%"))
-                        rows = cursor.fetchall()
-                    except Exception as ex2:
-                        logger.warning(f"External board members fallback query failed for {term}: {ex2}")
-                        rows = []
+                            WHERE company_name IS NOT NULL
+                              AND UPPER(company_name) LIKE UPPER(%s)
+                            """,
+                            (like,),
+                        )
+                        disc_rows = cursor.fetchall()
+                    except Exception:
+                        cursor.execute(
+                            """
+                            SELECT DISTINCT name, din, company_name
+                            FROM directors_master.external_board_members
+                            WHERE company_name IS NOT NULL
+                              AND UPPER(company_name) LIKE UPPER(%s)
+                            """,
+                            (like,),
+                        )
+                        disc_rows = cursor.fetchall()
+                    for r in rows_for_company(disc_rows):
+                        desig = r["designation"] if "designation" in r.keys() else "Director"
+                        add_row(r["name"], r["din"], desig, "disclosure")
+                except Exception as ex:
+                    logger.warning(f"Disclosure directors query failed for {term}: {ex}")
+                finally:
+                    conn.close()
 
-                if not rows:
-                    try:
-                        cursor.execute("""
-                            SELECT DISTINCT d.name, d.din 
-                            FROM directors_data.directorships ds
-                            JOIN directors_data.directors d ON ds.din = d.din
-                            JOIN directors_data.companies c ON ds.company_id = c.id
-                            WHERE UPPER(c.name) = UPPER(%s) OR UPPER(c.name) LIKE UPPER(%s)
-                            LIMIT 50
-                        """, (term, f"%{term}%"))
-                        rows = cursor.fetchall()
-                    except Exception as ex:
-                        logger.warning(f"Directorships query failed for {term}: {ex}")
-
-                for r in rows:
-                    key = (r["din"] or "").strip() or r["name"].strip().upper()
-                    if key not in seen:
-                        seen.add(key)
-                        results.append({
-                            "name": r["name"],
-                            "din": r["din"],
-                            "designation": (r["designation"] if "designation" in r.keys() else None) or "Director",
-                            "source": "disclosure",
-                            "id": None,
-                        })
-                conn.close()
-
-            # 2. Local overlay: manual entries stored in minutes DB only
+            # 2 + 3. Minutes DB: external_board_members + company_directors
             try:
                 m_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
                 if m_conn:
                     m_cursor = get_pg_cursor(m_conn)
                     try:
-                        # Prefer designation column when present
+                        token = re.sub(r"[^A-Za-z0-9 ]", " ", term).split()
+                        distinctive = [w for w in token if len(w) > 3 and w.lower() not in ("adani", "limited", "private", "energy", "green")]
+                        like = f"%{distinctive[-1]}%" if distinctive else (f"%{token[-1]}%" if token else f"%{term}%")
+
                         try:
-                            m_cursor.execute("""
-                                SELECT id, name, din, designation FROM company_directors
-                                WHERE UPPER(company_name) = UPPER(%s)
-                                ORDER BY name
-                            """, (term,))
+                            m_cursor.execute(
+                                """
+                                SELECT name, din, designation, company_name
+                                FROM external_board_members
+                                WHERE company_name IS NOT NULL
+                                  AND UPPER(company_name) LIKE UPPER(%s)
+                                """,
+                                (like,),
+                            )
                         except Exception:
-                            m_cursor.execute("""
-                                SELECT id, name, din FROM company_directors
-                                WHERE UPPER(company_name) = UPPER(%s)
+                            m_cursor.execute(
+                                """
+                                SELECT name, din, company_name
+                                FROM external_board_members
+                                WHERE company_name IS NOT NULL
+                                  AND UPPER(company_name) LIKE UPPER(%s)
+                                """,
+                                (like,),
+                            )
+                        for r in rows_for_company(m_cursor.fetchall()):
+                            desig = r["designation"] if "designation" in r.keys() else "Director"
+                            add_row(r["name"], r["din"], desig, "minutes_external")
+
+                        if not any(x["source"] == "minutes_external" for x in results):
+                            try:
+                                m_cursor.execute(
+                                    "SELECT name, din, designation, company_name FROM external_board_members WHERE company_name IS NOT NULL"
+                                )
+                            except Exception:
+                                m_cursor.execute(
+                                    "SELECT name, din, company_name FROM external_board_members WHERE company_name IS NOT NULL"
+                                )
+                            for r in rows_for_company(m_cursor.fetchall()):
+                                desig = r["designation"] if "designation" in r.keys() else "Director"
+                                add_row(r["name"], r["din"], desig, "minutes_external")
+
+                        try:
+                            m_cursor.execute(
+                                """
+                                SELECT id, name, din, designation, company_name
+                                FROM company_directors
+                                WHERE company_name IS NOT NULL
+                                  AND UPPER(company_name) LIKE UPPER(%s)
                                 ORDER BY name
-                            """, (term,))
-                        for r in m_cursor.fetchall():
-                            key = (r["din"] or "").strip() or r["name"].strip().upper()
-                            if key not in seen:
-                                seen.add(key)
-                                results.append({
-                                    "name": r["name"],
-                                    "din": r["din"],
-                                    "designation": (r["designation"] if "designation" in r.keys() else None) or "Director",
-                                    "source": "local",
-                                    "id": r["id"],
-                                })
+                                """,
+                                (like,),
+                            )
+                        except Exception:
+                            m_cursor.execute(
+                                """
+                                SELECT id, name, din, company_name
+                                FROM company_directors
+                                WHERE company_name IS NOT NULL
+                                  AND UPPER(company_name) LIKE UPPER(%s)
+                                ORDER BY name
+                                """,
+                                (like,),
+                            )
+                        local_rows = rows_for_company(m_cursor.fetchall())
+                        if not local_rows:
+                            try:
+                                m_cursor.execute(
+                                    "SELECT id, name, din, designation, company_name FROM company_directors WHERE company_name IS NOT NULL"
+                                )
+                            except Exception:
+                                m_cursor.execute(
+                                    "SELECT id, name, din, company_name FROM company_directors WHERE company_name IS NOT NULL"
+                                )
+                            local_rows = rows_for_company(m_cursor.fetchall())
+                        for r in local_rows:
+                            desig = r["designation"] if "designation" in r.keys() else "Director"
+                            add_row(r["name"], r["din"], desig, "local", r["id"] if "id" in r.keys() else None)
                     finally:
                         m_conn.close()
             except Exception as ex:
-                logger.warning(f"Local overlay directors query failed: {ex}")
+                logger.warning(f"Minutes directors query failed for {term}: {ex}")
 
-            if results:
-                return results
+            def sort_key(d):
+                desig = (d.get("designation") or "").lower()
+                chair_rank = 0 if "chair" in desig else 1
+                return (chair_rank, d.get("name") or "")
 
-            # Fallback to master directors database list if company specific directors returned 0 rows
-            try:
-                db_path = os.path.join(os.path.dirname(__file__), "..", "public", "local_fallback.db")
-                if os.path.exists(db_path):
-                    s_conn = sqlite3.connect(db_path)
-                    s_conn.row_factory = sqlite3.Row
-                    c = s_conn.cursor()
-                    c.execute("SELECT name, din FROM directors_master LIMIT 10")
-                    master_rows = c.fetchall()
-                    s_conn.close()
-                    if master_rows:
-                        return [{"name": r["name"], "din": r["din"], "designation": "Director"} for r in master_rows]
-            except Exception as ex:
-                logger.warning(f"Fallback directors query failed: {ex}")
-
-            return []
+            results.sort(key=sort_key)
+            return results
 
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(thread_pool, fetch)
-        return {"data": data, "count": len(data)}
+        default_chairman = ""
+        for d in data:
+            if "chair" in (d.get("designation") or "").lower():
+                default_chairman = d["name"]
+                break
+        if not default_chairman and data:
+            default_chairman = data[0]["name"]
+        return {
+            "data": data,
+            "count": len(data),
+            "default_chairman": default_chairman,
+            "company_name": company_name,
+        }
     except Exception as e:
         logger.error(f"Error fetching company directors: {e}")
-        return {"data": [], "count": 0}
+        return {"data": [], "count": 0, "default_chairman": "", "company_name": company_name}
 
 
 @router.get("/directors")

@@ -10,6 +10,8 @@ interface Director {
   name: string;
   din: string;
   status?: string;
+  designation?: string;
+  role?: string;
   created_at?: string;
 }
 
@@ -51,10 +53,14 @@ const MultiDirectorSelector: React.FC<MultiDirectorSelectorProps> = ({
           const directors = Array.isArray(result.data) ? result.data : [];
           const mapped = directors.map((d: any) => ({
             name: d.name,
-            din: d.din
+            din: d.din || '',
+            designation: d.designation || d.role || 'Director',
+            role: d.designation || d.role || 'Director',
+            status: 'Present' as const,
           }));
           setCompanyDirectors(mapped);
-          
+
+          // Auto-select company board when parent list is empty
           if (value.length === 0 && mapped.length > 0) {
             onChange(mapped);
           }
@@ -67,6 +73,7 @@ const MultiDirectorSelector: React.FC<MultiDirectorSelectorProps> = ({
     };
 
     fetchCompanyDirectors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyName]);
 
   // Fetch master directors when search term is entered

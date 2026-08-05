@@ -1,25 +1,104 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2, Plus, CheckCircle2, XCircle, UserCheck } from 'lucide-react';
+import { Trash2, Plus, CheckCircle2, XCircle, UserCheck, Loader2 } from 'lucide-react';
 import MultiDirectorSelector from '@/components/MultiDirectorSelector';
 import { StepProps } from './types';
 
+const pickChairman = (dirs: any[], preferred?: string) => {
+  if (preferred && dirs.some((d) => d.name === preferred)) return preferred;
+  const byRole = dirs.find((d: any) => `${d.designation || d.role || ''}`.toLowerCase().includes('chair'));
+  return byRole?.name || dirs[0]?.name || '';
+};
+
 export const Step2Attendance: React.FC<StepProps> = (props) => {
   const { formData, setFormData } = props;
+  const [loadingDirectors, setLoadingDirectors] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadedForCompanyRef = useRef<string>('');
 
-  // Default chairman = company Chairman/Chairperson when available
+  // Auto-load directors + default chairman for the selected company
+  useEffect(() => {
+    const company = (formData.companyName || '').trim();
+    if (!company) return;
+    if (loadedForCompanyRef.current === company && (formData.presentDirectors || []).length > 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      setLoadingDirectors(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(`/api/companies/${encodeURIComponent(company)}/directors`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const directors = (Array.isArray(data.data) ? data.data : []).map((d: any) => ({
+          name: d.name,
+          din: d.din || '',
+          designation: d.designation || d.role || 'Director',
+          role: d.designation || d.role || 'Director',
+          status: 'Present',
+          source: d.source,
+        }));
+        if (cancelled) return;
+        loadedForCompanyRef.current = company;
+
+        setFormData((prev) => {
+          const existing = prev.presentDirectors || [];
+          const shouldReplace =
+            existing.length === 0 ||
+            prev.companyName !== company;
+
+          const nextDirs =
+            shouldReplace && directors.length > 0
+              ? directors
+              : existing.map((d: any) => ({
+                  ...d,
+                  status: d.status || 'Present',
+                  designation: d.designation || d.role || 'Director',
+                }));
+
+          const present = nextDirs.filter((d: any) => d.status !== 'Leave of Absence');
+          const chair = pickChairman(present, data.default_chairman);
+          return {
+            ...prev,
+            presentDirectors: nextDirs,
+            chairmanName: chair || prev.chairmanName,
+            signingChairmanName: chair || prev.signingChairmanName,
+          };
+        });
+
+        if (!directors.length) {
+          setLoadError(
+            'No directors found for this company. Search/add manually, or run the Minutes director seed (see minutes_guide.md).'
+          );
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setLoadError('Could not load company directors. Check API / seed data.');
+      } finally {
+        if (!cancelled) setLoadingDirectors(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.companyName, setFormData]);
+
+  // Keep chairman valid when attendance toggles change
   useEffect(() => {
     const dirs = (formData.presentDirectors || []).filter((d: any) => d.status !== 'Leave of Absence');
     if (!dirs.length) return;
     const hasCurrent = dirs.some((d: any) => d.name === formData.chairmanName);
     if (formData.chairmanName && hasCurrent) return;
-    const byRole = dirs.find((d: any) => `${d.designation || d.role || ''}`.toLowerCase().includes('chair'));
-    const pick = byRole?.name || dirs[0]?.name;
+    const pick = pickChairman(dirs);
     if (pick) {
       setFormData((prev) => ({
         ...prev,
@@ -45,10 +124,16 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
           <div>
             <CardTitle className="text-base font-bold text-slate-900">Directors & Board Attendance</CardTitle>
             <CardDescription className="text-xs text-slate-500">
-              Select directors present and record attendance status for <strong className="text-slate-800">{formData.companyName || "the company"}</strong>.
+              Auto-loaded from the company registry for <strong className="text-slate-800">{formData.companyName || "the company"}</strong>. Adjust attendance and chairman as needed.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            {loadingDirectors && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading…
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-green-50 text-green-700 border border-green-200/60">
               <UserCheck className="h-3.5 w-3.5" />
               {(formData.presentDirectors || []).filter((d: any) => d.status !== 'Leave of Absence').length} Present
@@ -56,7 +141,12 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
           </div>
         </CardHeader>
         <CardContent className="p-6 space-y-6">
-          
+          {loadError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {loadError}
+            </div>
+          )}
+
           {/* MultiDirectorSelector with company directors */}
           <MultiDirectorSelector
             id="presentDirectors"
@@ -66,7 +156,8 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
               // Ensure default status is 'Present' for new entries
               const formatted = directors.map(d => ({
                 ...d,
-                status: d.status || 'Present'
+                status: d.status || 'Present',
+                designation: (d as any).designation || (d as any).role || 'Director',
               }));
               setFormData(prev => ({ ...prev, presentDirectors: formatted }));
             }}
