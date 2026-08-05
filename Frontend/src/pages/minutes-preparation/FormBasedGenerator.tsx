@@ -454,9 +454,10 @@ const FormBasedGenerator: React.FC = () => {
 
     let cancelled = false;
     (async () => {
-      draftRestoredRef.current = true;
+      // Read drafts BEFORE enabling autosave so a mid-restore wipe can't overwrite localStorage
       const local = readLocalDraft(draftKey);
       const server = await loadDraftFromServer(draftKey);
+      if (cancelled) return;
 
       const pickNewer = (a: MinutesDraftPayload | null, b: MinutesDraftPayload | null) => {
         if (!a) return b;
@@ -466,9 +467,12 @@ const FormBasedGenerator: React.FC = () => {
         return bt > at ? b : a;
       };
       const draft = pickNewer(local, server);
-      if (cancelled || !draft?.formData || Object.keys(draft.formData).length === 0) return;
 
       skipNextAutosaveRef.current = true;
+      draftRestoredRef.current = true;
+
+      if (!draft?.formData || Object.keys(draft.formData).length === 0) return;
+
       setFormData(prev => ({
         ...prev,
         ...(draft.formData as any),
@@ -477,6 +481,13 @@ const FormBasedGenerator: React.FC = () => {
         meetingDate: prev.meetingDate || (draft.formData as any).meetingDate || '',
         meetingType: prev.meetingType || (draft.formData as any).meetingType || 'Board Meeting',
         committeeName: prev.committeeName || (draft.formData as any).committeeName || '',
+        // Prefer restored chairman — Step0/Attendance sync must not blank it on reload
+        chairmanName: (draft.formData as any).chairmanName || prev.chairmanName || '',
+        signingChairmanName:
+          (draft.formData as any).signingChairmanName ||
+          (draft.formData as any).chairmanName ||
+          prev.signingChairmanName ||
+          '',
       }));
       if (typeof draft.currentStep === 'number' && draft.currentStep > 0) {
         setCurrentStep(draft.currentStep);

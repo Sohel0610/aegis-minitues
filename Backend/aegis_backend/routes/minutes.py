@@ -1283,6 +1283,232 @@ def _resolve_minutes_file_path(filename: str) -> Optional[str]:
     return None
 
 
+def _extract_chairman_from_docx(file_path: str) -> Optional[str]:
+    """
+    Read a minutes DOCX and find the meeting chairman dynamically.
+    Prefers attendance lines like 'Mr. X - Chairman', then 'X occupied the Chair'.
+    """
+    if not file_path or not os.path.exists(file_path) or not DOCX_AVAILABLE:
+        return None
+    try:
+        doc = Document(file_path)
+        lines = [p.text.strip() for p in doc.paragraphs if (p.text or "").strip()]
+        # Also scan tables lightly
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        t = (p.text or "").strip()
+                        if t:
+                            lines.append(t)
+
+        # 1) "Name - Chairman" / "Name – Chairman" in attendance
+        for line in lines:
+            m = re.search(
+                r"(?:Mr\.|Mrs\.|Ms\.|Dr\.)?\s*([A-Za-z][A-Za-z\.\s]+?)\s*[-–—]\s*Chairman\b",
+                line,
+                re.IGNORECASE,
+            )
+            if m:
+                name = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+                if name and len(name) > 2:
+                    return name
+
+        # 2) "Name occupied the Chair"
+        for line in lines:
+            m = re.search(
+                r"(?:Mr\.|Mrs\.|Ms\.|Dr\.)?\s*([A-Za-z][A-Za-z\.\s]+?)(?:,\s*Chairman)?\s+occupied the [Cc]hair",
+                line,
+            )
+            if m:
+                name = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+                if name and len(name) > 2 and "thereafter" not in name.lower():
+                    return name
+    except Exception as ex:
+        logger.warning(f"Chairman extract failed for {file_path}: {ex}")
+    return None
+
+
+def _meeting_type_matches(stored: Optional[str], wanted: Optional[str]) -> bool:
+    if not wanted or wanted.lower() in ("all", ""):
+        return True
+    if not stored:
+        return False
+    a = stored.lower().strip()
+    b = wanted.lower().strip()
+    if a == b:
+        return True
+    # Board vs Board Meeting; Audit Committee vs Committee Meeting + committee
+    if "board" in a and "board" in b:
+        return True
+    if "audit" in a and "audit" in b:
+        return True
+    if b in a or a in b:
+        return True
+    return False
+
+
+def _resolve_default_chairman(company_name: str, meeting_type: str = "") -> Dict[str, Any]:
+    """
+    Resolve meeting chairman dynamically for a company + meeting type:
+      1) Most recent generated_minutes DOCX for same company (+ type)
+      2) Matching template DOCX for same company (+ type)
+    """
+    result = {
+        "chairman_name": "",
+        "source": None,
+        "file_path": None,
+        "company_name": company_name,
+        "meeting_type": meeting_type or "",
+    }
+    if not (company_name or "").strip():
+        return result
+
+    # Scan generated_minutes (newest first)
+    try:
+        conn = get_pg_connection(os.getenv("POSTGRES_DATABASE_MINUTES"))
+        if conn:
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, company_name, meeting_type, file_path, meeting_date
+                    FROM generated_minutes
+                    WHERE company_name IS NOT NULL AND file_path IS NOT NULL
+                    ORDER BY id DESC
+                    """
+                )
+                rows = cursor.fetchall()
+            finally:
+                conn.close()
+
+            for r in rows:
+                if not _company_names_match(company_name, r.get("company_name")):
+                    continue
+                if meeting_type and not _meeting_type_matches(r.get("meeting_type"), meeting_type):
+                    continue
+                fp = _resolve_minutes_file_path(r.get("file_path") or "")
+                if not fp:
+                    continue
+                chair = _extract_chairman_from_docx(fp)
+                if chair:
+                    result.update({
+                        "chairman_name": chair,
+                        "source": "previous_minutes",
+                        "file_path": r.get("file_path"),
+                        "meeting_type": r.get("meeting_type") or meeting_type,
+                    })
+                    return result
+    except Exception as ex:
+        logger.warning(f"default chairman DB scan failed: {ex}")
+
+    # Fall back to templates on disk for this company
+    templates_dir = os.path.join(os.path.dirname(__file__), "..", "public", "templates")
+    if os.path.isdir(templates_dir):
+        candidates = []
+        for fname in os.listdir(templates_dir):
+            if not fname.lower().endswith(".docx"):
+                continue
+            if fname.lower().startswith("custom_") or fname.lower().startswith("meeting_minutes_"):
+                continue
+            meta = _parse_template_filename(fname)
+            if not meta:
+                continue
+            if not _company_names_match(company_name, meta.get("company_name")):
+                continue
+            if meeting_type and not _meeting_type_matches(meta.get("meeting_type"), meeting_type):
+                continue
+            candidates.append((meta.get("meeting_date") or "", fname, meta))
+        candidates.sort(reverse=True)  # newest date first
+        for _, fname, meta in candidates:
+            fp = os.path.join(templates_dir, fname)
+            chair = _extract_chairman_from_docx(fp)
+            if chair:
+                result.update({
+                    "chairman_name": chair,
+                    "source": "template",
+                    "file_path": fname,
+                    "meeting_type": meta.get("meeting_type") or meeting_type,
+                })
+                return result
+
+    # Seed JSON extracted from templates (portable across machines without scanning docs)
+    seed_path = os.path.join(os.path.dirname(__file__), "..", "public", "seeds", "minutes_default_chairmen.json")
+    if os.path.exists(seed_path):
+        try:
+            with open(seed_path, encoding="utf-8") as f:
+                payload = json.load(f)
+            for row in payload.get("chairmen") or []:
+                if not _company_names_match(company_name, row.get("company_name")):
+                    continue
+                if meeting_type and not _meeting_type_matches(row.get("meeting_type"), meeting_type):
+                    continue
+                chair = (row.get("chairman_name") or "").strip()
+                if chair:
+                    result.update({
+                        "chairman_name": chair,
+                        "source": "template_seed",
+                        "file_path": row.get("file_path"),
+                        "meeting_type": row.get("meeting_type") or meeting_type,
+                    })
+                    return result
+        except Exception as ex:
+            logger.warning(f"default chairman seed read failed: {ex}")
+
+    return result
+
+
+@router.get("/templates/{filename}/chairman")
+async def get_template_chairman(filename: str):
+    """Extract Meeting Chairman from a specific official template DOCX."""
+    safe = os.path.basename(filename or "")
+    if not safe or safe != filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    fp = os.path.join(os.path.dirname(__file__), "..", "public", "templates", safe)
+    if not os.path.exists(fp):
+        raise HTTPException(status_code=404, detail="Template not found")
+    try:
+        loop = asyncio.get_running_loop()
+        chair = await loop.run_in_executor(thread_pool, lambda: _extract_chairman_from_docx(fp))
+        meta = _parse_template_filename(safe) or {}
+        return {
+            "success": True,
+            "filename": safe,
+            "chairman_name": chair or "",
+            "company_name": meta.get("company_name"),
+            "meeting_type": meta.get("meeting_type"),
+            "meeting_date": meta.get("meeting_date"),
+        }
+    except Exception as e:
+        logger.error(f"template chairman extract failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/companies/{company_name}/default-chairman")
+async def get_default_chairman(company_name: str, meeting_type: Optional[str] = None):
+    """
+    Auto-resolve Meeting Chairman for a company (and optional meeting type)
+    from previous minutes / templates — not hardcoded.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(
+            thread_pool,
+            lambda: _resolve_default_chairman(company_name, meeting_type or ""),
+        )
+        return {"success": True, **data}
+    except Exception as e:
+        logger.error(f"default-chairman failed: {e}")
+        return {
+            "success": False,
+            "chairman_name": "",
+            "source": None,
+            "company_name": company_name,
+            "meeting_type": meeting_type or "",
+            "detail": str(e),
+        }
+
+
 @router.post("/generated-minutes/{id}/replace-file")
 async def replace_minutes_file(
     id: int,
@@ -3943,11 +4169,11 @@ async def get_company_directors(company_name: str):
         data = await loop.run_in_executor(thread_pool, fetch)
         default_chairman = ""
         for d in data:
-            if "chair" in (d.get("designation") or "").lower():
+            desig = (d.get("designation") or "").lower()
+            if "chair" in desig:
                 default_chairman = d["name"]
                 break
-        if not default_chairman and data:
-            default_chairman = data[0]["name"]
+        # Do not fall back to first director — seed data lists Gautam Adani on most companies
         return {
             "data": data,
             "count": len(data),

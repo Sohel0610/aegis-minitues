@@ -1,6 +1,6 @@
 # Minutes Guide
 
-Setup notes for **Generate Minutes** so directors, chairman, and attendance auto-populate on every machine.
+Setup and field rules for **Generate Minutes**.
 
 ## Why another device shows empty directors
 
@@ -38,56 +38,59 @@ Committed seed files (no hardcoded UI lists):
 
 - `public/seeds/minutes_external_board_members.json`
 - `public/seeds/minutes_company_directors.json`
+- `public/seeds/minutes_default_chairmen.json` — chairman per company + meeting type, extracted from official templates
 
-On server start, Minutes also **auto-seeds** these into an empty DB.
+On server start, Minutes also **auto-seeds** empty director tables from JSON.
 
-## What auto-populates on Attendance (Step 3)
+## How Meeting Chairman is auto-filled
 
-When `companyName` is set:
+Chairman is **per company + meeting type** (Board vs Audit Committee), not one person for the whole BU.
 
-- Board directors for **that company** load from the API  
-- All start as **Present**  
-- **Meeting Chairman** defaults to:
-  - director whose designation contains “Chair”, else  
-  - API `default_chairman`, else  
-  - first present director  
+| Company | Meeting type | Chairman (from templates) |
+|---------|--------------|---------------------------|
+| Adani Green Energy Limited | Board Meeting | Gautam S. Adani |
+| Adani Green Energy Limited | Audit Committee | Raminder Singh Gujral |
+| Adani Green Energy (UP) Limited | Board / AC | Raj Kumar Jain |
+| Adani Green Energy Twenty Five B Limited | Board Meeting | Pragnesh Darji |
 
-Names match with **Ltd. / Limited** normalization (no hardcoding).
+**Lookup order (dynamic, not hardcoded):**
+1. Previous generated minutes for same company + type  
+2. Matching official template DOCX (`Name - Chairman` / `occupied the Chair`)  
+3. Seed JSON extracted from templates  
+4. If still unknown → user selects  
 
-## Optional: full Director Disclosure sync (Postgres)
+**UI rule:** auto-filled and read-only while that person is Present. Dropdown appears **only if** the default chairman is on Leave of Absence (or unknown).
 
-Only if you use live Falcon / Disclosure Postgres (not SQLite-only):
+## Template fields that must be dynamic
 
-1. Uncomment Postgres host/user/password in `.env`  
-2. Set `USE_SQLITE_FALLBACK=false` when using Azure Postgres  
-3. Ensure `POSTGRES_DATABASE_DIRECTOR=director_disclosure_system`  
-4. Run (from `Backend/Director_Disclosure`):
+Official templates are filled sample minutes (almost no `[brackets]`). Generation replaces sample text. These must stay dynamic:
+
+| # | Field | Source |
+|---|--------|--------|
+| 1 | **Company name** | Selected company |
+| 2 | **Meeting number** | Auto from previous (90th → 91st) |
+| 3 | **Meeting type** | Board / Audit Committee / etc. |
+| 4 | **Day, date, time** | Schedule form |
+| 5 | **Venue / address** | Meeting place — if user picks non-default address, template must use that address |
+| 6 | **Present physically** | Attendance = Present |
+| 7 | **Present virtually / VC** | If marked virtual |
+| 8 | **Leave of absence / absent** | Attendance = Leave of Absence (or “all present” wording) |
+| 9 | **Meeting Chairman** | Auto from previous minutes/template for company + type |
+| 10 | **“X occupied the Chair…”** | Same chairman name |
+| 11 | **In attendance / invitees** | CS, CFO, guests |
+| 12 | **Previous meeting number + date** | Prior meeting for company + type |
+| 13 | **FY / quarter ended** | Derived from meeting date |
+| 14 | **Date of entry / signing + place** | Signing step |
+| 15 | **Resolutions / agenda body** | Form resolutions (or carefully kept from template) |
+
+**Usually keep as-is:** boilerplate Companies Act / SEBI wording, unless the form supplies custom resolution text.
+
+## On a new machine
 
 ```bash
-python sync_director_registry.py
+cd Backend/aegis_backend
+python scripts/seed_minutes_directors.py
+python fastapi_server.py
 ```
 
-That refreshes the disclosure registry. Minutes then prefers that source when connected.
-
-## Checklist on a new machine
-
-1. `git pull` on `minutes` branch  
-2. Copy / configure `.env` (at least `USE_SQLITE_FALLBACK=true` for local)  
-3. `python scripts/seed_minutes_directors.py`  
-4. Start backend + frontend  
-5. Open a company → Continue to Generate Minutes → Step 3 should list that company’s directors  
-
-## Where generated minutes are saved
-
-- File: `Backend/aegis_backend/public/generated/`  
-- Record: `generated_minutes` (status **draft** until Finalize)  
-- UI: sidebar **Meeting Minutes** repository  
-
-## Related scripts (Minutes only)
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/seed_minutes_directors.py` | Load director seed JSON into local minutes DB |
-| (auto on API start) | Seeds empty `company_directors` / `external_board_members` |
-
-Do **not** rely on copying `local_fallback.db` between machines unless you intend to; prefer the seed script so data stays in git via JSON.
+Then open Generate Minutes → company → Attendance: directors auto-fill; chairman auto-fills from previous minutes/template for that meeting type.

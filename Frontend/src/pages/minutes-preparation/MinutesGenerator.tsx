@@ -60,14 +60,14 @@ const mapFilterToCalendar = (filter: string): { meetingType: string; committeeNa
   return { meetingType: 'Committee Meeting', committeeName: filter };
 };
 
-/** Prefer real Chairman / Chairperson designation for this company */
+/** Only auto-pick Chairman when designation says Chair/Chairperson — never fall back to first director (avoids Gautam-on-every-company). */
 const pickDefaultChairman = (directors: any[]): string => {
   if (!directors?.length) return '';
   const byRole = directors.find((d) => {
     const desig = `${d.designation || d.role || ''}`.toLowerCase();
-    return desig.includes('chair');
+    return /\bchair(man|person|person)?\b/.test(desig) || desig.includes('chair');
   });
-  return (byRole || directors[0])?.name || '';
+  return byRole?.name || '';
 };
 
 const formatMeetingDate = (dateStr?: string) => {
@@ -424,7 +424,28 @@ const MinutesGenerator = () => {
       companySecretary: selectedCompany.secretary_name || '',
       resetDraft: false,
     };
-    navigate('/minutes-preparation/form-generator', { state: stateToPass });
+    // Resolve meeting chairman from previous minutes / template for this company + type
+    const typeForChair =
+      stateToPass.committeeName ||
+      (stateToPass.meetingType === 'Committee Meeting' ? 'Audit Committee' : stateToPass.meetingType);
+    fetch(
+      `/api/companies/${encodeURIComponent(selectedCompany.name)}/default-chairman?meeting_type=${encodeURIComponent(typeForChair)}`
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.chairman_name) {
+          navigate('/minutes-preparation/form-generator', {
+            state: {
+              ...stateToPass,
+              chairmanName: data.chairman_name,
+              signingChairmanName: data.chairman_name,
+            },
+          });
+        } else {
+          navigate('/minutes-preparation/form-generator', { state: stateToPass });
+        }
+      })
+      .catch(() => navigate('/minutes-preparation/form-generator', { state: stateToPass }));
   };
 
   const meetingTypes = [

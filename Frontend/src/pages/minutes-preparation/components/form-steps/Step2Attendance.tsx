@@ -9,23 +9,52 @@ import { Trash2, Plus, CheckCircle2, XCircle, UserCheck, Loader2 } from 'lucide-
 import MultiDirectorSelector from '@/components/MultiDirectorSelector';
 import { StepProps } from './types';
 
+const namesLooselyMatch = (a?: string, b?: string) => {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\b(mr|mrs|ms|dr)\b\.?/g, '')
+      .replace(/[^a-z]/g, '');
+  if (!a || !b) return false;
+  const x = norm(a);
+  const y = norm(b);
+  return x === y || x.includes(y) || y.includes(x);
+};
+
+/** Prefer designation Chair; else previous-meeting chairman only if that person is Present. */
 const pickChairman = (dirs: any[], preferred?: string) => {
-  if (preferred && dirs.some((d) => d.name === preferred)) return preferred;
-  const byRole = dirs.find((d: any) => `${d.designation || d.role || ''}`.toLowerCase().includes('chair'));
-  return byRole?.name || dirs[0]?.name || '';
+  const isChair = (d: any) => {
+    const desig = `${d?.designation || d?.role || ''}`.toLowerCase();
+    return desig.includes('chair');
+  };
+  const byRole = dirs.find(isChair);
+  if (byRole?.name) return byRole.name;
+  if (preferred) {
+    const pref = dirs.find((d) => namesLooselyMatch(d.name, preferred));
+    if (pref?.name) return pref.name;
+  }
+  return '';
+};
+
+const meetingTypeForChairman = (formData: any) => {
+  if (formData.committeeName) return formData.committeeName;
+  return formData.meetingType || 'Board Meeting';
 };
 
 export const Step2Attendance: React.FC<StepProps> = (props) => {
   const { formData, setFormData } = props;
   const [loadingDirectors, setLoadingDirectors] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [chairmanSource, setChairmanSource] = useState<string | null>(null);
   const loadedForCompanyRef = useRef<string>('');
 
-  // Auto-load directors + default chairman for the selected company
+  // Auto-load directors + meeting chairman (from previous minutes / template for this company + type)
   useEffect(() => {
     const company = (formData.companyName || '').trim();
     if (!company) return;
-    if (loadedForCompanyRef.current === company && (formData.presentDirectors || []).length > 0) {
+    const mType = meetingTypeForChairman(formData);
+    const cacheKey = `${company}||${mType}||${formData.template || ''}`;
+    if (loadedForCompanyRef.current === cacheKey && (formData.presentDirectors || []).length > 0 && formData.chairmanName) {
       return;
     }
 
@@ -34,42 +63,110 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
       setLoadingDirectors(true);
       setLoadError(null);
       try {
-        const res = await fetch(`/api/companies/${encodeURIComponent(company)}/directors`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const directors = (Array.isArray(data.data) ? data.data : []).map((d: any) => ({
-          name: d.name,
-          din: d.din || '',
-          designation: d.designation || d.role || 'Director',
-          role: d.designation || d.role || 'Director',
-          status: 'Present',
-          source: d.source,
-        }));
+        const requests: Promise<Response>[] = [
+          fetch(`/api/companies/${encodeURIComponent(company)}/directors`),
+          fetch(
+            `/api/companies/${encodeURIComponent(company)}/default-chairman?meeting_type=${encodeURIComponent(mType)}`
+          ),
+        ];
+        if (formData.template && formData.template !== 'custom') {
+          requests.push(fetch(`/api/templates/${encodeURIComponent(formData.template)}/chairman`));
+        }
+
+        const responses = await Promise.all(requests);
+        const dirRes = responses[0];
+        const chairRes = responses[1];
+        const templateChairRes = responses[2];
+
+        const dirData = dirRes.ok ? await dirRes.json() : { data: [] };
+        const chairData = chairRes.ok ? await chairRes.json() : { chairman_name: '' };
+        const templateChairData =
+          templateChairRes && templateChairRes.ok ? await templateChairRes.json() : { chairman_name: '' };
+
+        // Prefer company-scoped sources; template chair only counts if that person is on THIS board
+        const companyPreferred = (chairData.chairman_name || dirData.default_chairman || '').trim();
+        const templatePreferred = (templateChairData.chairman_name || '').trim();
+
+        const directors = (Array.isArray(dirData.data) ? dirData.data : []).map((d: any) => {
+          const base = {
+            name: d.name,
+            din: d.din || '',
+            designation: d.designation || d.role || 'Director',
+            role: d.designation || d.role || 'Director',
+            status: 'Present',
+            source: d.source,
+          };
+          const matchPreferred =
+            (companyPreferred && namesLooselyMatch(base.name, companyPreferred)) ||
+            (templatePreferred && namesLooselyMatch(base.name, templatePreferred));
+          if (matchPreferred) {
+            return { ...base, designation: 'Chairman', role: 'Chairman' };
+          }
+          return base;
+        });
+
+        // Only auto-select a chairman who is actually on this company's director list
+        const preferredChair = (() => {
+          if (
+            companyPreferred &&
+            directors.some((d: any) => namesLooselyMatch(d.name, companyPreferred))
+          ) {
+            return companyPreferred;
+          }
+          if (
+            templatePreferred &&
+            directors.some((d: any) => namesLooselyMatch(d.name, templatePreferred))
+          ) {
+            return templatePreferred;
+          }
+          return '';
+        })();
+
         if (cancelled) return;
-        loadedForCompanyRef.current = company;
+        loadedForCompanyRef.current = cacheKey;
+        setChairmanSource(
+          preferredChair
+            ? companyPreferred && namesLooselyMatch(preferredChair, companyPreferred)
+              ? chairData.source || 'previous_minutes'
+              : 'template'
+            : null
+        );
 
         setFormData((prev) => {
           const existing = prev.presentDirectors || [];
+          // Drop outsiders previously injected (e.g. Raj Kumar Jain from another company's template)
+          const cleanedExisting = existing.filter((d: any) =>
+            directors.some((reg: any) => namesLooselyMatch(reg.name, d.name))
+          );
           const shouldReplace =
-            existing.length === 0 ||
-            prev.companyName !== company;
-
+            cleanedExisting.length === 0 ||
+            prev.companyName !== company ||
+            existing.length !== cleanedExisting.length;
           const nextDirs =
             shouldReplace && directors.length > 0
               ? directors
-              : existing.map((d: any) => ({
-                  ...d,
-                  status: d.status || 'Present',
-                  designation: d.designation || d.role || 'Director',
-                }));
+              : cleanedExisting.map((d: any) => {
+                  const isPref = preferredChair && namesLooselyMatch(d.name, preferredChair);
+                  return {
+                    ...d,
+                    status: d.status || 'Present',
+                    designation: isPref ? 'Chairman' : d.designation || d.role || 'Director',
+                    role: isPref ? 'Chairman' : d.role || d.designation || 'Director',
+                  };
+                });
 
           const present = nextDirs.filter((d: any) => d.status !== 'Leave of Absence');
-          const chair = pickChairman(present, data.default_chairman);
+          let chair = pickChairman(present, preferredChair);
+          // Keep draft chairman only if they are still a Present director of this company
+          if (!chair && prev.chairmanName?.trim()) {
+            const kept = present.find((d: any) => namesLooselyMatch(d.name, prev.chairmanName));
+            if (kept) chair = kept.name;
+          }
           return {
             ...prev,
             presentDirectors: nextDirs,
-            chairmanName: chair || prev.chairmanName,
-            signingChairmanName: chair || prev.signingChairmanName,
+            chairmanName: chair,
+            signingChairmanName: chair || '',
           };
         });
 
@@ -80,7 +177,7 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
         }
       } catch (err) {
         console.error(err);
-        if (!cancelled) setLoadError('Could not load company directors. Check API / seed data.');
+        if (!cancelled) setLoadError('Could not load company directors / chairman. Check API / seed data.');
       } finally {
         if (!cancelled) setLoadingDirectors(false);
       }
@@ -90,20 +187,30 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [formData.companyName, setFormData]);
+  }, [formData.companyName, formData.meetingType, formData.committeeName, formData.template, setFormData]);
 
-  // Keep chairman valid when attendance toggles change
+  // Keep chairman valid on attendance toggles.
+  // If the chosen chairman goes on Leave of Absence, keep their name so marking them
+  // Present again restores the auto-filled box (do not blank and force re-pick).
   useEffect(() => {
-    const dirs = (formData.presentDirectors || []).filter((d: any) => d.status !== 'Leave of Absence');
-    if (!dirs.length) return;
-    const hasCurrent = dirs.some((d: any) => d.name === formData.chairmanName);
-    if (formData.chairmanName && hasCurrent) return;
-    const pick = pickChairman(dirs);
-    if (pick) {
+    const allDirs = formData.presentDirectors || [];
+    if (!allDirs.length) return;
+
+    const chairName = (formData.chairmanName || '').trim();
+    const onBoard = allDirs.some((d: any) => namesLooselyMatch(d.name, chairName));
+
+    // Still on this company's list (Present or LOA) — leave name alone; UI handles LOA
+    if (chairName && onBoard) return;
+
+    const present = allDirs.filter((d: any) => d.status !== 'Leave of Absence');
+    const pick = pickChairman(present);
+
+    // Clear outsiders / empty → only auto-set when a Chair designation exists
+    if ((chairName && !onBoard) || pick) {
       setFormData((prev) => ({
         ...prev,
         chairmanName: pick,
-        signingChairmanName: prev.signingChairmanName || pick,
+        signingChairmanName: pick,
       }));
     }
   }, [formData.presentDirectors, formData.chairmanName, setFormData]);
@@ -219,32 +326,80 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             
-            {/* Chairman Selection */}
+            {/* Chairman — auto-filled; select only if absent */}
             <div className="space-y-2">
               <Label htmlFor="chairmanName" className="text-xs font-semibold text-slate-700">
                 Meeting Chairman *
               </Label>
-              <Select
-                value={formData.chairmanName}
-                onValueChange={(val) => setFormData(prev => ({ ...prev, chairmanName: val }))}
-              >
-                <SelectTrigger className="bg-white border-slate-200 h-9 rounded-lg text-xs font-medium focus:ring-0">
-                  <SelectValue placeholder="Select Chairman from present directors" />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  {(!formData.presentDirectors || formData.presentDirectors.length === 0) ? (
-                    <SelectItem value="none" disabled className="text-xs">Select directors above first</SelectItem>
-                  ) : (
-                    formData.presentDirectors.map((director: any, index: number) => (
-                      <SelectItem key={index} value={director.name} className="text-xs">
-                        {director.name}
-                        {director.designation || director.role ? ` · ${director.designation || director.role}` : ''}
-                        {director.din ? ` (DIN: ${director.din})` : ''}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              {(() => {
+                const chairName = formData.chairmanName || '';
+                const chairDirector = (formData.presentDirectors || []).find((d: any) =>
+                  namesLooselyMatch(d.name, chairName)
+                );
+                const chairAbsent = Boolean(
+                  chairName && chairDirector && (chairDirector.status || 'Present') !== 'Present'
+                );
+                const needsManualSelect = !chairName || chairAbsent;
+
+                if (!needsManualSelect) {
+                  return (
+                    <>
+                      <div className="h-9 px-3 rounded-lg border border-emerald-200 bg-emerald-50 flex items-center text-xs font-semibold text-emerald-800">
+                        {chairName}
+                        {chairDirector?.din ? ` (DIN: ${chairDirector.din})` : ''}
+                      </div>
+                      <p className="text-[11px] text-emerald-700">
+                        Auto-filled{chairmanSource ? ` from ${chairmanSource === 'template' || chairmanSource === 'template_seed' ? 'company template' : 'previous minutes'}` : ''}. Change only if this person is on Leave of Absence.
+                      </p>
+                    </>
+                  );
+                }
+
+                return (
+                  <>
+                    {chairAbsent && (
+                      <p className="text-[11px] text-amber-700">
+                        Default chairman ({chairName}) is on Leave of Absence — select a temporary chairman.
+                      </p>
+                    )}
+                    {!chairName && (
+                      <p className="text-[11px] text-slate-500">
+                        No previous chairman found for this company/meeting type — please select.
+                      </p>
+                    )}
+                    <Select
+                      value={chairAbsent ? undefined : (formData.chairmanName || undefined)}
+                      onValueChange={(val) =>
+                        setFormData((prev) => ({ ...prev, chairmanName: val, signingChairmanName: val }))
+                      }
+                    >
+                      <SelectTrigger className="bg-white border-slate-200 h-9 rounded-lg text-xs font-medium focus:ring-0">
+                        <SelectValue placeholder="Select temporary Chairman from present directors" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        {(!formData.presentDirectors ||
+                          formData.presentDirectors.filter((d: any) => (d.status || 'Present') === 'Present').length === 0) ? (
+                          <SelectItem value="none" disabled className="text-xs">
+                            Mark directors Present first
+                          </SelectItem>
+                        ) : (
+                          formData.presentDirectors
+                            .filter((d: any) => (d.status || 'Present') === 'Present')
+                            .map((director: any, index: number) => (
+                              <SelectItem key={index} value={director.name} className="text-xs">
+                                {director.name}
+                                {director.designation || director.role
+                                  ? ` · ${director.designation || director.role}`
+                                  : ''}
+                                {director.din ? ` (DIN: ${director.din})` : ''}
+                              </SelectItem>
+                            ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Company Secretary Input */}

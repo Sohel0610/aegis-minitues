@@ -10,6 +10,18 @@ import { CheckCircle, Upload, Search, FileText, Building, ChevronDown, Check } f
 import { StepProps } from './types';
 import { useVertical } from '@/contexts/VerticalContext';
 
+const namesLooselyMatch = (a?: string, b?: string) => {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\b(mr|mrs|ms|dr)\b\.?/g, '')
+      .replace(/[^a-z]/g, '');
+  if (!a || !b) return false;
+  const x = norm(a);
+  const y = norm(b);
+  return x === y || x.includes(y) || y.includes(x);
+};
+
 // Enterprise Clean Template Name Formatter (Strips raw dates & technical filenames)
 export const getCleanBusinessTemplateName = (rawFilename: string): { title: string; category: string; quarterTag: string } => {
   if (!rawFilename) return { title: 'Standard Meeting Template', category: 'Board Meeting', quarterTag: 'Standard' };
@@ -302,37 +314,44 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
 
   // Sync with global VerticalContext when header selection changes
   useEffect(() => {
-    if (ctxCompany) {
-      const syncCompany = async () => {
-        let fetchedDirectors = [];
-        try {
-          const res = await fetch(`/api/companies/${encodeURIComponent(ctxCompany.name)}/directors`);
-          if (res.ok) {
-            const dirData = await res.json();
-            fetchedDirectors = dirData.data || [];
-          }
-        } catch (e) {
-          console.error(e);
+    if (!ctxCompany) return;
+    let cancelled = false;
+    const syncCompany = async () => {
+      let fetchedDirectors: any[] = [];
+      try {
+        const res = await fetch(`/api/companies/${encodeURIComponent(ctxCompany.name)}/directors`);
+        if (res.ok) {
+          const dirData = await res.json();
+          fetchedDirectors = dirData.data || [];
         }
+      } catch (e) {
+        console.error(e);
+      }
+      if (cancelled) return;
 
-        setFormData((prev) => {
-          const dirs = fetchedDirectors.length > 0 ? fetchedDirectors : prev.presentDirectors;
-          const chair =
-            (dirs || []).find((d: any) => `${d.designation || d.role || ''}`.toLowerCase().includes('chair'))?.name
-            || dirs?.[0]?.name
-            || prev.chairmanName;
-          return {
-            ...prev,
-            companyName: ctxCompany.name,
-            companySecretary: ctxCompany.secretary_name || prev.companySecretary,
-            presentDirectors: dirs,
-            chairmanName: chair,
-            signingChairmanName: chair,
-          };
-        });
-      };
-      syncCompany();
-    }
+      setFormData((prev) => {
+        const companyChanged = (prev.companyName || '').trim() !== (ctxCompany.name || '').trim();
+        const dirs = fetchedDirectors.length > 0 ? fetchedDirectors : prev.presentDirectors;
+        const chairFromRole =
+          (dirs || []).find((d: any) =>
+            `${d.designation || d.role || ''}`.toLowerCase().includes('chair')
+          )?.name || '';
+        // Never blank an existing/draft chairman — late sync after draft restore was clearing it
+        const nextChair = chairFromRole || (!companyChanged ? prev.chairmanName : '') || '';
+        return {
+          ...prev,
+          companyName: ctxCompany.name,
+          companySecretary: ctxCompany.secretary_name || prev.companySecretary,
+          presentDirectors: dirs && dirs.length > 0 ? dirs : prev.presentDirectors,
+          chairmanName: nextChair,
+          signingChairmanName: nextChair || prev.signingChairmanName,
+        };
+      });
+    };
+    void syncCompany();
+    return () => {
+      cancelled = true;
+    };
   }, [ctxCompany, setFormData]);
 
   // Process template list with clean enterprise titles
@@ -493,6 +512,25 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
                         onClick={() => {
                           setFormData(prev => ({ ...prev, template: t.rawName }));
                           setOpenTemplateDropdown(false);
+                          // Auto-fill chairman from template only if that person is on this company's board
+                          fetch(`/api/templates/${encodeURIComponent(t.rawName)}/chairman`)
+                            .then((r) => (r.ok ? r.json() : null))
+                            .then((data) => {
+                              const name = (data?.chairman_name || '').trim();
+                              if (!name) return;
+                              setFormData((prev) => {
+                                const onBoard = (prev.presentDirectors || []).some((d: any) =>
+                                  namesLooselyMatch(d.name, name)
+                                );
+                                if (!onBoard) return prev;
+                                return {
+                                  ...prev,
+                                  chairmanName: name,
+                                  signingChairmanName: name,
+                                };
+                              });
+                            })
+                            .catch(() => {});
                         }}
                         className={`w-full flex items-center justify-between text-left px-2.5 py-2 rounded-md text-xs transition-colors ${
                           isSelected ? 'bg-blue-50/80 text-blue-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
