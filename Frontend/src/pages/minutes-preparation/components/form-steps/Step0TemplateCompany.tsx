@@ -26,10 +26,22 @@ export const getCleanBusinessTemplateName = (rawFilename: string): { title: stri
   }
 
   let category = 'Board Meeting';
-  if (raw.includes('- AC -') || raw.toLowerCase().includes('audit')) {
+  if (raw.includes('- AC -') || /\bAC\b/.test(raw) || raw.toLowerCase().includes('audit')) {
     category = 'Audit Committee';
+  } else if (raw.includes('- BM -') || /\bBM\b/.test(raw) || raw.toLowerCase().includes('board')) {
+    category = 'Board Meeting';
+  } else if (raw.toLowerCase().includes('nrc') || raw.toLowerCase().includes('nomination')) {
+    category = 'Nomination and Remuneration Committee';
+  } else if (raw.toLowerCase().includes('src') || raw.toLowerCase().includes('stakeholder')) {
+    category = 'Stakeholders Relationship Committee';
+  } else if (raw.toLowerCase().includes('csr')) {
+    category = 'CSR Committee';
+  } else if (raw.toLowerCase().includes('risk') || raw.includes('- RMC -')) {
+    category = 'Risk Management Committee';
   } else if (raw.toLowerCase().includes('agm') || raw.toLowerCase().includes('annual')) {
     category = 'AGM';
+  } else if (raw.toLowerCase().includes('egm') || raw.toLowerCase().includes('extraordinary')) {
+    category = 'EGM';
   }
 
   let quarterTag = 'Standard';
@@ -65,6 +77,37 @@ export const getCleanBusinessTemplateName = (rawFilename: string): { title: stri
     category,
     quarterTag
   };
+};
+
+/** Map selected company name → template filename code (AGEL, AGE25BL, …) */
+const COMPANY_TEMPLATE_CODES: Record<string, string[]> = {
+  'Adani Green Energy Limited': ['AGEL'],
+  'Adani Green Energy Ltd.': ['AGEL'],
+  'Adani Green Energy (UP) Limited': ['AGE(UP)L', 'AGEUPL'],
+  'Adani Green Energy Twenty Five B Limited': ['AGE25BL'],
+};
+
+/** Resolve which template category should be shown for the current form meeting type */
+const resolveTargetTemplateCategory = (meetingType?: string, committeeName?: string): string | null => {
+  if (!meetingType) return null;
+  if (meetingType === 'Board Meeting') return 'Board Meeting';
+  if (meetingType === 'Annual General Meeting') return 'AGM';
+  if (meetingType === 'Extraordinary General Meeting') return 'EGM';
+  if (meetingType === 'Committee Meeting') {
+    return (committeeName || '').trim() || null; // e.g. Audit Committee
+  }
+  // Direct committee / type labels (Audit Committee, NRC, …)
+  return meetingType;
+};
+
+const templateMatchesMeetingType = (
+  category: string,
+  meetingType?: string,
+  committeeName?: string,
+): boolean => {
+  const target = resolveTargetTemplateCategory(meetingType, committeeName);
+  if (!target) return true;
+  return category.toLowerCase() === target.toLowerCase();
 };
 
 // Helper function to parse raw meeting minutes text and extract structured fields
@@ -272,13 +315,21 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
           console.error(e);
         }
 
-        setFormData((prev) => ({
-          ...prev,
-          companyName: ctxCompany.name,
-          companySecretary: ctxCompany.secretary_name || prev.companySecretary,
-          presentDirectors: fetchedDirectors.length > 0 ? fetchedDirectors : prev.presentDirectors,
-          chairmanName: fetchedDirectors[0]?.name || prev.chairmanName,
-        }));
+        setFormData((prev) => {
+          const dirs = fetchedDirectors.length > 0 ? fetchedDirectors : prev.presentDirectors;
+          const chair =
+            (dirs || []).find((d: any) => `${d.designation || d.role || ''}`.toLowerCase().includes('chair'))?.name
+            || dirs?.[0]?.name
+            || prev.chairmanName;
+          return {
+            ...prev,
+            companyName: ctxCompany.name,
+            companySecretary: ctxCompany.secretary_name || prev.companySecretary,
+            presentDirectors: dirs,
+            chairmanName: chair,
+            signingChairmanName: chair,
+          };
+        });
       };
       syncCompany();
     }
@@ -308,16 +359,31 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
     });
   }, [dbTemplates]);
 
-  // Filter templates live by search query & sort matching company templates to top
+  // Filter templates by meeting type (from BU filter), search, and prefer company match
   const filteredTemplates = useMemo(() => {
     let list = processedTemplates;
+
+    // Hard filter: only templates matching selected Board / Audit / etc.
+    list = list.filter(t =>
+      templateMatchesMeetingType(t.category, formData.meetingType, formData.committeeName)
+    );
+
     if (templateSearch.trim()) {
       const q = templateSearch.toLowerCase();
       list = list.filter(t => t.displayName.toLowerCase().includes(q) || t.rawName.toLowerCase().includes(q));
     }
-    
-    // Sort company-matching templates to top if active company is selected
-    if (formData.companyName) {
+
+    // Prefer templates for the active company (by known code), then others of same type
+    const codes = (COMPANY_TEMPLATE_CODES[formData.companyName || ''] || []).map(c => c.toLowerCase());
+    if (codes.length > 0) {
+      list = [...list].sort((a, b) => {
+        const aMatch = codes.some(c => a.rawName.toLowerCase().includes(c) || a.displayName.toLowerCase().includes(c));
+        const bMatch = codes.some(c => b.rawName.toLowerCase().includes(c) || b.displayName.toLowerCase().includes(c));
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+        return a.displayName.localeCompare(b.displayName);
+      });
+    } else if (formData.companyName) {
       const compWord = formData.companyName.split(' ')[0].toLowerCase();
       list = [...list].sort((a, b) => {
         const aMatch = a.displayName.toLowerCase().includes(compWord);
@@ -328,12 +394,24 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
       });
     }
     return list;
-  }, [processedTemplates, templateSearch, formData.companyName]);
+  }, [processedTemplates, templateSearch, formData.companyName, formData.meetingType, formData.committeeName]);
+
+  // Drop a previously selected template if it doesn't match the active meeting type
+  useEffect(() => {
+    if (!formData.template || formData.template === 'custom') return;
+    const selected = processedTemplates.find(t => t.rawName === formData.template);
+    if (!selected) return;
+    if (!templateMatchesMeetingType(selected.category, formData.meetingType, formData.committeeName)) {
+      setFormData(prev => ({ ...prev, template: '' }));
+    }
+  }, [formData.template, formData.meetingType, formData.committeeName, processedTemplates, setFormData]);
 
   // Get active selected template object
   const activeTemplateObj = useMemo(() => {
     return processedTemplates.find(t => t.rawName === formData.template);
   }, [processedTemplates, formData.template]);
+
+  const targetCategory = resolveTargetTemplateCategory(formData.meetingType, formData.committeeName);
 
   const [openTemplateDropdown, setOpenTemplateDropdown] = useState(false);
 
@@ -349,10 +427,18 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
 
         {/* SEARCHABLE TEMPLATE SELECTOR */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label htmlFor="template" className="text-xs font-semibold text-slate-700">Official Template Selection *</Label>
-            <span className="text-[11px] text-slate-500 font-medium">{filteredTemplates.length} templates available</span>
+            <span className="text-[11px] text-slate-500 font-medium shrink-0">
+              {filteredTemplates.length} template{filteredTemplates.length === 1 ? '' : 's'}
+              {targetCategory ? ` · ${targetCategory}` : ''}
+            </span>
           </div>
+          {targetCategory && (
+            <p className="text-[11px] text-slate-500 -mt-1">
+              Showing only <strong className="text-slate-700">{targetCategory}</strong> templates (from your meeting type selection).
+            </p>
+          )}
 
           {/* Clean Active Selected Banner */}
           {activeTemplateObj && (
@@ -424,7 +510,9 @@ export const Step0TemplateCompany: React.FC<StepProps> = (props) => {
                   })
                 ) : (
                   <div className="p-4 text-center text-xs text-slate-400">
-                    No matching templates found.
+                    {targetCategory
+                      ? `No ${targetCategory} templates found.`
+                      : 'No matching templates found.'}
                   </div>
                 )}
                 <div className="border-t border-slate-100 my-1 pt-1">

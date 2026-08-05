@@ -1,6 +1,6 @@
 # Minutes Generation Route Module
 # This module handles minutes preparation functionality including place management and document generation using PostgreSQL
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
@@ -36,6 +36,7 @@ except ImportError:
 import shutil
 from utils.pgsql_service import get_pg_connection, get_pg_cursor
 from utils.auth_dep import require_session
+from utils.audit_logger import AuditLogger, get_client_ip, get_user_agent
 from fastapi import Depends
 
 
@@ -185,10 +186,47 @@ class GeneratedMinuteResponse(BaseModel):
     file_path: str
     created_at: str
     download_url: Optional[str] = None
+    meeting_number: Optional[str] = None
+    meeting_year: Optional[str] = None
+    status: Optional[str] = "draft"  # draft | finalized
+    finalized_at: Optional[str] = None
+    finalized_by: Optional[str] = None
+    is_signed: Optional[bool] = False
+    unsigned_file_path: Optional[str] = None
 
 class MinutesHistoryResponse(BaseModel):
     data: List[GeneratedMinuteResponse]
     count: int
+
+class CompanyMeetingsListResponse(BaseModel):
+    data: List[GeneratedMinuteResponse]
+    count: int
+    meeting_type: Optional[str] = None
+    next_meeting_number: Optional[str] = None
+
+
+def _row_to_generated_minute(r) -> GeneratedMinuteResponse:
+    """Map a generated_minutes DB row to API response (status-aware)."""
+    fp = r.get('file_path') or ''
+    is_signed = r.get('is_signed')
+    if isinstance(is_signed, str):
+        is_signed = is_signed.lower() in ('1', 'true', 'yes')
+    return GeneratedMinuteResponse(
+        id=r['id'],
+        company_name=r.get('company_name') or '',
+        meeting_type=r.get('meeting_type') or '',
+        meeting_date=str(r.get('meeting_date') or ''),
+        file_path=fp,
+        created_at=str(r.get('created_at') or ''),
+        download_url=f"/api/generated-minutes/download/{fp}" if fp else None,
+        meeting_number=r.get('meeting_number') or '',
+        meeting_year=r.get('meeting_year') or '',
+        status=(r.get('status') or 'draft'),
+        finalized_at=str(r['finalized_at']) if r.get('finalized_at') else None,
+        finalized_by=r.get('finalized_by'),
+        is_signed=bool(is_signed),
+        unsigned_file_path=r.get('unsigned_file_path') or None,
+    )
 
 class PlaceResponse(BaseModel):
     id: int
@@ -307,31 +345,65 @@ def init_minutes_pg():
                 )
             """)
 
-            # Companies Table
+            # Companies Table (Enhanced with audit fields)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS companies (
                     id SERIAL PRIMARY KEY,
                     name TEXT UNIQUE,
+                    code TEXT,
                     cin TEXT,
                     type TEXT,
                     vertical_id INTEGER REFERENCES verticals(id),
-                    status TEXT DEFAULT 'Active'
+                    status TEXT DEFAULT 'Active',
+                    secretary_name TEXT,
+                    created_by TEXT,
+                    updated_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
-            # Ensure companies table column extensions exist (safety for SQLite fallback schema updates)
-            for col, col_type in [("cin", "TEXT"), ("type", "TEXT"), ("vertical_id", "INTEGER"), ("status", "TEXT DEFAULT 'Active'")]:
+            # Ensure companies table column extensions exist (safety for SQLite fallback schema updates).
+            # NOTE: SQLite forbids non-constant defaults (e.g. CURRENT_TIMESTAMP) on ALTER TABLE ADD COLUMN.
+            for col, col_type in [
+                ("cin", "TEXT"),
+                ("type", "TEXT"),
+                ("vertical_id", "INTEGER"),
+                ("status", "TEXT DEFAULT 'Active'"),
+                ("code", "TEXT"),
+                ("secretary_name", "TEXT"),
+                ("created_by", "TEXT"),
+                ("updated_by", "TEXT"),
+                ("created_at", "TIMESTAMP"),
+                ("updated_at", "TIMESTAMP"),
+            ]:
                 try:
                     cursor.execute(f"ALTER TABLE companies ADD COLUMN {col} {col_type}")
                 except Exception:
                     pass
 
             # Ensure generated_minutes schema extensions exist
-            for col, col_type in [("vertical_name", "TEXT"), ("meeting_number", "TEXT"), ("meeting_year", "TEXT")]:
+            for col, col_type in [
+                ("vertical_name", "TEXT"),
+                ("meeting_number", "TEXT"),
+                ("meeting_year", "TEXT"),
+                ("status", "TEXT"),
+                ("finalized_at", "TIMESTAMP"),
+                ("finalized_by", "TEXT"),
+                ("is_signed", "INTEGER"),
+                ("unsigned_file_path", "TEXT"),
+            ]:
                 try:
                     cursor.execute(f"ALTER TABLE generated_minutes ADD COLUMN {col} {col_type}")
                 except Exception:
                     pass
+            # Default existing rows without status → draft (user must finalize intentionally)
+            try:
+                cursor.execute(
+                    "UPDATE generated_minutes SET status = 'draft' WHERE status IS NULL OR status = ''"
+                )
+            except Exception:
+                pass
 
             # Seed default Verticals
             cursor.execute("SELECT COUNT(*) as count FROM verticals")
@@ -493,6 +565,63 @@ def init_minutes_pg():
                 )
             """)
 
+            # Audit Logs Table - Track all critical operations
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    entity_type TEXT NOT NULL,
+                    entity_id INTEGER,
+                    entity_name TEXT,
+                    action TEXT NOT NULL,
+                    performed_by TEXT NOT NULL,
+                    performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    old_data JSONB,
+                    new_data JSONB,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    remarks TEXT,
+                    vertical_id INTEGER,
+                    company_name TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Create indexes for audit_logs for fast querying
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(performed_by)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(performed_at DESC)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_company ON audit_logs(company_name)")
+            except Exception:
+                pass  # Indexes might already exist
+
+            # Draft minutes forms (Save / resume across steps, refresh, Back)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS minutes_drafts (
+                    id SERIAL PRIMARY KEY,
+                    draft_key TEXT UNIQUE,
+                    company_name TEXT,
+                    meeting_type TEXT,
+                    meeting_date TEXT,
+                    committee_name TEXT,
+                    current_step INTEGER DEFAULT 0,
+                    form_json TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_minutes_drafts_company ON minutes_drafts(company_name)")
+            except Exception:
+                pass
+
+            # Index public/templates DOCX files into generated_minutes for company meeting stats
+            try:
+                synced = _sync_template_meetings(cursor)
+                if synced:
+                    logger.info(f"Synced {synced} template meeting file(s) into generated_minutes")
+            except Exception as sync_err:
+                logger.warning(f"Template meetings sync skipped: {sync_err}")
+
             conn.commit()
             logger.info(f"Minutes tables initialized successfully in {target_db or 'default'}")
         except Exception as e:
@@ -501,6 +630,194 @@ def init_minutes_pg():
         finally:
             conn.close()
 
+
+# Abbreviation → canonical company name (must match companies.name)
+TEMPLATE_COMPANY_MAP = {
+    "AGEL": "Adani Green Energy Limited",
+    "AGE(UP)L": "Adani Green Energy (UP) Limited",
+    "AGEUPL": "Adani Green Energy (UP) Limited",
+    "AGE25BL": "Adani Green Energy Twenty Five B Limited",
+}
+
+TEMPLATE_TYPE_MAP = {
+    "BM": "Board Meeting",
+    "AC": "Audit Committee",
+    "NRC": "Nomination and Remuneration Committee",
+    "SRC": "Stakeholders Relationship Committee",
+    "CSR": "CSR Committee",
+    "RMC": "Risk Management Committee",
+    "AGM": "AGM",
+    "EGM": "EGM",
+}
+
+
+def _ordinal_meeting_number(num: int) -> str:
+    if num <= 0:
+        return ""
+    suffix = "TH"
+    if num % 10 == 1 and num % 100 != 11:
+        suffix = "ST"
+    elif num % 10 == 2 and num % 100 != 12:
+        suffix = "ND"
+    elif num % 10 == 3 and num % 100 != 13:
+        suffix = "RD"
+    return f"{num}{suffix}"
+
+
+def _parse_template_filename(filename: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse meeting metadata from template filenames, e.g.:
+      90. AGEL - BM - 23.01.2026.docx
+      70. AGEL - AC - Minutes - 22.01.2026.docx
+      3. AGE(UP)L - AC - 17.10.2025.docx
+      59. 04.12.2025 - AGE25BL.docx
+      79. 17.10.2025 - AGE(UP)L.docx
+    """
+    import re
+    name = filename
+    if name.lower().endswith(".docx"):
+        name = name[:-5]
+
+    # Pattern A: {num}. {CODE} - {TYPE} [- Minutes] - {DD.MM.YYYY}
+    m = re.match(
+        r"^\s*(\d+)\.\s*(.+?)\s*-\s*(BM|AC|NRC|SRC|CSR|RMC|AGM|EGM)\s*(?:-\s*Minutes)?\s*-\s*(\d{2}\.\d{2}\.\d{4})\s*$",
+        name,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        num, code, mtype, date_str = m.groups()
+        code_key = code.strip().upper().replace(" ", "")
+        company = TEMPLATE_COMPANY_MAP.get(code_key) or TEMPLATE_COMPANY_MAP.get(code.strip().upper())
+        if not company:
+            return None
+        dd, mm, yyyy = date_str.split(".")
+        return {
+            "meeting_number": _ordinal_meeting_number(int(num)),
+            "meeting_number_int": int(num),
+            "company_name": company,
+            "company_code": code.strip(),
+            "meeting_type": TEMPLATE_TYPE_MAP.get(mtype.upper(), mtype),
+            "meeting_date": f"{yyyy}-{mm}-{dd}",
+            "meeting_year": yyyy,
+            "file_path": filename,
+        }
+
+    # Pattern B: {num}. {DD.MM.YYYY} - {CODE}
+    m = re.match(
+        r"^\s*(\d+)\.\s*(\d{2}\.\d{2}\.\d{4})\s*-\s*(.+?)\s*$",
+        name,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        num, date_str, code = m.groups()
+        code_key = code.strip().upper().replace(" ", "")
+        company = TEMPLATE_COMPANY_MAP.get(code_key) or TEMPLATE_COMPANY_MAP.get(code.strip().upper())
+        if not company:
+            return None
+        dd, mm, yyyy = date_str.split(".")
+        return {
+            "meeting_number": _ordinal_meeting_number(int(num)),
+            "meeting_number_int": int(num),
+            "company_name": company,
+            "company_code": code.strip(),
+            "meeting_type": "Board Meeting",  # type omitted in this naming style
+            "meeting_date": f"{yyyy}-{mm}-{dd}",
+            "meeting_year": yyyy,
+            "file_path": filename,
+        }
+
+    return None
+
+
+def _sync_template_meetings(cursor) -> int:
+    """
+    Scan public/templates for real meeting DOCX files and upsert into generated_minutes.
+    Also stamps company codes (AGEL, etc.) onto matching companies rows.
+    Returns number of inserted/updated rows.
+    """
+    templates_dir = os.path.join(os.path.dirname(__file__), "..", "public", "templates")
+    if not os.path.isdir(templates_dir):
+        return 0
+
+    # Ensure company codes for known abbreviations (helps UI abbreviations)
+    for code, company_name in TEMPLATE_COMPANY_MAP.items():
+        try:
+            cursor.execute(
+                """
+                UPDATE companies
+                SET code = %s
+                WHERE UPPER(name) = UPPER(%s)
+                  AND (code IS NULL OR code = '')
+                """,
+                (code if code != "AGEUPL" else "AGE(UP)L", company_name),
+            )
+        except Exception:
+            pass
+
+    synced = 0
+    for fname in os.listdir(templates_dir):
+        if not fname.lower().endswith(".docx"):
+            continue
+        # Skip custom uploads / generated copies parked in templates
+        if fname.lower().startswith("custom_") or fname.lower().startswith("meeting_minutes_"):
+            continue
+
+        meta = _parse_template_filename(fname)
+        if not meta:
+            continue
+
+        cursor.execute(
+            "SELECT id FROM generated_minutes WHERE file_path = %s",
+            (meta["file_path"],),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                """
+                UPDATE generated_minutes
+                SET company_name = %s,
+                    meeting_type = %s,
+                    meeting_date = %s,
+                    meeting_number = %s,
+                    meeting_year = %s,
+                    status = CASE
+                        WHEN COALESCE(is_signed, 0) = 1 THEN status
+                        WHEN LOWER(COALESCE(status, '')) = 'finalized' AND finalized_at IS NOT NULL THEN status
+                        ELSE COALESCE(NULLIF(status, ''), 'draft')
+                    END
+                WHERE id = %s
+                """,
+                (
+                    meta["company_name"],
+                    meta["meeting_type"],
+                    meta["meeting_date"],
+                    meta["meeting_number"],
+                    meta["meeting_year"],
+                    existing["id"],
+                ),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO generated_minutes
+                    (company_name, meeting_type, meeting_date, file_path, meeting_number, meeting_year, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    meta["company_name"],
+                    meta["meeting_type"],
+                    meta["meeting_date"],
+                    meta["file_path"],
+                    meta["meeting_number"],
+                    meta["meeting_year"],
+                    "draft",
+                ),
+            )
+        synced += 1
+
+    return synced
+
+
 # Ensure tables exist on module load (idempotent: CREATE TABLE IF NOT EXISTS)
 try:
     init_minutes_pg()
@@ -508,6 +825,194 @@ except Exception as _init_err:
     logger.error(f"init_minutes_pg on import failed: {_init_err}")
 
 # --- API Endpoints ---
+
+@router.post("/templates/sync-meetings")
+async def sync_template_meetings_endpoint():
+    """Re-scan public/templates and sync real meeting files into generated_minutes."""
+    try:
+        def run():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                count = _sync_template_meetings(cursor)
+                conn.commit()
+                return count
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        count = await asyncio.get_running_loop().run_in_executor(thread_pool, run)
+        return {"success": True, "synced": count, "message": f"Synced {count} template meeting file(s)"}
+    except Exception as e:
+        logger.error(f"Template sync failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class MinutesDraftUpsertRequest(BaseModel):
+    draft_key: str
+    company_name: str = ""
+    meeting_type: str = ""
+    meeting_date: str = ""
+    committee_name: str = ""
+    current_step: int = 0
+    form_data: Dict[str, Any] = {}
+
+
+@router.put("/minutes-drafts")
+async def upsert_minutes_draft(request: MinutesDraftUpsertRequest):
+    """Save / update a multi-step minutes form draft (survives refresh, Back, reconnect)."""
+    try:
+        def save():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                # Ensure table exists (for servers that started before this migration)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS minutes_drafts (
+                        id SERIAL PRIMARY KEY,
+                        draft_key TEXT UNIQUE,
+                        company_name TEXT,
+                        meeting_type TEXT,
+                        meeting_date TEXT,
+                        committee_name TEXT,
+                        current_step INTEGER DEFAULT 0,
+                        form_json TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                form_json = json.dumps(request.form_data or {})
+                cursor.execute("SELECT id FROM minutes_drafts WHERE draft_key = %s", (request.draft_key,))
+                row = cursor.fetchone()
+                if row:
+                    cursor.execute(
+                        """
+                        UPDATE minutes_drafts
+                        SET company_name = %s, meeting_type = %s, meeting_date = %s,
+                            committee_name = %s, current_step = %s, form_json = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE draft_key = %s
+                        RETURNING id, draft_key, current_step, updated_at
+                        """,
+                        (
+                            request.company_name, request.meeting_type, request.meeting_date,
+                            request.committee_name, request.current_step, form_json, request.draft_key,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO minutes_drafts
+                            (draft_key, company_name, meeting_type, meeting_date, committee_name, current_step, form_json)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id, draft_key, current_step, updated_at
+                        """,
+                        (
+                            request.draft_key, request.company_name, request.meeting_type,
+                            request.meeting_date, request.committee_name, request.current_step, form_json,
+                        ),
+                    )
+                saved = cursor.fetchone()
+                conn.commit()
+                return {
+                    "id": saved["id"],
+                    "draft_key": saved["draft_key"],
+                    "current_step": saved["current_step"],
+                    "updated_at": str(saved["updated_at"]),
+                }
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        return await asyncio.get_running_loop().run_in_executor(thread_pool, save)
+    except Exception as e:
+        logger.error(f"Failed to save minutes draft: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/minutes-drafts")
+async def get_minutes_draft(draft_key: str):
+    """Load a saved minutes form draft by key."""
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, draft_key, company_name, meeting_type, meeting_date, committee_name,
+                           current_step, form_json, updated_at
+                    FROM minutes_drafts WHERE draft_key = %s
+                    """,
+                    (draft_key,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                form_data = {}
+                try:
+                    form_data = json.loads(row["form_json"] or "{}")
+                except Exception:
+                    form_data = {}
+                return {
+                    "id": row["id"],
+                    "draft_key": row["draft_key"],
+                    "company_name": row["company_name"],
+                    "meeting_type": row["meeting_type"],
+                    "meeting_date": row["meeting_date"],
+                    "committee_name": row.get("committee_name") or "",
+                    "current_step": row["current_step"] or 0,
+                    "form_data": form_data,
+                    "updated_at": str(row["updated_at"]),
+                }
+            finally:
+                conn.close()
+
+        data = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
+        if not data:
+            raise HTTPException(status_code=404, detail="Draft not found")
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load minutes draft: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/minutes-drafts")
+async def delete_minutes_draft(draft_key: str):
+    """Delete a minutes form draft (after finalize or Reset)."""
+    try:
+        def delete():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute("DELETE FROM minutes_drafts WHERE draft_key = %s", (draft_key,))
+                conn.commit()
+                return cursor.rowcount or 0
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        deleted = await asyncio.get_running_loop().run_in_executor(thread_pool, delete)
+        return {"success": True, "deleted": deleted}
+    except Exception as e:
+        logger.error(f"Failed to delete minutes draft: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/generated-minutes", response_model=MinutesHistoryResponse)
 async def get_history():
@@ -518,17 +1023,17 @@ async def get_history():
             if not conn: raise RuntimeError("Database connection unavailable")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("SELECT id, company_name, meeting_type, meeting_date, file_path, created_at FROM generated_minutes ORDER BY id DESC")
+                cursor.execute(
+                    """
+                    SELECT id, company_name, meeting_type, meeting_date, file_path, created_at,
+                           meeting_number, meeting_year, status, finalized_at, finalized_by,
+                           is_signed, unsigned_file_path
+                    FROM generated_minutes
+                    ORDER BY id DESC
+                    """
+                )
                 rows = cursor.fetchall()
-                data = [GeneratedMinuteResponse(
-                    id=r['id'], 
-                    company_name=r['company_name'], 
-                    meeting_type=r['meeting_type'], 
-                    meeting_date=str(r['meeting_date']), 
-                    file_path=r['file_path'], 
-                    created_at=str(r['created_at']),
-                    download_url=f"/api/generated-minutes/download/{r['file_path']}"
-                ) for r in rows]
+                data = [_row_to_generated_minute(r) for r in rows]
                 return data, len(data)
             finally:
                 conn.close()
@@ -545,42 +1050,525 @@ async def get_minutes_history_post():
     """Fallback for POST history request."""
     return await get_history()
 
+@router.post("/generated-minutes/{id}/finalize")
+async def finalize_minute(id: int, request: Request):
+    """
+    Lock an approved minutes record (Draft → Finalized).
+    Finalized records cannot be deleted casually.
+    """
+    try:
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        finalized_by = (body.get("finalized_by") or body.get("user_email") or "system").strip()
+
+        def run():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                for col, col_type in [("status", "TEXT"), ("finalized_at", "TIMESTAMP"), ("finalized_by", "TEXT")]:
+                    try:
+                        cursor.execute(f"ALTER TABLE generated_minutes ADD COLUMN {col} {col_type}")
+                    except Exception:
+                        pass
+
+                cursor.execute(
+                    """
+                    SELECT id, company_name, meeting_type, meeting_date, meeting_number, status
+                    FROM generated_minutes WHERE id = %s
+                    """,
+                    (id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None, "not_found"
+                if (row.get("status") or "").lower() == "finalized":
+                    return dict(row), "already_finalized"
+
+                cursor.execute(
+                    """
+                    UPDATE generated_minutes
+                    SET status = 'finalized',
+                        finalized_at = CURRENT_TIMESTAMP,
+                        finalized_by = %s
+                    WHERE id = %s
+                    RETURNING id, company_name, meeting_type, meeting_date, meeting_number,
+                              status, finalized_at, finalized_by
+                    """,
+                    (finalized_by, id),
+                )
+                updated = cursor.fetchone()
+                try:
+                    from utils.audit_logger import AuditLogger
+                    AuditLogger.log_meeting_finalized(
+                        conn=conn,
+                        meeting_id=id,
+                        company_name=updated.get("company_name") or "",
+                        meeting_type=updated.get("meeting_type") or "",
+                        meeting_number=updated.get("meeting_number") or "",
+                        user_email=finalized_by,
+                    )
+                except Exception as audit_err:
+                    logger.warning(f"Finalize audit log skipped: {audit_err}")
+                conn.commit()
+                return dict(updated), "ok"
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        result, code = await asyncio.get_running_loop().run_in_executor(thread_pool, run)
+        if code == "not_found":
+            raise HTTPException(status_code=404, detail="Minutes record not found")
+        return {
+            "success": True,
+            "already_finalized": code == "already_finalized",
+            "id": result["id"],
+            "status": "finalized",
+            "company_name": result.get("company_name"),
+            "meeting_type": result.get("meeting_type"),
+            "finalized_by": result.get("finalized_by") or finalized_by,
+            "finalized_at": str(result.get("finalized_at") or ""),
+            "message": "Minutes already finalized" if code == "already_finalized" else "Minutes finalized and locked",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to finalize minutes {id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _resolve_minutes_file_path(filename: str) -> Optional[str]:
+    """Find a minutes file under public/generated or public/templates."""
+    if not filename or os.path.basename(filename) != filename:
+        return None
+    base = os.path.join(os.path.dirname(__file__), "..", "public")
+    for sub in ("generated", "templates"):
+        fp = os.path.join(base, sub, filename)
+        if os.path.exists(fp):
+            return fp
+    return None
+
+
+@router.post("/generated-minutes/{id}/replace-file")
+async def replace_minutes_file(
+    id: int,
+    file: UploadFile = File(...),
+):
+    """
+    Replace the working document for a DRAFT minutes record (fix mistakes before finalize).
+    Finalized unsigned docs can also be replaced only via upload-signed.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    lower = file.filename.lower()
+    if not (lower.endswith('.docx') or lower.endswith('.pdf')):
+        raise HTTPException(status_code=400, detail="Only .docx or .pdf files are supported")
+
+    try:
+        content = await file.read()
+
+        def run():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                for col, col_type in [("is_signed", "INTEGER"), ("unsigned_file_path", "TEXT"), ("status", "TEXT")]:
+                    try:
+                        cursor.execute(f"ALTER TABLE generated_minutes ADD COLUMN {col} {col_type}")
+                    except Exception:
+                        pass
+
+                cursor.execute(
+                    "SELECT id, file_path, status, is_signed FROM generated_minutes WHERE id = %s",
+                    (id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None, "not_found"
+                if (row.get("status") or "").lower() == "finalized" and bool(row.get("is_signed")):
+                    return None, "signed_locked"
+
+                old_name = row.get("file_path") or ""
+                ext = os.path.splitext(file.filename)[1].lower() or ".docx"
+                new_name = f"revised_{id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+                generated_dir = os.path.join(os.path.dirname(__file__), "..", "public", "generated")
+                os.makedirs(generated_dir, exist_ok=True)
+                new_path = os.path.join(generated_dir, new_name)
+                with open(new_path, "wb") as f:
+                    f.write(content)
+
+                # Keep old file as backup name if present
+                old_fp = _resolve_minutes_file_path(old_name)
+                if old_fp and os.path.exists(old_fp):
+                    backup = os.path.join(
+                        os.path.dirname(old_fp),
+                        f"backup_before_revise_{id}_{os.path.basename(old_name)}",
+                    )
+                    try:
+                        if not os.path.exists(backup):
+                            shutil.copy2(old_fp, backup)
+                    except Exception:
+                        pass
+
+                cursor.execute(
+                    """
+                    UPDATE generated_minutes
+                    SET file_path = %s, status = 'draft', is_signed = 0
+                    WHERE id = %s
+                    RETURNING id, file_path, status
+                    """,
+                    (new_name, id),
+                )
+                updated = cursor.fetchone()
+                conn.commit()
+                return dict(updated), "ok"
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        result, code = await asyncio.get_running_loop().run_in_executor(thread_pool, run)
+        if code == "not_found":
+            raise HTTPException(status_code=404, detail="Minutes record not found")
+        if code == "signed_locked":
+            raise HTTPException(status_code=409, detail="Signed final document is locked. Ask Master Admin to unlock.")
+        return {
+            "success": True,
+            "id": result["id"],
+            "file_path": result["file_path"],
+            "status": result.get("status") or "draft",
+            "download_url": f"/api/generated-minutes/download/{result['file_path']}",
+            "message": "Document replaced. Record is Draft — review and Finalize when ready.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to replace minutes file {id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generated-minutes/{id}/upload-signed")
+async def upload_signed_minutes(
+    id: int,
+    file: UploadFile = File(...),
+    confirm_final: str = Form("false"),
+    uploaded_by: str = Form("user"),
+):
+    """
+    Upload signed PDF/DOCX after approval.
+    Requires confirm_final=true. Overrides the unsigned file (kept as unsigned_file_path backup)
+    and marks the record Final + signed.
+    """
+    if str(confirm_final).lower() not in ("1", "true", "yes"):
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation required. Set confirm_final=true after user confirms this is the final signed copy.",
+        )
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    lower = file.filename.lower()
+    if not (lower.endswith('.pdf') or lower.endswith('.docx')):
+        raise HTTPException(status_code=400, detail="Only signed .pdf or .docx files are supported")
+
+    try:
+        content = await file.read()
+
+        def run():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                for col, col_type in [
+                    ("status", "TEXT"),
+                    ("finalized_at", "TIMESTAMP"),
+                    ("finalized_by", "TEXT"),
+                    ("is_signed", "INTEGER"),
+                    ("unsigned_file_path", "TEXT"),
+                ]:
+                    try:
+                        cursor.execute(f"ALTER TABLE generated_minutes ADD COLUMN {col} {col_type}")
+                    except Exception:
+                        pass
+
+                cursor.execute(
+                    "SELECT id, file_path, status, is_signed, unsigned_file_path FROM generated_minutes WHERE id = %s",
+                    (id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None, "not_found"
+
+                old_name = row.get("file_path") or ""
+                unsigned_keep = row.get("unsigned_file_path") or old_name
+
+                ext = os.path.splitext(file.filename)[1].lower() or ".pdf"
+                new_name = f"signed_{id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+                generated_dir = os.path.join(os.path.dirname(__file__), "..", "public", "generated")
+                os.makedirs(generated_dir, exist_ok=True)
+                new_path = os.path.join(generated_dir, new_name)
+                with open(new_path, "wb") as f:
+                    f.write(content)
+
+                # Backup unsigned file path reference (do not delete unsigned immediately)
+                old_fp = _resolve_minutes_file_path(old_name)
+                if old_fp and os.path.exists(old_fp) and not (row.get("is_signed")):
+                    backup_name = f"unsigned_backup_{id}_{os.path.basename(old_name)}"
+                    backup_path = os.path.join(generated_dir, backup_name)
+                    try:
+                        if not os.path.exists(backup_path):
+                            shutil.copy2(old_fp, backup_path)
+                        unsigned_keep = backup_name
+                    except Exception as copy_err:
+                        logger.warning(f"Could not backup unsigned file: {copy_err}")
+                        unsigned_keep = old_name
+
+                cursor.execute(
+                    """
+                    UPDATE generated_minutes
+                    SET file_path = %s,
+                        unsigned_file_path = %s,
+                        is_signed = 1,
+                        status = 'finalized',
+                        finalized_at = CURRENT_TIMESTAMP,
+                        finalized_by = %s
+                    WHERE id = %s
+                    RETURNING id, file_path, status, is_signed, unsigned_file_path, finalized_at, finalized_by
+                    """,
+                    (new_name, unsigned_keep, uploaded_by, id),
+                )
+                updated = cursor.fetchone()
+                try:
+                    from utils.audit_logger import AuditLogger
+                    AuditLogger.log_meeting_finalized(
+                        conn=conn,
+                        meeting_id=id,
+                        company_name="",
+                        meeting_type="",
+                        meeting_number="",
+                        user_email=uploaded_by,
+                    )
+                except Exception:
+                    pass
+                conn.commit()
+                return dict(updated), "ok"
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        result, code = await asyncio.get_running_loop().run_in_executor(thread_pool, run)
+        if code == "not_found":
+            raise HTTPException(status_code=404, detail="Minutes record not found")
+        return {
+            "success": True,
+            "id": result["id"],
+            "file_path": result["file_path"],
+            "status": "finalized",
+            "is_signed": True,
+            "unsigned_file_path": result.get("unsigned_file_path"),
+            "download_url": f"/api/generated-minutes/download/{result['file_path']}",
+            "message": "Signed document uploaded. It replaced the unsigned file and is now Final.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to upload signed minutes {id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/generated-minutes/{id}")
-async def delete_minute(id: int, user: dict = Depends(require_session)):
+async def delete_minute(id: int):
+    """Delete a minutes record. Signed finals are blocked; draft/final unsigned can be removed."""
     try:
         def delete():
             conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: raise RuntimeError("Database connection unavailable")
             cursor = get_pg_cursor(conn)
             try:
-                cursor.execute("SELECT file_path FROM generated_minutes WHERE id = %s", (id,))
+                try:
+                    cursor.execute(f"ALTER TABLE generated_minutes ADD COLUMN is_signed INTEGER")
+                except Exception:
+                    pass
+
+                cursor.execute(
+                    "SELECT file_path, status, is_signed FROM generated_minutes WHERE id = %s",
+                    (id,),
+                )
                 row = cursor.fetchone()
-                if row:
-                    fp = os.path.join(os.path.dirname(__file__), "..", "public", "templates", row['file_path'])
-                    if os.path.exists(fp): os.remove(fp)
-                    cursor.execute("DELETE FROM generated_minutes WHERE id = %s", (id,))
-                    conn.commit()
-                    return True
+                if not row:
+                    return {"success": False, "reason": "not_found"}
+                if bool(row.get("is_signed")):
+                    return {"success": False, "reason": "signed"}
+
+                fp_name = row.get("file_path") or ""
+                # Only remove generated copies — never delete shared templates on disk
+                if fp_name and os.path.basename(fp_name) == fp_name:
+                    generated_fp = os.path.join(
+                        os.path.dirname(__file__), "..", "public", "generated", fp_name
+                    )
+                    if os.path.exists(generated_fp):
+                        try:
+                            os.remove(generated_fp)
+                        except Exception:
+                            pass
+
+                cursor.execute("DELETE FROM generated_minutes WHERE id = %s", (id,))
+                conn.commit()
+                return {"success": True, "reason": "deleted"}
+            except Exception:
+                conn.rollback()
+                raise
             finally:
                 conn.close()
-            return False
-        success = await asyncio.get_running_loop().run_in_executor(thread_pool, delete)
-        return {"success": success}
+        result = await asyncio.get_running_loop().run_in_executor(thread_pool, delete)
+        if result.get("reason") == "signed":
+            raise HTTPException(
+                status_code=409,
+                detail="This signed final document is locked and cannot be deleted.",
+            )
+        if result.get("reason") == "not_found":
+            raise HTTPException(status_code=404, detail="Minutes record not found")
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def _minutes_media_type(filename: str) -> str:
+    lower = (filename or "").lower()
+    if lower.endswith(".pdf"):
+        return "application/pdf"
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
 
 @router.get("/generated-minutes/download/{filename}")
 @router.get("/templates/download/{filename}")
 async def download_file(filename: str):
     if os.path.basename(filename) != filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    base = os.path.join(os.path.dirname(__file__), "..", "public")
-    for sub in ("generated", "templates"):
-        fp = os.path.join(base, sub, filename)
-        if os.path.exists(fp):
-            from fastapi.responses import FileResponse
-            return FileResponse(path=fp, filename=filename, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    raise HTTPException(status_code=404)
+    fp = _resolve_minutes_file_path(filename)
+    if not fp:
+        raise HTTPException(status_code=404, detail="File not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=fp,
+        filename=filename,
+        media_type=_minutes_media_type(filename),
+        content_disposition_type="attachment",
+    )
+
+
+@router.get("/generated-minutes/view/{filename}")
+async def view_file_inline(filename: str):
+    """Open document inline in the browser (View) — does not force download."""
+    if os.path.basename(filename) != filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    fp = _resolve_minutes_file_path(filename)
+    if not fp:
+        raise HTTPException(status_code=404, detail="File not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=fp,
+        filename=filename,
+        media_type=_minutes_media_type(filename),
+        content_disposition_type="inline",
+    )
+
+
+class MinutesContentUpdate(BaseModel):
+    extracted_text: str
+    edited_by: Optional[str] = "user"
+
+
+@router.put("/generated-minutes/{id}/content")
+async def update_minutes_content(id: int, body: MinutesContentUpdate):
+    """
+    Save in-app text edits back to the working DOCX (draft / unsigned only).
+    Rebuilds paragraph text from the edited content and keeps the record as draft.
+    """
+    if not DOCX_AVAILABLE:
+        raise HTTPException(status_code=500, detail="python-docx is not installed on the server")
+    try:
+        def run():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                for col, col_type in [("is_signed", "INTEGER"), ("status", "TEXT")]:
+                    try:
+                        cursor.execute(f"ALTER TABLE generated_minutes ADD COLUMN {col} {col_type}")
+                    except Exception:
+                        pass
+
+                cursor.execute(
+                    "SELECT id, file_path, status, is_signed FROM generated_minutes WHERE id = %s",
+                    (id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Minutes record not found")
+                if bool(row.get("is_signed")):
+                    raise HTTPException(status_code=403, detail="Signed final documents cannot be edited")
+
+                old_name = row.get("file_path") or ""
+                old_fp = _resolve_minutes_file_path(old_name)
+
+                doc = Document()
+                text = (body.extracted_text or "").replace("\r\n", "\n")
+                for line in text.split("\n"):
+                    doc.add_paragraph(line)
+
+                generated_dir = os.path.join(os.path.dirname(__file__), "..", "public", "generated")
+                os.makedirs(generated_dir, exist_ok=True)
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                base_name = os.path.splitext(os.path.basename(old_name) or "minutes")[0]
+                # Strip previous edit stamps
+                base_name = re.sub(r"_edited_\d{8}_\d{6}$", "", base_name)
+                new_name = f"{base_name}_edited_{stamp}.docx"
+                new_path = os.path.join(generated_dir, new_name)
+                doc.save(new_path)
+
+                cursor.execute(
+                    """
+                    UPDATE generated_minutes
+                    SET file_path = %s, status = 'draft', is_signed = 0
+                    WHERE id = %s
+                    RETURNING id, file_path, status, company_name, meeting_type, meeting_date
+                    """,
+                    (new_name, id),
+                )
+                updated = cursor.fetchone()
+                conn.commit()
+                return dict(updated) if updated else {"id": id, "file_path": new_name, "status": "draft"}
+            finally:
+                conn.close()
+
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(thread_pool, run)
+        return {
+            "success": True,
+            "message": "Document updated and saved as draft",
+            "id": result.get("id"),
+            "file_path": result.get("file_path"),
+            "status": result.get("status", "draft"),
+            "download_url": f"/api/generated-minutes/download/{result.get('file_path')}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update minutes content {id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/templates")
 async def list_templates():
@@ -1341,35 +2329,66 @@ async def generate_minutes(request: MinutesGenerationRequest):
                 if not text or not text.strip():
                     return text
                 
-                # 1. Generic Company Name Replacement (matches any company ending in LIMITED, LTD, PVT LTD, PRIVATE LIMITED or acronyms)
+                # 0. Replace bracket placeholders
+                for pk, pv in placeholders.items():
+                    if pk in text and pv:
+                        text = text.replace(pk, str(pv))
+
+                # 1. Company Name Replacements (both exact template names & generic pattern)
                 if comp_name_upper:
+                    for old_c in [
+                        "ADANI GREEN ENERGY LIMITED", "Adani Green Energy Limited",
+                        "Adani Green Energy (UP) Limited", "ADANI GREEN ENERGY (UP) LIMITED",
+                        "ADANI RENEWABLE ENERGY HOLDING FOUR LIMITED", "Adani Renewable Energy Holding Four Limited",
+                        "AGEL", "AGE(UP)L", "AGE25BL"
+                    ]:
+                        if old_c in text:
+                            text = text.replace(old_c, comp_name_upper if old_c.isupper() else request.companyName)
                     text = re.sub(r'\b[A-Z0-9\s\(\)\&\.\-]{3,60}\s+(?:LIMITED|PVT\s+LTD|PRIVATE\s+LIMITED|LTD)\b', comp_name_upper, text, flags=re.IGNORECASE)
-                    text = re.sub(r'\b(?:AGE\(UP\)L|AGE25BL|AGEL)\b', comp_name_upper, text, flags=re.IGNORECASE)
                 
-                # 2. Replace day names in headings (MONDAY..SUNDAY)
+                # 2. Meeting Place & Address Replacement
+                if request.meetingPlace and request.meetingPlace.strip():
+                    sample_places = [
+                        "Adani Corporate House, Shantigram, Near Vaishno Devi Circle, S. G. Highway, Khodiyar, Ahmedabad – 382 421, Gujarat, India",
+                        "Adani Corporate House, Shantigram, Near Vaishno Devi Circle, S. G. Highway, Khodiyar, Ahmedabad – 382 421, Gujarat",
+                        "Adani Corporate House, Shantigram, Near Vaishno Devi Circle, S. G. Highway, Khodiyar, Ahmedabad - 382 421",
+                        "Plot No. 83, Sector 32, Institutional Area, Gurgaon, Haryana 122001",
+                        "Plot No. 83, Sector 32, Institutional Area, Gurgaon, Haryana-122001"
+                    ]
+                    for sp in sample_places:
+                        if sp in text:
+                            text = text.replace(sp, request.meetingPlace)
+
+                # 3. Company Secretary Name Replacement
+                if request.companySecretary and request.companySecretary.strip():
+                    for sample_cs in ["Kuntal Pandya", "Kuntal Chandya", "Chandan Lakhwani"]:
+                        if sample_cs in text:
+                            text = text.replace(sample_cs, request.companySecretary)
+
+                # 4. Replace day names in headings (MONDAY..SUNDAY)
                 if day_upper:
                     text = re.sub(r'\b(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\b', day_upper, text, flags=re.IGNORECASE)
                 
-                # 3. Replace ALL internal meeting & financial dates (e.g. 22ND JULY 2025, 30TH SEPTEMBER 2025)
+                # 5. Replace ALL internal meeting & financial dates (e.g. 22ND JULY 2025, 30TH SEPTEMBER 2025)
                 if m_date_formatted:
                     text = re.sub(r'\b\d{1,2}(?:ST|ND|RD|TH)\s+(?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)(?:,\s*|\s+)\d{4}\b', m_date_formatted, text, flags=re.IGNORECASE)
 
-                # 4. Replace Commencement Time
+                # 6. Replace Commencement Time
                 if start_time_str:
                     target_start = start_time_dot_str if ("." in text and ("P.M." in text or "A.M." in text or "p.m." in text)) else start_time_str
                     text = re.sub(r'(?:commenced|held)\s+at\s+\d{1,2}[\.:]\d{2}\s*(?:AM|PM|a\.m\.|p\.m\.|P\.M\.|A\.M\.)', f'commenced at {target_start}', text, flags=re.IGNORECASE)
                     text = re.sub(r'AT\s+\d{1,2}[\.:]\d{2}\s*(?:AM|PM|a\.m\.|p\.m\.|P\.M\.|A\.M\.)\s+AT', f'AT {target_start} AT', text, flags=re.IGNORECASE)
 
-                # 5. Replace Conclusion Time (Vote of thanks)
+                # 7. Replace Conclusion Time (Vote of thanks)
                 if end_time_str:
                     target_end = end_time_dot_str if ("." in text and ("P.M." in text or "A.M." in text or "p.m." in text)) else end_time_str
                     text = re.sub(r'(?:concluded|thanks\s+to\s+the\s+chair)\s+at\s+\d{1,2}[\.:]\d{2}\s*(?:AM|PM|a\.m\.|p\.m\.|P\.M\.|A\.M\.)', f'concluded with a vote of thanks to the chair at {target_end}', text, flags=re.IGNORECASE)
 
-                # 6. Replace sample signing places
+                # 8. Replace sample signing places
                 if request.signingPlace:
                     text = re.sub(r'\b[A-Z][a-z]{2,20}\b(?=\s+CHAIRMAN|\s*Date)', request.signingPlace, text)
 
-                # 8. Handle Date of Entry & Date of Signing specifically
+                # 9. Handle Date of Entry & Date of Signing specifically
                 if "Date of entry" in text or "Date of Recording" in text or "Date of Entry" in text:
                     if rec_date_formatted:
                         text = re.sub(r'(Date of entry|Date of Recording|Date of Entry):?\s*.*', f'Date of entry:\t{rec_date_formatted}', text, flags=re.IGNORECASE)
@@ -1529,11 +2548,22 @@ async def generate_minutes(request: MinutesGenerationRequest):
                             absent_str = absent_names[0]
                         else:
                             absent_str = ", ".join(absent_names[:-1]) + " and " + absent_names[-1]
-                        loa_text = f"Leave of absence was granted to {absent_str} upon request."
+                        loa_text = f"Leaves of absence were granted to {absent_str}, who couldn't make it convenient to attend the meeting."
 
+                        replaced_loa = False
                         for para in doc.paragraphs:
-                            if "leave of absence was granted to" in para.text.lower():
-                                para.text = loa_text
+                            p_lower = para.text.lower()
+                            if "leave" in p_lower and "absence" in p_lower:
+                                if re.search(r'\b[Ll]eaves?\s+of\s+absence\s+(?:was|were)\s+granted\b.*', para.text):
+                                    para.text = loa_text
+                                    replaced_loa = True
+                                elif "leaves of absence" in p_lower and not replaced_loa:
+                                    para.text = f"LEAVES OF ABSENCE\n\n{loa_text}"
+                                    replaced_loa = True
+                else:
+                    for para in doc.paragraphs:
+                        if re.search(r'\b[Ll]eaves?\s+of\s+absence\s+(?:was|were)\s+granted\b.*', para.text):
+                            para.text = "Leaves of absence: Nil."
 
             # 3. Dynamic Resolutions Replacement (structure-preserving: text + tables)
             if request.resolutions and request.resolutions.strip():
@@ -1591,8 +2621,20 @@ async def generate_minutes(request: MinutesGenerationRequest):
                 cursor = get_pg_cursor(conn)
                 try:
                     cursor.execute(
-                        "INSERT INTO generated_minutes (company_name, meeting_type, meeting_date, file_path) VALUES (%s, %s, %s, %s) RETURNING id",
-                        (request.companyName, request.meetingType, request.meetingDate, filename)
+                        """
+                        INSERT INTO generated_minutes
+                            (company_name, meeting_type, meeting_date, file_path, meeting_number, status)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            request.companyName,
+                            request.meetingType,
+                            request.meetingDate,
+                            filename,
+                            request.meetingNumber or "",
+                            "draft",
+                        ),
                     )
                     row = cursor.fetchone()
                     minutes_id = row["id"] if row else None
@@ -1610,17 +2652,21 @@ async def generate_minutes(request: MinutesGenerationRequest):
                         """, (minutes_id, request.companyName, request.meetingType, request.meetingDate,
                               d_name, (d.get('din') or '').strip(), d.get('status') or 'Present'))
                     conn.commit()
+                    return minutes_id
                 finally:
                     conn.close()
-            await loop.run_in_executor(thread_pool, record_history)
+            minutes_id = await loop.run_in_executor(thread_pool, record_history)
         except Exception as hist_err:
             logger.warning(f"Failed to record history (non-fatal): {hist_err}")
+            minutes_id = None
 
         # Return JSON with download URL (the frontend expects JSON, not FileResponse)
         return {
-            "message": "Document generated successfully!",
+            "message": "Document generated as draft. Finalize it from Meeting Minutes when approved.",
             "filename": filename,
-            "download_url": f"/api/generated-minutes/download/{filename}"
+            "download_url": f"/api/generated-minutes/download/{filename}",
+            "id": minutes_id,
+            "status": "draft",
         }
 
     except HTTPException:
@@ -1697,11 +2743,21 @@ class VerticalResponse(BaseModel):
 class CompanyResponse(BaseModel):
     id: int
     name: str
+    code: Optional[str] = None
     cin: Optional[str] = None
     type: Optional[str] = None
     vertical_id: Optional[int] = None
     status: Optional[str] = None
     secretary_name: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_by: Optional[str] = None
+    updated_at: Optional[str] = None
+    # Meeting statistics (when filtered by meeting type)
+    total_meetings: Optional[int] = None
+    last_meeting_date: Optional[str] = None
+    last_meeting_number: Optional[str] = None
+    next_meeting_number: Optional[str] = None
 
 class VerticalsListResponse(BaseModel):
     data: List[VerticalResponse]
@@ -1732,45 +2788,841 @@ async def get_verticals():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/verticals/{vertical_id}/companies", response_model=CompaniesListResponse)
-async def get_vertical_companies(vertical_id: int, q: Optional[str] = None, limit: int = 100, offset: int = 0):
-    """List companies belonging to a Vertical, with query search and pagination."""
+async def get_vertical_companies(
+    vertical_id: int, 
+    q: Optional[str] = None, 
+    meeting_type_filter: Optional[str] = None,  # NEW: Filter by meeting type
+    limit: int = 100, 
+    offset: int = 0
+):
+    """
+    List companies belonging to a Vertical, with query search, meeting type filtering, and pagination.
+    
+    Args:
+        vertical_id: ID of the business vertical
+        q: Search query for company name
+        meeting_type_filter: Filter by meeting type (Board Meeting, Audit Committee, etc.)
+                           Shows only companies that have this meeting type
+        limit: Maximum number of results
+        offset: Pagination offset
+        
+    Returns:
+        List of companies with meeting statistics (if filtered)
+    """
     try:
         def fetch():
             conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
             if not conn: raise RuntimeError("Database connection unavailable")
             cursor = get_pg_cursor(conn)
             try:
-                if q:
-                    cursor.execute("""
-                        SELECT id, name, cin, type, vertical_id, status, secretary_name FROM companies 
-                        WHERE vertical_id = %s AND UPPER(name) LIKE UPPER(%s)
-                        ORDER BY name
-                        LIMIT %s OFFSET %s
-                    """, (vertical_id, f"%{q}%", limit, offset))
-                else:
-                    cursor.execute("""
-                        SELECT id, name, cin, type, vertical_id, status, secretary_name FROM companies 
-                        WHERE vertical_id = %s
-                        ORDER BY name
-                        LIMIT %s OFFSET %s
-                    """, (vertical_id, limit, offset))
-                rows = cursor.fetchall()
+                # Helper function to extract numeric part from meeting number
+                def extract_meeting_number(meeting_num: str) -> int:
+                    """Extract numeric value from meeting number like '87TH' or 'EIGHTY SEVENTH'"""
+                    if not meeting_num:
+                        return 0
+                    # Try to extract digits
+                    import re
+                    match = re.search(r'\d+', str(meeting_num))
+                    if match:
+                        return int(match.group())
+                    return 0
                 
-                # Get total count for pagination info
-                if q:
-                    cursor.execute("SELECT COUNT(*) as count FROM companies WHERE vertical_id = %s AND UPPER(name) LIKE UPPER(%s)", (vertical_id, f"%{q}%"))
-                else:
-                    cursor.execute("SELECT COUNT(*) as count FROM companies WHERE vertical_id = %s", (vertical_id,))
-                total = cursor.fetchone()['count'] or 0
+                def format_next_meeting_number(last_num: str) -> str:
+                    """Generate next meeting number"""
+                    current = extract_meeting_number(last_num)
+                    next_num = current + 1
+                    
+                    # Return in ordinal format like "88TH"
+                    suffix = 'TH'
+                    if next_num % 10 == 1 and next_num % 100 != 11:
+                        suffix = 'ST'
+                    elif next_num % 10 == 2 and next_num % 100 != 12:
+                        suffix = 'ND'
+                    elif next_num % 10 == 3 and next_num % 100 != 13:
+                        suffix = 'RD'
+                    
+                    return f"{next_num}{suffix}"
+                
+                # If meeting type filter is applied, join with generated_minutes for stats.
+                # Still return ALL companies under the BU — filter only scopes the stats
+                # and what is shown after opening a company.
+                if meeting_type_filter and meeting_type_filter.lower() != 'all':
+                    query = """
+                        SELECT 
+                            c.id, 
+                            c.name,
+                            c.code,
+                            c.cin, 
+                            c.type, 
+                            c.vertical_id, 
+                            c.status, 
+                            c.secretary_name,
+                            c.created_by,
+                            c.created_at,
+                            c.updated_by,
+                            c.updated_at,
+                            COUNT(gm.id) as total_meetings,
+                            MAX(gm.meeting_date) as last_meeting_date,
+                            MAX(gm.meeting_number) as last_meeting_number
+                        FROM companies c
+                        LEFT JOIN generated_minutes gm 
+                            ON gm.company_name = c.name 
+                            AND UPPER(gm.meeting_type) = UPPER(%s)
+                        WHERE c.vertical_id = %s
+                    """
+                    params = [meeting_type_filter, vertical_id]
+                    
+                    if q:
+                        query += " AND UPPER(c.name) LIKE UPPER(%s)"
+                        params.append(f"%{q}%")
+                    
+                    query += """
+                        GROUP BY c.id, c.name, c.code, c.cin, c.type, c.vertical_id, 
+                                 c.status, c.secretary_name, c.created_by, c.created_at, 
+                                 c.updated_by, c.updated_at
+                        ORDER BY c.name 
+                        LIMIT %s OFFSET %s
+                    """
+                    params.extend([limit, offset])
+                    
+                    cursor.execute(query, tuple(params))
+                    rows = cursor.fetchall()
 
-                return [CompanyResponse(id=r['id'], name=r['name'], cin=r['cin'], type=r['type'], vertical_id=r['vertical_id'], status=r['status'], secretary_name=r['secretary_name']) for r in rows], total
+                    # Resolve true last meeting number by numeric order (MAX on '9TH'/'90TH' is unreliable)
+                    last_by_company: Dict[str, str] = {}
+                    if rows:
+                        company_names = [r['name'] for r in rows]
+                        placeholders = ", ".join(["%s"] * len(company_names))
+                        cursor.execute(
+                            f"""
+                            SELECT company_name, meeting_number
+                            FROM generated_minutes
+                            WHERE UPPER(meeting_type) = UPPER(%s)
+                              AND company_name IN ({placeholders})
+                            """,
+                            tuple([meeting_type_filter] + company_names),
+                        )
+                        for mr in cursor.fetchall():
+                            cname = mr['company_name']
+                            mnum = mr.get('meeting_number') or ''
+                            prev = last_by_company.get(cname, '')
+                            if extract_meeting_number(mnum) >= extract_meeting_number(prev):
+                                last_by_company[cname] = mnum
+                    
+                    result = []
+                    for r in rows:
+                        last_date = r.get('last_meeting_date')
+                        last_num = last_by_company.get(r['name'], '') or (r.get('last_meeting_number') or '')
+                        result.append(CompanyResponse(
+                            id=r['id'],
+                            name=r['name'],
+                            code=r.get('code', ''),
+                            cin=r['cin'],
+                            type=r['type'],
+                            vertical_id=r['vertical_id'],
+                            status=r['status'],
+                            secretary_name=r['secretary_name'],
+                            created_by=r.get('created_by'),
+                            created_at=str(r.get('created_at', '')),
+                            updated_by=r.get('updated_by'),
+                            updated_at=str(r.get('updated_at', '')),
+                            total_meetings=r.get('total_meetings', 0) or 0,
+                            last_meeting_date=str(last_date) if last_date else '',
+                            last_meeting_number=last_num,
+                            next_meeting_number=format_next_meeting_number(last_num)
+                        ))
+                    
+                    # Count all companies in this vertical (search-aware), not only those with meetings
+                    count_query = "SELECT COUNT(*) as count FROM companies WHERE vertical_id = %s"
+                    count_params = [vertical_id]
+                    
+                    if q:
+                        count_query += " AND UPPER(name) LIKE UPPER(%s)"
+                        count_params.append(f"%{q}%")
+                    
+                    cursor.execute(count_query, tuple(count_params))
+                    total = cursor.fetchone()['count'] or 0
+                    
+                    return result, total
+                
+                else:
+                    # No filter - show all companies (existing behavior)
+                    query = """
+                        SELECT id, name, code, cin, type, vertical_id, status, secretary_name,
+                               created_by, created_at, updated_by, updated_at
+                        FROM companies 
+                        WHERE vertical_id = %s
+                    """
+                    params = [vertical_id]
+                    
+                    if q:
+                        query += " AND UPPER(name) LIKE UPPER(%s)"
+                        params.append(f"%{q}%")
+                    
+                    query += " ORDER BY name LIMIT %s OFFSET %s"
+                    params.extend([limit, offset])
+                    
+                    cursor.execute(query, tuple(params))
+                    rows = cursor.fetchall()
+                    
+                    result = [CompanyResponse(
+                        id=r['id'], 
+                        name=r['name'],
+                        code=r.get('code', ''),
+                        cin=r['cin'], 
+                        type=r['type'], 
+                        vertical_id=r['vertical_id'], 
+                        status=r['status'], 
+                        secretary_name=r['secretary_name'],
+                        created_by=r.get('created_by'),
+                        created_at=str(r.get('created_at', '')),
+                        updated_by=r.get('updated_by'),
+                        updated_at=str(r.get('updated_at', ''))
+                    ) for r in rows]
+                    
+                    # Get total count for pagination
+                    count_query = "SELECT COUNT(*) as count FROM companies WHERE vertical_id = %s"
+                    count_params = [vertical_id]
+                    if q:
+                        count_query += " AND UPPER(name) LIKE UPPER(%s)"
+                        count_params.append(f"%{q}%")
+                    
+                    cursor.execute(count_query, tuple(count_params))
+                    total = cursor.fetchone()['count'] or 0
+                    
+                    return result, total
+                    
             finally:
                 conn.close()
+        
         data, count = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
         return CompaniesListResponse(data=data, count=count)
     except Exception as e:
         logger.error(f"Error listing vertical companies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Company Management Endpoints ---
+
+class CompanyCreateRequest(BaseModel):
+    name: str
+    code: Optional[str] = ""
+    cin: Optional[str] = ""
+    type: Optional[str] = "Public Limited"
+    secretary_name: Optional[str] = ""
+    status: str = "Active"
+
+
+def generate_company_code(company_name: str) -> str:
+    """
+    Auto-generate company code from name
+    Examples: 
+        "Adani Green Energy Limited" -> "AGEL"
+        "Adani Ports and SEZ" -> "APSZ"
+    """
+    # Remove common suffixes
+    name = company_name.upper()
+    for suffix in [' LIMITED', ' LTD', ' PVT', ' PRIVATE', ' LTD.', ' CORP', ' CORPORATION', ' INC']:
+        name = name.replace(suffix, '')
+    
+    # Split into words and take first letter of significant words
+    words = name.split()
+    # Filter out common words
+    significant_words = [w for w in words if w not in ['AND', 'THE', 'OF', 'FOR', 'TO', 'IN', 'ON', 'AT', 'BY']]
+    
+    if len(significant_words) >= 2:
+        # Take first letter of each word (max 4 letters)
+        code = ''.join(w[0] for w in significant_words[:4])
+    elif len(significant_words) == 1:
+        # Take first 3-4 letters of single word
+        code = significant_words[0][:4]
+    else:
+        # Fallback: take first 3 letters of original name
+        code = words[0][:3] if words else 'UNK'
+    
+    return code
+
+
+@router.post("/verticals/{vertical_id}/companies", response_model=CompanyResponse)
+async def add_company(
+    vertical_id: int, 
+    request: CompanyCreateRequest,
+    req: Request,
+    user: dict = Depends(require_session)
+):
+    """
+    Add new company to a vertical with audit logging
+    
+    Requires authentication. Creates a new company record and logs the action.
+    
+    Args:
+        vertical_id: ID of the business vertical
+        request: Company details (name, CIN, type, secretary, etc.)
+        req: FastAPI Request object for IP/user agent extraction
+        user: Authenticated user from session
+        
+    Returns:
+        Created company details
+    """
+    if not request.name.strip():
+        raise HTTPException(status_code=400, detail="Company name is required")
+    
+    def insert():
+        conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection unavailable")
+        
+        cursor = get_pg_cursor(conn)
+        try:
+            # Check if company already exists
+            cursor.execute(
+                "SELECT id, name FROM companies WHERE UPPER(name) = UPPER(%s)",
+                (request.name.strip(),)
+            )
+            existing = cursor.fetchone()
+            if existing:
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"Company '{existing['name']}' already exists with ID {existing['id']}"
+                )
+            
+            # Auto-generate code if not provided
+            company_code = request.code.strip() if request.code else generate_company_code(request.name)
+            
+            # Insert company
+            cursor.execute("""
+                INSERT INTO companies 
+                (name, code, cin, type, vertical_id, secretary_name, status, created_by, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, name, code, cin, type, vertical_id, secretary_name, status, 
+                          created_by, created_at, updated_by, updated_at
+            """, (
+                request.name.strip(),
+                company_code,
+                request.cin.strip() if request.cin else None,
+                request.type,
+                vertical_id,
+                request.secretary_name.strip() if request.secretary_name else None,
+                request.status,
+                user['email']
+            ))
+            
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to create company")
+            
+            # Prepare company data for audit log
+            company_data = {
+                "id": row['id'],
+                "name": row['name'],
+                "code": row['code'],
+                "cin": row['cin'],
+                "type": row['type'],
+                "vertical_id": row['vertical_id'],
+                "secretary_name": row['secretary_name'],
+                "status": row['status'],
+                "created_by": row['created_by']
+            }
+            
+            # Extract IP and user agent
+            ip_address = get_client_ip(req)
+            user_agent = get_user_agent(req)
+            
+            # Log the audit entry
+            AuditLogger.log_company_created(
+                conn=conn,
+                company_id=row['id'],
+                company_name=row['name'],
+                company_data=company_data,
+                user_email=user['email'],
+                vertical_id=vertical_id,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            # Commit transaction (includes both insert and audit log)
+            conn.commit()
+            
+            logger.info(f"Company '{row['name']}' created by {user['email']} (ID: {row['id']})")
+            
+            return CompanyResponse(
+                id=row['id'],
+                name=row['name'],
+                code=row['code'],
+                cin=row['cin'],
+                type=row['type'],
+                vertical_id=row['vertical_id'],
+                status=row['status'],
+                secretary_name=row['secretary_name'],
+                created_by=row['created_by'],
+                created_at=str(row['created_at']),
+                updated_by=row.get('updated_by'),
+                updated_at=str(row.get('updated_at', ''))
+            )
+            
+        except HTTPException:
+            conn.rollback()
+            raise
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error adding company: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to add company: {str(e)}")
+        finally:
+            conn.close()
+    
+    return await asyncio.get_running_loop().run_in_executor(thread_pool, insert)
+
+
+@router.delete("/companies/{company_id}")
+async def delete_company(
+    company_id: int,
+    req: Request,
+    confirm: bool = False,
+    user: dict = Depends(require_session)
+):
+    """
+    Delete company and all related records with audit logging
+    
+    DANGER: This is a destructive operation that cannot be undone.
+    Deletes:
+    - Company record
+    - All meetings/minutes for this company
+    - All agendas for this company
+    - All director mappings for this company
+    - All governance records for this company
+    - All attendance records for this company
+    
+    Args:
+        company_id: ID of the company to delete
+        req: FastAPI Request object
+        confirm: Must be True to proceed (safety check)
+        user: Authenticated user from session
+        
+    Returns:
+        Deletion confirmation with statistics
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400, 
+            detail="Confirmation required. Set confirm=true query parameter to proceed with deletion."
+        )
+    
+    def delete():
+        conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection unavailable")
+        
+        cursor = get_pg_cursor(conn)
+        try:
+            # Get company details BEFORE deletion for audit log
+            cursor.execute("""
+                SELECT id, name, code, cin, type, vertical_id, secretary_name, status,
+                       created_by, created_at, updated_by, updated_at
+                FROM companies 
+                WHERE id = %s
+            """, (company_id,))
+            
+            company_row = cursor.fetchone()
+            if not company_row:
+                raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
+            
+            company_data = dict(company_row)
+            company_name = company_row['name']
+            
+            logger.info(f"Deleting company '{company_name}' (ID: {company_id}) by user {user['email']}")
+            
+            # Count related records before deletion
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM generated_minutes WHERE company_name = %s",
+                (company_name,)
+            )
+            meetings_count = cursor.fetchone()['count'] or 0
+            
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM meeting_attendance WHERE company_name = %s",
+                (company_name,)
+            )
+            attendance_count = cursor.fetchone()['count'] or 0
+            
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM company_directors WHERE company_name = %s",
+                (company_name,)
+            )
+            directors_count = cursor.fetchone()['count'] or 0
+            
+            # Check if meeting_agendas table exists
+            agendas_count = 0
+            try:
+                cursor.execute(
+                    "SELECT COUNT(*) as count FROM meeting_agendas WHERE company_name = %s",
+                    (company_name,)
+                )
+                agendas_count = cursor.fetchone()['count'] or 0
+            except Exception:
+                pass  # Table might not exist yet
+            
+            # Check if governance_records table exists
+            governance_count = 0
+            try:
+                cursor.execute(
+                    "SELECT COUNT(*) as count FROM governance_records WHERE company_name = %s",
+                    (company_name,)
+                )
+                governance_count = cursor.fetchone()['count'] or 0
+            except Exception:
+                pass  # Table might not exist yet
+            
+            total_related_records = (
+                meetings_count + attendance_count + directors_count + 
+                agendas_count + governance_count
+            )
+            
+            # Delete all related records (cascade delete)
+            cursor.execute("DELETE FROM meeting_attendance WHERE company_name = %s", (company_name,))
+            cursor.execute("DELETE FROM generated_minutes WHERE company_name = %s", (company_name,))
+            cursor.execute("DELETE FROM company_directors WHERE company_name = %s", (company_name,))
+            
+            # Delete from optional tables if they exist
+            try:
+                cursor.execute("DELETE FROM meeting_agendas WHERE company_name = %s", (company_name,))
+            except Exception:
+                pass
+            
+            try:
+                cursor.execute("DELETE FROM governance_records WHERE company_name = %s", (company_name,))
+            except Exception:
+                pass
+            
+            # Finally delete the company itself
+            cursor.execute("DELETE FROM companies WHERE id = %s RETURNING id", (company_id,))
+            deleted_row = cursor.fetchone()
+            
+            if not deleted_row:
+                raise HTTPException(status_code=404, detail="Company not found or already deleted")
+            
+            # Extract IP and user agent
+            ip_address = get_client_ip(req)
+            user_agent = get_user_agent(req)
+            
+            # Log the deletion in audit log
+            AuditLogger.log_company_deleted(
+                conn=conn,
+                company_id=company_id,
+                company_name=company_name,
+                company_data=company_data,
+                user_email=user['email'],
+                deleted_records_count=total_related_records,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            # Commit transaction (includes all deletes and audit log)
+            conn.commit()
+            
+            logger.info(
+                f"Company '{company_name}' deleted successfully by {user['email']}. "
+                f"Deleted {total_related_records} related records."
+            )
+            
+            return {
+                "success": True,
+                "message": f"Company '{company_name}' deleted successfully",
+                "company_id": company_id,
+                "company_name": company_name,
+                "deleted_records": {
+                    "meetings": meetings_count,
+                    "attendance_records": attendance_count,
+                    "directors": directors_count,
+                    "agendas": agendas_count,
+                    "governance_records": governance_count,
+                    "total": total_related_records
+                },
+                "deleted_by": user['email'],
+                "deleted_at": datetime.now().isoformat()
+            }
+            
+        except HTTPException:
+            conn.rollback()
+            raise
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error deleting company {company_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete company: {str(e)}")
+        finally:
+            conn.close()
+    
+    return await asyncio.get_running_loop().run_in_executor(thread_pool, delete)
+
+
+class CompanyUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    cin: Optional[str] = None
+    type: Optional[str] = None
+    secretary_name: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.put("/companies/{company_id}", response_model=CompanyResponse)
+async def update_company(
+    company_id: int,
+    request: CompanyUpdateRequest,
+    req: Request,
+    user: dict = Depends(require_session)
+):
+    """
+    Update company details with audit logging
+    
+    Updates one or more fields of a company record. Only provided fields are updated.
+    Tracks before/after state in audit log for accountability.
+    
+    Args:
+        company_id: ID of the company to update
+        request: Fields to update (only provided fields are changed)
+        req: FastAPI Request object
+        user: Authenticated user from session
+        
+    Returns:
+        Updated company details
+    """
+    def update():
+        conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection unavailable")
+        
+        cursor = get_pg_cursor(conn)
+        try:
+            # Get current company data BEFORE update for audit log
+            cursor.execute("""
+                SELECT id, name, code, cin, type, vertical_id, secretary_name, status,
+                       created_by, created_at, updated_by, updated_at
+                FROM companies 
+                WHERE id = %s
+            """, (company_id,))
+            
+            old_row = cursor.fetchone()
+            if not old_row:
+                raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
+            
+            old_data = dict(old_row)
+            company_name = old_row['name']
+            
+            # Build dynamic UPDATE query based on provided fields
+            update_fields = []
+            update_values = []
+            
+            if request.name is not None and request.name.strip():
+                # Check if new name conflicts with existing company
+                if request.name.strip().upper() != old_row['name'].upper():
+                    cursor.execute(
+                        "SELECT id, name FROM companies WHERE UPPER(name) = UPPER(%s) AND id != %s",
+                        (request.name.strip(), company_id)
+                    )
+                    conflict = cursor.fetchone()
+                    if conflict:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Company name '{conflict['name']}' already exists (ID: {conflict['id']})"
+                        )
+                update_fields.append("name = %s")
+                update_values.append(request.name.strip())
+            
+            if request.code is not None:
+                update_fields.append("code = %s")
+                update_values.append(request.code.strip() if request.code else None)
+            
+            if request.cin is not None:
+                update_fields.append("cin = %s")
+                update_values.append(request.cin.strip() if request.cin else None)
+            
+            if request.type is not None:
+                update_fields.append("type = %s")
+                update_values.append(request.type)
+            
+            if request.secretary_name is not None:
+                update_fields.append("secretary_name = %s")
+                update_values.append(request.secretary_name.strip() if request.secretary_name else None)
+            
+            if request.status is not None:
+                update_fields.append("status = %s")
+                update_values.append(request.status)
+            
+            if not update_fields:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No fields provided for update. At least one field must be specified."
+                )
+            
+            # Add updated_by and updated_at
+            update_fields.append("updated_by = %s")
+            update_values.append(user['email'])
+            
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            
+            # Build and execute UPDATE query
+            query = f"""
+                UPDATE companies 
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id, name, code, cin, type, vertical_id, secretary_name, status,
+                          created_by, created_at, updated_by, updated_at
+            """
+            update_values.append(company_id)
+            
+            cursor.execute(query, tuple(update_values))
+            updated_row = cursor.fetchone()
+            
+            if not updated_row:
+                raise HTTPException(status_code=404, detail="Company not found or update failed")
+            
+            new_data = dict(updated_row)
+            
+            # Extract IP and user agent
+            ip_address = get_client_ip(req)
+            user_agent = get_user_agent(req)
+            
+            # Log the update in audit log
+            AuditLogger.log_company_updated(
+                conn=conn,
+                company_id=company_id,
+                company_name=company_name,
+                old_data=old_data,
+                new_data=new_data,
+                user_email=user['email'],
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            # Commit transaction (includes update and audit log)
+            conn.commit()
+            
+            logger.info(f"Company '{company_name}' updated by {user['email']} (ID: {company_id})")
+            
+            return CompanyResponse(
+                id=updated_row['id'],
+                name=updated_row['name'],
+                code=updated_row['code'],
+                cin=updated_row['cin'],
+                type=updated_row['type'],
+                vertical_id=updated_row['vertical_id'],
+                status=updated_row['status'],
+                secretary_name=updated_row['secretary_name'],
+                created_by=updated_row['created_by'],
+                created_at=str(updated_row['created_at']),
+                updated_by=updated_row['updated_by'],
+                updated_at=str(updated_row['updated_at'])
+            )
+            
+        except HTTPException:
+            conn.rollback()
+            raise
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error updating company {company_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to update company: {str(e)}")
+        finally:
+            conn.close()
+    
+    return await asyncio.get_running_loop().run_in_executor(thread_pool, update)
+
+
+def _extract_meeting_number_int(meeting_num: Optional[str]) -> int:
+    """Extract numeric value from meeting number like '87TH' or '87'."""
+    if not meeting_num:
+        return 0
+    import re
+    match = re.search(r'\d+', str(meeting_num))
+    return int(match.group()) if match else 0
+
+
+def _format_next_meeting_number(last_num: Optional[str]) -> str:
+    """Generate next ordinal meeting number (e.g. 87TH -> 88TH)."""
+    current = _extract_meeting_number_int(last_num)
+    next_num = current + 1
+    suffix = 'TH'
+    if next_num % 10 == 1 and next_num % 100 != 11:
+        suffix = 'ST'
+    elif next_num % 10 == 2 and next_num % 100 != 12:
+        suffix = 'ND'
+    elif next_num % 10 == 3 and next_num % 100 != 13:
+        suffix = 'RD'
+    return f"{next_num}{suffix}"
+
+
+@router.get("/companies/{company_id}/meetings", response_model=CompanyMeetingsListResponse)
+async def get_company_meetings(
+    company_id: int,
+    meeting_type: Optional[str] = None,
+):
+    """
+    List meetings/minutes for a company, optionally filtered by meeting type.
+    Ordered by meeting number (numeric) ascending, then meeting date ascending.
+    """
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            cursor = get_pg_cursor(conn)
+            try:
+                cursor.execute(
+                    "SELECT id, name FROM companies WHERE id = %s",
+                    (company_id,),
+                )
+                company = cursor.fetchone()
+                if not company:
+                    return None
+
+                company_name = company['name']
+                params: list = [company_name]
+                type_clause = ""
+                if meeting_type and meeting_type.lower() != 'all':
+                    type_clause = " AND UPPER(meeting_type) = UPPER(%s)"
+                    params.append(meeting_type)
+
+                cursor.execute(
+                    f"""
+                    SELECT id, company_name, meeting_type, meeting_date, meeting_number,
+                           meeting_year, file_path, created_at, status, finalized_at, finalized_by,
+                           is_signed, unsigned_file_path
+                    FROM generated_minutes
+                    WHERE company_name = %s
+                    {type_clause}
+                    """,
+                    tuple(params),
+                )
+                rows = cursor.fetchall()
+
+                # Sort by numeric meeting number, then date (oldest → newest)
+                def sort_key(r):
+                    num = _extract_meeting_number_int(r.get('meeting_number'))
+                    date_str = str(r.get('meeting_date') or '')
+                    return (num, date_str)
+
+                rows_sorted = sorted(rows, key=sort_key)
+                data = [_row_to_generated_minute(r) for r in rows_sorted]
+
+                last_num = data[-1].meeting_number if data else None
+                return data, len(data), _format_next_meeting_number(last_num)
+            finally:
+                conn.close()
+
+        result = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
+        data, count, next_num = result
+        return CompanyMeetingsListResponse(
+            data=data,
+            count=count,
+            meeting_type=meeting_type if meeting_type and meeting_type.lower() != 'all' else None,
+            next_meeting_number=next_num,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing company meetings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/companies/{company_name}/directors")
 async def get_company_directors(company_name: str):
@@ -1787,7 +3639,7 @@ async def get_company_directors(company_name: str):
                 cursor = get_pg_cursor(conn)
                 try:
                     cursor.execute("""
-                        SELECT DISTINCT name, din
+                        SELECT DISTINCT name, din, designation
                         FROM directors_master.external_board_members
                         WHERE UPPER(company_name) = UPPER(%s) OR UPPER(company_name) LIKE UPPER(%s)
                         LIMIT 50
@@ -1796,6 +3648,17 @@ async def get_company_directors(company_name: str):
                 except Exception as ex:
                     logger.warning(f"External board members query failed for {term}: {ex}")
                     rows = []
+                    try:
+                        cursor.execute("""
+                            SELECT DISTINCT name, din
+                            FROM directors_master.external_board_members
+                            WHERE UPPER(company_name) = UPPER(%s) OR UPPER(company_name) LIKE UPPER(%s)
+                            LIMIT 50
+                        """, (term, f"%{term}%"))
+                        rows = cursor.fetchall()
+                    except Exception as ex2:
+                        logger.warning(f"External board members fallback query failed for {term}: {ex2}")
+                        rows = []
 
                 if not rows:
                     try:
@@ -1815,7 +3678,13 @@ async def get_company_directors(company_name: str):
                     key = (r["din"] or "").strip() or r["name"].strip().upper()
                     if key not in seen:
                         seen.add(key)
-                        results.append({"name": r["name"], "din": r["din"], "source": "disclosure", "id": None})
+                        results.append({
+                            "name": r["name"],
+                            "din": r["din"],
+                            "designation": (r["designation"] if "designation" in r.keys() else None) or "Director",
+                            "source": "disclosure",
+                            "id": None,
+                        })
                 conn.close()
 
             # 2. Local overlay: manual entries stored in minutes DB only
@@ -1824,16 +3693,30 @@ async def get_company_directors(company_name: str):
                 if m_conn:
                     m_cursor = get_pg_cursor(m_conn)
                     try:
-                        m_cursor.execute("""
-                            SELECT id, name, din FROM company_directors
-                            WHERE UPPER(company_name) = UPPER(%s)
-                            ORDER BY name
-                        """, (term,))
+                        # Prefer designation column when present
+                        try:
+                            m_cursor.execute("""
+                                SELECT id, name, din, designation FROM company_directors
+                                WHERE UPPER(company_name) = UPPER(%s)
+                                ORDER BY name
+                            """, (term,))
+                        except Exception:
+                            m_cursor.execute("""
+                                SELECT id, name, din FROM company_directors
+                                WHERE UPPER(company_name) = UPPER(%s)
+                                ORDER BY name
+                            """, (term,))
                         for r in m_cursor.fetchall():
                             key = (r["din"] or "").strip() or r["name"].strip().upper()
                             if key not in seen:
                                 seen.add(key)
-                                results.append({"name": r["name"], "din": r["din"], "source": "local", "id": r["id"]})
+                                results.append({
+                                    "name": r["name"],
+                                    "din": r["din"],
+                                    "designation": (r["designation"] if "designation" in r.keys() else None) or "Director",
+                                    "source": "local",
+                                    "id": r["id"],
+                                })
                     finally:
                         m_conn.close()
             except Exception as ex:
@@ -1841,8 +3724,6 @@ async def get_company_directors(company_name: str):
 
             if results:
                 return results
-
-            # Dynamic fallback to master directors database list if company specific directors returned 0 rows
 
             # Fallback to master directors database list if company specific directors returned 0 rows
             try:
@@ -1855,7 +3736,7 @@ async def get_company_directors(company_name: str):
                     master_rows = c.fetchall()
                     s_conn.close()
                     if master_rows:
-                        return [{"name": r["name"], "din": r["din"]} for r in master_rows]
+                        return [{"name": r["name"], "din": r["din"], "designation": "Director"} for r in master_rows]
             except Exception as ex:
                 logger.warning(f"Fallback directors query failed: {ex}")
 
@@ -1870,6 +3751,7 @@ async def get_company_directors(company_name: str):
 
 
 @router.get("/directors")
+@router.get("/directors-master")
 async def get_all_master_directors(q: Optional[str] = None):
     """Fetch all master directors across all portfolio entities."""
     try:
@@ -2330,33 +4212,40 @@ async def get_document_content(doc_id: int):
                 raise HTTPException(status_code=503, detail="Database unavailable")
             cursor = get_pg_cursor(conn)
             try:
-                # 1. Try fetching from document_contents table
-                cursor.execute("""
-                    SELECT id, filename, company_name, vertical_name, meeting_type, meeting_year,
-                           file_type, extracted_text, tables_json, paragraph_count, table_count, 
-                           file_path, uploaded_at
-                    FROM document_contents WHERE id = %s
-                """, (doc_id,))
-                row = cursor.fetchone()
-                if row:
-                    tables = row["tables_json"]
-                    if isinstance(tables, str):
-                        tables = json.loads(tables)
-                    return {
-                        "id": row["id"],
-                        "filename": row["filename"],
-                        "company_name": row["company_name"],
-                        "vertical_name": row["vertical_name"],
-                        "meeting_type": row["meeting_type"],
-                        "meeting_year": row["meeting_year"],
-                        "file_type": row["file_type"],
-                        "extracted_text": row["extracted_text"],
-                        "tables": tables,
-                        "paragraph_count": row["paragraph_count"],
-                        "table_count": row["table_count"],
-                        "file_path": row["file_path"],
-                        "uploaded_at": str(row["uploaded_at"])
-                    }
+                # 1. Try fetching from document_contents table (optional — may not exist in SQLite)
+                try:
+                    cursor.execute("""
+                        SELECT id, filename, company_name, vertical_name, meeting_type, meeting_year,
+                               file_type, extracted_text, tables_json, paragraph_count, table_count, 
+                               file_path, uploaded_at
+                        FROM document_contents WHERE id = %s
+                    """, (doc_id,))
+                    row = cursor.fetchone()
+                    if row:
+                        tables = row["tables_json"]
+                        if isinstance(tables, str):
+                            tables = json.loads(tables)
+                        return {
+                            "id": row["id"],
+                            "filename": row["filename"],
+                            "company_name": row["company_name"],
+                            "vertical_name": row["vertical_name"],
+                            "meeting_type": row["meeting_type"],
+                            "meeting_year": row["meeting_year"],
+                            "file_type": row["file_type"],
+                            "extracted_text": row["extracted_text"],
+                            "tables": tables,
+                            "paragraph_count": row["paragraph_count"],
+                            "table_count": row["table_count"],
+                            "file_path": row["file_path"],
+                            "uploaded_at": str(row["uploaded_at"])
+                        }
+                except Exception as table_err:
+                    logger.debug(f"document_contents unavailable, falling back to generated_minutes: {table_err}")
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
 
                 # 2. Fallback: Query generated_minutes table and parse file from disk on-the-fly
                 cursor.execute("""
@@ -2368,35 +4257,27 @@ async def get_document_content(doc_id: int):
                     return None
 
                 filename = gm_row["file_path"]
-                # Search disk locations
-                possible_paths = [
-                    os.path.join(os.path.dirname(__file__), "..", "public", "templates", filename),
-                    os.path.join(os.path.dirname(__file__), "..", "public", "repository", filename)
-                ]
-                
-                # Search recursively in repository directory if needed
-                repo_base = os.path.join(os.path.dirname(__file__), "..", "public", "repository")
-                if os.path.exists(repo_base):
-                    for root, _, files in os.walk(repo_base):
-                        if filename in files:
-                            possible_paths.append(os.path.join(root, filename))
+                found_path = _resolve_minutes_file_path(filename)
 
-                found_path = None
-                for p in possible_paths:
-                    if os.path.exists(p):
-                        found_path = p
-                        break
+                # Also search repository tree for uploaded files
+                if not found_path:
+                    repo_base = os.path.join(os.path.dirname(__file__), "..", "public", "repository")
+                    if os.path.exists(repo_base) and filename:
+                        for root, _, files in os.walk(repo_base):
+                            if filename in files:
+                                found_path = os.path.join(root, filename)
+                                break
 
                 extracted = {"text": "Document file not found on server disk.", "paragraph_count": 0, "tables": [], "table_count": 0}
-                file_ext = os.path.splitext(filename)[1].lstrip('.')
+                file_ext = os.path.splitext(filename or "")[1].lstrip('.')
 
                 if found_path:
                     try:
                         with open(found_path, "rb") as f:
                             file_bytes = f.read()
-                        if filename.endswith('.docx') and DOCX_AVAILABLE:
+                        if (filename or "").lower().endswith('.docx') and DOCX_AVAILABLE:
                             extracted = extract_text_from_docx(file_bytes)
-                        elif filename.endswith('.pdf'):
+                        elif (filename or "").lower().endswith('.pdf'):
                             extracted = extract_text_from_pdf(file_bytes)
                     except Exception as p_err:
                         logger.warning(f"On-the-fly extraction error for {filename}: {p_err}")
@@ -2414,7 +4295,8 @@ async def get_document_content(doc_id: int):
                     "paragraph_count": extracted["paragraph_count"],
                     "table_count": extracted["table_count"],
                     "file_path": filename,
-                    "uploaded_at": str(gm_row["created_at"]) if gm_row.get("created_at") else "N/A"
+                    "uploaded_at": str(gm_row["created_at"]) if gm_row.get("created_at") else "N/A",
+                    "view_url": f"/api/generated-minutes/view/{filename}" if filename else None,
                 }
             finally:
                 conn.close()
@@ -2798,3 +4680,538 @@ async def export_attendance_csv():
         logger.error(f"Error exporting attendance CSV: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# --- Audit Log Endpoints ---
+
+class AuditLogResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: Optional[int]
+    entity_name: str
+    action: str
+    performed_by: str
+    performed_at: str
+    old_data: Optional[dict]
+    new_data: Optional[dict]
+    remarks: Optional[str]
+    vertical_id: Optional[int]
+    company_name: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+
+
+class AuditLogsListResponse(BaseModel):
+    data: List[AuditLogResponse]
+    count: int
+    total_count: int
+
+
+@router.get("/audit-logs", response_model=AuditLogsListResponse)
+async def get_audit_logs(
+    entity_type: Optional[str] = None,
+    entity_id: Optional[int] = None,
+    action: Optional[str] = None,
+    company_name: Optional[str] = None,
+    performed_by: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    user: dict = Depends(require_session)
+):
+    """
+    Get audit logs with comprehensive filtering
+    
+    Returns audit trail of all system operations. Admin users can see all logs,
+    regular users can only see their own actions (unless they have special permissions).
+    
+    Args:
+        entity_type: Filter by entity type ('company', 'meeting', 'user', etc.)
+        entity_id: Filter by specific entity ID
+        action: Filter by action ('created', 'updated', 'deleted', 'finalized', etc.)
+        company_name: Filter by company name
+        performed_by: Filter by user email who performed the action
+        date_from: Filter from date (YYYY-MM-DD format)
+        date_to: Filter to date (YYYY-MM-DD format)
+        limit: Maximum number of results (default: 100, max: 1000)
+        offset: Pagination offset
+        user: Authenticated user from session
+        
+    Returns:
+        List of audit log entries with pagination info
+    """
+    # Limit max results
+    if limit > 1000:
+        limit = 1000
+    
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            
+            cursor = get_pg_cursor(conn)
+            try:
+                # Build dynamic query with filters
+                query = """
+                    SELECT 
+                        id, entity_type, entity_id, entity_name, action, 
+                        performed_by, performed_at, old_data, new_data, 
+                        remarks, vertical_id, company_name, ip_address, user_agent
+                    FROM audit_logs
+                    WHERE 1=1
+                """
+                params = []
+                
+                # Check if user has admin privileges
+                # For now, assume non-admin users can only see their own logs
+                # You can enhance this with proper RBAC later
+                user_email = user.get('email', '')
+                user_role = user.get('role', 'user')
+                
+                # Apply user-level filtering (non-admins see only their own actions)
+                if user_role not in ['master_admin', 'admin']:
+                    query += " AND performed_by = %s"
+                    params.append(user_email)
+                
+                # Apply entity type filter
+                if entity_type:
+                    query += " AND entity_type = %s"
+                    params.append(entity_type)
+                
+                # Apply entity ID filter
+                if entity_id:
+                    query += " AND entity_id = %s"
+                    params.append(entity_id)
+                
+                # Apply action filter
+                if action:
+                    query += " AND action = %s"
+                    params.append(action)
+                
+                # Apply company name filter
+                if company_name:
+                    query += " AND company_name = %s"
+                    params.append(company_name)
+                
+                # Apply performed_by filter (admin only)
+                if performed_by and user_role in ['master_admin', 'admin']:
+                    query += " AND performed_by = %s"
+                    params.append(performed_by)
+                
+                # Apply date range filters
+                if date_from:
+                    query += " AND DATE(performed_at) >= %s"
+                    params.append(date_from)
+                
+                if date_to:
+                    query += " AND DATE(performed_at) <= %s"
+                    params.append(date_to)
+                
+                # Get total count before applying pagination
+                count_query = query.replace(
+                    "SELECT id, entity_type, entity_id, entity_name, action, performed_by, performed_at, old_data, new_data, remarks, vertical_id, company_name, ip_address, user_agent",
+                    "SELECT COUNT(*) as total"
+                )
+                cursor.execute(count_query, tuple(params))
+                total_count = cursor.fetchone()['total'] or 0
+                
+                # Apply ordering and pagination
+                query += " ORDER BY performed_at DESC, id DESC LIMIT %s OFFSET %s"
+                params.extend([limit, offset])
+                
+                cursor.execute(query, tuple(params))
+                rows = cursor.fetchall()
+                
+                data = []
+                for r in rows:
+                    # Parse JSON fields
+                    old_data = r['old_data']
+                    new_data = r['new_data']
+                    
+                    # If they're strings, parse them
+                    if isinstance(old_data, str):
+                        try:
+                            old_data = json.loads(old_data) if old_data else None
+                        except:
+                            old_data = None
+                    
+                    if isinstance(new_data, str):
+                        try:
+                            new_data = json.loads(new_data) if new_data else None
+                        except:
+                            new_data = None
+                    
+                    data.append(AuditLogResponse(
+                        id=r['id'],
+                        entity_type=r['entity_type'],
+                        entity_id=r['entity_id'],
+                        entity_name=r['entity_name'],
+                        action=r['action'],
+                        performed_by=r['performed_by'],
+                        performed_at=str(r['performed_at']),
+                        old_data=old_data,
+                        new_data=new_data,
+                        remarks=r['remarks'],
+                        vertical_id=r['vertical_id'],
+                        company_name=r['company_name'],
+                        ip_address=r.get('ip_address'),
+                        user_agent=r.get('user_agent')
+                    ))
+                
+                return data, len(data), total_count
+                
+            finally:
+                conn.close()
+        
+        data, count, total = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
+        return AuditLogsListResponse(data=data, count=count, total_count=total)
+        
+    except Exception as e:
+        logger.error(f"Error fetching audit logs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch audit logs: {str(e)}")
+
+
+@router.get("/audit-logs/summary")
+async def get_audit_logs_summary(
+    user: dict = Depends(require_session)
+):
+    """
+    Get audit log summary statistics
+    
+    Returns overview of audit activity including:
+    - Total actions logged
+    - Actions by type
+    - Recent activity
+    - Top users by activity
+    
+    Args:
+        user: Authenticated user from session
+        
+    Returns:
+        Summary statistics dictionary
+    """
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            
+            cursor = get_pg_cursor(conn)
+            try:
+                user_role = user.get('role', 'user')
+                user_email = user.get('email', '')
+                
+                # Base filter for non-admin users
+                user_filter = ""
+                if user_role not in ['master_admin', 'admin']:
+                    user_filter = f" WHERE performed_by = '{user_email}'"
+                
+                # Total count
+                cursor.execute(f"SELECT COUNT(*) as total FROM audit_logs{user_filter}")
+                total_actions = cursor.fetchone()['total'] or 0
+                
+                # Actions by type
+                cursor.execute(f"""
+                    SELECT action, COUNT(*) as count 
+                    FROM audit_logs{user_filter}
+                    GROUP BY action 
+                    ORDER BY count DESC 
+                    LIMIT 10
+                """)
+                actions_by_type = [{"action": r['action'], "count": r['count']} for r in cursor.fetchall()]
+                
+                # Actions by entity type
+                cursor.execute(f"""
+                    SELECT entity_type, COUNT(*) as count 
+                    FROM audit_logs{user_filter}
+                    GROUP BY entity_type 
+                    ORDER BY count DESC 
+                    LIMIT 10
+                """)
+                actions_by_entity = [{"entity_type": r['entity_type'], "count": r['count']} for r in cursor.fetchall()]
+                
+                # Recent activity (last 24 hours)
+                cursor.execute(f"""
+                    SELECT COUNT(*) as count 
+                    FROM audit_logs 
+                    WHERE performed_at > NOW() - INTERVAL '24 hours'{' AND ' + user_filter.replace('WHERE ', '') if user_filter else ''}
+                """)
+                recent_24h = cursor.fetchone()['count'] or 0
+                
+                # Top users (admin only)
+                top_users = []
+                if user_role in ['master_admin', 'admin']:
+                    cursor.execute("""
+                        SELECT performed_by, COUNT(*) as count 
+                        FROM audit_logs 
+                        GROUP BY performed_by 
+                        ORDER BY count DESC 
+                        LIMIT 10
+                    """)
+                    top_users = [{"user": r['performed_by'], "actions": r['count']} for r in cursor.fetchall()]
+                
+                return {
+                    "total_actions": total_actions,
+                    "recent_24h": recent_24h,
+                    "actions_by_type": actions_by_type,
+                    "actions_by_entity": actions_by_entity,
+                    "top_users": top_users
+                }
+                
+            finally:
+                conn.close()
+        
+        summary = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
+        return summary
+        
+    except Exception as e:
+        logger.error(f"Error fetching audit log summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch summary: {str(e)}")
+
+
+
+@router.get("/companies/{company_id}/audit-history", response_model=AuditLogsListResponse)
+async def get_company_audit_history(
+    company_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    user: dict = Depends(require_session)
+):
+    """
+    Get complete audit history for a specific company
+    
+    Returns all audit log entries related to a company including:
+    - Company creation, updates, and deletion
+    - Related meeting actions (if company_name matches)
+    - Any other operations involving this company
+    
+    Args:
+        company_id: ID of the company
+        limit: Maximum number of results (default: 50)
+        offset: Pagination offset
+        user: Authenticated user from session
+        
+    Returns:
+        Chronological list of all audit entries for the company
+    """
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            
+            cursor = get_pg_cursor(conn)
+            try:
+                # First, get the company name
+                cursor.execute("SELECT name FROM companies WHERE id = %s", (company_id,))
+                company_row = cursor.fetchone()
+                
+                if not company_row:
+                    # Company might have been deleted, try to find it in audit logs
+                    cursor.execute("""
+                        SELECT entity_name 
+                        FROM audit_logs 
+                        WHERE entity_type = 'company' AND entity_id = %s 
+                        ORDER BY performed_at DESC 
+                        LIMIT 1
+                    """, (company_id,))
+                    deleted_row = cursor.fetchone()
+                    if deleted_row:
+                        company_name = deleted_row['entity_name']
+                    else:
+                        raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
+                else:
+                    company_name = company_row['name']
+                
+                # Get all audit logs related to this company
+                # This includes:
+                # 1. Direct company actions (entity_type='company' AND entity_id=company_id)
+                # 2. Related actions (company_name field matches)
+                query = """
+                    SELECT 
+                        id, entity_type, entity_id, entity_name, action, 
+                        performed_by, performed_at, old_data, new_data, 
+                        remarks, vertical_id, company_name, ip_address, user_agent
+                    FROM audit_logs
+                    WHERE (entity_type = 'company' AND entity_id = %s)
+                       OR (company_name = %s)
+                    ORDER BY performed_at DESC, id DESC
+                    LIMIT %s OFFSET %s
+                """
+                
+                cursor.execute(query, (company_id, company_name, limit, offset))
+                rows = cursor.fetchall()
+                
+                # Get total count
+                count_query = """
+                    SELECT COUNT(*) as total
+                    FROM audit_logs
+                    WHERE (entity_type = 'company' AND entity_id = %s)
+                       OR (company_name = %s)
+                """
+                cursor.execute(count_query, (company_id, company_name))
+                total_count = cursor.fetchone()['total'] or 0
+                
+                data = []
+                for r in rows:
+                    # Parse JSON fields
+                    old_data = r['old_data']
+                    new_data = r['new_data']
+                    
+                    if isinstance(old_data, str):
+                        try:
+                            old_data = json.loads(old_data) if old_data else None
+                        except:
+                            old_data = None
+                    
+                    if isinstance(new_data, str):
+                        try:
+                            new_data = json.loads(new_data) if new_data else None
+                        except:
+                            new_data = None
+                    
+                    data.append(AuditLogResponse(
+                        id=r['id'],
+                        entity_type=r['entity_type'],
+                        entity_id=r['entity_id'],
+                        entity_name=r['entity_name'],
+                        action=r['action'],
+                        performed_by=r['performed_by'],
+                        performed_at=str(r['performed_at']),
+                        old_data=old_data,
+                        new_data=new_data,
+                        remarks=r['remarks'],
+                        vertical_id=r['vertical_id'],
+                        company_name=r['company_name'],
+                        ip_address=r.get('ip_address'),
+                        user_agent=r.get('user_agent')
+                    ))
+                
+                return data, len(data), total_count
+                
+            finally:
+                conn.close()
+        
+        data, count, total = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
+        return AuditLogsListResponse(data=data, count=count, total_count=total)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching company audit history for ID {company_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch audit history: {str(e)}")
+
+
+@router.get("/companies/{company_id}/audit-timeline")
+async def get_company_audit_timeline(
+    company_id: int,
+    user: dict = Depends(require_session)
+):
+    """
+    Get a visual timeline of company history
+    
+    Returns a simplified timeline view of key events in the company's lifecycle:
+    - Creation date and creator
+    - All updates with what changed
+    - Meeting milestones
+    - Deletion (if applicable)
+    
+    Args:
+        company_id: ID of the company
+        user: Authenticated user from session
+        
+    Returns:
+        Timeline data structure suitable for UI visualization
+    """
+    try:
+        def fetch():
+            conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_MINUTES'))
+            if not conn:
+                raise RuntimeError("Database connection unavailable")
+            
+            cursor = get_pg_cursor(conn)
+            try:
+                # Get company name
+                cursor.execute("SELECT name FROM companies WHERE id = %s", (company_id,))
+                company_row = cursor.fetchone()
+                
+                if not company_row:
+                    cursor.execute("""
+                        SELECT entity_name 
+                        FROM audit_logs 
+                        WHERE entity_type = 'company' AND entity_id = %s 
+                        ORDER BY performed_at DESC 
+                        LIMIT 1
+                    """, (company_id,))
+                    deleted_row = cursor.fetchone()
+                    if deleted_row:
+                        company_name = deleted_row['entity_name']
+                    else:
+                        raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
+                else:
+                    company_name = company_row['name']
+                
+                # Get all relevant audit entries
+                cursor.execute("""
+                    SELECT 
+                        id, entity_type, action, performed_by, performed_at, 
+                        old_data, new_data, remarks
+                    FROM audit_logs
+                    WHERE (entity_type = 'company' AND entity_id = %s)
+                       OR (company_name = %s)
+                    ORDER BY performed_at ASC
+                """, (company_id, company_name))
+                
+                rows = cursor.fetchall()
+                
+                timeline = []
+                for r in rows:
+                    event = {
+                        "id": r['id'],
+                        "timestamp": str(r['performed_at']),
+                        "action": r['action'],
+                        "entity_type": r['entity_type'],
+                        "performed_by": r['performed_by'],
+                        "description": r['remarks'] or f"{r['action']} {r['entity_type']}"
+                    }
+                    
+                    # Add change details for updates
+                    if r['action'] == 'updated' and r['old_data'] and r['new_data']:
+                        try:
+                            old = json.loads(r['old_data']) if isinstance(r['old_data'], str) else r['old_data']
+                            new = json.loads(r['new_data']) if isinstance(r['new_data'], str) else r['new_data']
+                            
+                            changes = []
+                            for key in new.keys():
+                                if key in old and old[key] != new[key]:
+                                    changes.append({
+                                        "field": key,
+                                        "from": str(old[key]),
+                                        "to": str(new[key])
+                                    })
+                            event['changes'] = changes
+                        except:
+                            pass
+                    
+                    timeline.append(event)
+                
+                return {
+                    "company_id": company_id,
+                    "company_name": company_name,
+                    "total_events": len(timeline),
+                    "timeline": timeline
+                }
+                
+            finally:
+                conn.close()
+        
+        timeline_data = await asyncio.get_running_loop().run_in_executor(thread_pool, fetch)
+        return timeline_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching company timeline for ID {company_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch timeline: {str(e)}")

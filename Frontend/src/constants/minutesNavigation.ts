@@ -40,10 +40,11 @@ export function getMinutesNavItems(activeId?: string): MinutesNavItem[] {
     { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
     { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
-    { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer' },
-    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-    { id: 'places', label: 'Meeting Places', icon: MapPin, href: '/minutes-preparation/places' },
+    // Hidden for now — restore when needed
+    // { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
+    // { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer' },
+    // { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
+    // { id: 'places', label: 'Meeting Places', icon: MapPin, href: '/minutes-preparation/places' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' },
   ];
 

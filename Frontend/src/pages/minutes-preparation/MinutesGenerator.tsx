@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Calendar, Clock, Download, FileText, Home, History, FileSpreadsheet, Plus, Upload, BookOpen, ChevronRight, ArrowLeft, Search, Building2, Layers, AlertCircle, CheckCircle2, User, Users, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
@@ -39,6 +40,41 @@ const getCompanyAbbreviation = (name: string) => {
     return words[0].substring(0, 4).toUpperCase();
   }
   return "COMP";
+};
+
+/** Map BU meeting-type filter → Schedule form meetingType / committeeName */
+const mapFilterToCalendar = (filter: string): { meetingType: string; committeeName: string } => {
+  if (!filter || filter === 'all') {
+    return { meetingType: 'Board Meeting', committeeName: '' };
+  }
+  if (filter === 'Board Meeting') {
+    return { meetingType: 'Board Meeting', committeeName: '' };
+  }
+  if (filter === 'AGM') {
+    return { meetingType: 'Annual General Meeting', committeeName: '' };
+  }
+  if (filter === 'EGM') {
+    return { meetingType: 'Extraordinary General Meeting', committeeName: '' };
+  }
+  // Committee filters (Audit Committee, NRC, SRC, CSR, Risk, etc.)
+  return { meetingType: 'Committee Meeting', committeeName: filter };
+};
+
+/** Prefer real Chairman / Chairperson designation for this company */
+const pickDefaultChairman = (directors: any[]): string => {
+  if (!directors?.length) return '';
+  const byRole = directors.find((d) => {
+    const desig = `${d.designation || d.role || ''}`.toLowerCase();
+    return desig.includes('chair');
+  });
+  return (byRole || directors[0])?.name || '';
+};
+
+const formatMeetingDate = (dateStr?: string) => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 const MinutesGenerator = () => {
@@ -81,8 +117,112 @@ const MinutesGenerator = () => {
   const [localSearchQuery, setLocalSearchQuery] = useState<string>("");
   const [localPage, setLocalPage] = useState<number>(1);
   const localPageSize = 15;
+  const [meetingTypeFilter, setMeetingTypeFilter] = useState<string>("all");
+
+  // Add/Delete Company UI state
+  const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
+  const [addCompanyForm, setAddCompanyForm] = useState({
+    name: '',
+    code: '',
+    cin: '',
+    type: 'Public Limited',
+    secretary_name: '',
+    status: 'Active'
+  });
+  const [addingCompany, setAddingCompany] = useState(false);
 
   const [directorsList, setDirectorsList] = useState<any[]>([]);
+  const [companyMeetings, setCompanyMeetings] = useState<any[]>([]);
+  const [loadingMeetings, setLoadingMeetings] = useState(false);
+  const [nextMeetingNumber, setNextMeetingNumber] = useState<string>('1ST');
+
+  // Add Company Handler
+  const handleAddCompany = async () => {
+    if (!addCompanyForm.name.trim()) {
+      alert("Company name is required!");
+      return;
+    }
+    if (!activeVertical) {
+      alert("Please select a business unit first!");
+      return;
+    }
+
+    setAddingCompany(true);
+    try {
+      const res = await fetch(`/api/verticals/${activeVertical.id}/companies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addCompanyForm)
+      });
+
+      if (res.ok) {
+        const newCompany = await res.json();
+        alert(`Company "${newCompany.name}" added successfully!`);
+        
+        // Refresh company list
+        setLocalPage(1);
+        setShowAddCompanyModal(false);
+        setAddCompanyForm({
+          name: '',
+          code: '',
+          cin: '',
+          type: 'Public Limited',
+          secretary_name: '',
+          status: 'Active'
+        });
+
+        // Trigger re-fetch by updating a dependency
+        const offset = 0;
+        const filterParam = meetingTypeFilter !== 'all' ? `&meeting_type_filter=${encodeURIComponent(meetingTypeFilter)}` : '';
+        const refreshRes = await fetch(`/api/verticals/${activeVertical.id}/companies?q=${encodeURIComponent(localSearchQuery)}&limit=${localPageSize}&offset=${offset}${filterParam}`);
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          setLocalCompanies(data.data || []);
+          setLocalTotalCompanies(data.count || (data.data || []).length);
+        }
+      } else {
+        const error = await res.json();
+        alert(`Failed to add company: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error("Error adding company:", err);
+      alert("Failed to add company. Please try again.");
+    } finally {
+      setAddingCompany(false);
+    }
+  };
+
+  // Delete Company Handler
+  const handleDeleteCompany = async (company: any) => {
+    const confirmMsg = `⚠️ DELETE COMPANY?\n\nAre you sure you want to delete:\n${company.name}\n\nThis will permanently delete:\n• Company record\n• All meetings and minutes\n• All attendance records\n• All directors\n• All related data\n\nThis action CANNOT be undone!\n\nType "DELETE" to confirm:`;
+    
+    const userInput = prompt(confirmMsg);
+    
+    if (userInput !== "DELETE") {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/companies/${company.id}?confirm=true`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        alert(`✅ Company deleted successfully!\n\nDeleted ${result.deleted_records?.total || 0} related records.`);
+        
+        // Refresh company list
+        setLocalCompanies(prev => prev.filter(c => c.id !== company.id));
+        setLocalTotalCompanies(prev => prev - 1);
+      } else {
+        const error = await res.json();
+        alert(`Failed to delete company: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error("Error deleting company:", err);
+      alert("Failed to delete company. Please try again.");
+    }
+  };
 
   // Calendarization state
   const [calendarData, setCalendarData] = useState({
@@ -127,7 +267,7 @@ const MinutesGenerator = () => {
     fetchCompliances();
   }, []);
 
-  // Fetch companies for selected activeVertical, localPage, or localSearchQuery
+  // Fetch companies for selected activeVertical, localPage, localSearchQuery, or meetingTypeFilter
   useEffect(() => {
     if (!activeVertical) {
       setLocalCompanies([]);
@@ -138,7 +278,8 @@ const MinutesGenerator = () => {
       setLoadingLocalCompanies(true);
       try {
         const offset = (localPage - 1) * localPageSize;
-        const res = await fetch(`/api/verticals/${activeVertical.id}/companies?q=${encodeURIComponent(localSearchQuery)}&limit=${localPageSize}&offset=${offset}`);
+        const filterParam = meetingTypeFilter !== 'all' ? `&meeting_type_filter=${encodeURIComponent(meetingTypeFilter)}` : '';
+        const res = await fetch(`/api/verticals/${activeVertical.id}/companies?q=${encodeURIComponent(localSearchQuery)}&limit=${localPageSize}&offset=${offset}${filterParam}`);
         if (res.ok) {
           const data = await res.json();
           setLocalCompanies(data.data || []);
@@ -156,7 +297,7 @@ const MinutesGenerator = () => {
     }, 300);
 
     return () => clearTimeout(delayDebounce);
-  }, [activeVertical, localSearchQuery, localPage]);
+  }, [activeVertical, localSearchQuery, localPage, meetingTypeFilter]);
 
   // Fetch directors list when selected company changes
   useEffect(() => {
@@ -174,6 +315,37 @@ const MinutesGenerator = () => {
     };
     fetchDirectors();
   }, [selectedCompany]);
+
+  // Fetch meetings for selected company, filtered by BU meeting-type filter
+  useEffect(() => {
+    if (!selectedCompany?.id) {
+      setCompanyMeetings([]);
+      setNextMeetingNumber('1ST');
+      return;
+    }
+    const fetchMeetings = async () => {
+      setLoadingMeetings(true);
+      try {
+        const typeParam = meetingTypeFilter !== 'all'
+          ? `?meeting_type=${encodeURIComponent(meetingTypeFilter)}`
+          : '';
+        const res = await fetch(`/api/companies/${selectedCompany.id}/meetings${typeParam}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCompanyMeetings(data.data || []);
+          setNextMeetingNumber(data.next_meeting_number || '1ST');
+        } else {
+          setCompanyMeetings([]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch company meetings", err);
+        setCompanyMeetings([]);
+      } finally {
+        setLoadingMeetings(false);
+      }
+    };
+    fetchMeetings();
+  }, [selectedCompany, meetingTypeFilter]);
 
   // Filter Compliances for selected company
   const companyCompliances = useMemo(() => {
@@ -194,18 +366,23 @@ const MinutesGenerator = () => {
     };
   }, [companyCompliances]);
 
-  // Filter History for selected company
+  // Filter History for selected company (and BU meeting-type filter when set)
   const companyHistory = useMemo(() => {
     if (!selectedCompany) return [];
     const compClean = cleanNameForCompare(selectedCompany.name);
     return history.filter(h => {
       if (!h.company_name) return false;
-      return cleanNameForCompare(h.company_name).includes(compClean) || compClean.includes(cleanNameForCompare(h.company_name));
+      const nameMatch = cleanNameForCompare(h.company_name).includes(compClean) || compClean.includes(cleanNameForCompare(h.company_name));
+      if (!nameMatch) return false;
+      if (meetingTypeFilter !== 'all') {
+        return (h.meeting_type || '').toLowerCase() === meetingTypeFilter.toLowerCase();
+      }
+      return true;
     });
-  }, [history, selectedCompany]);
+  }, [history, selectedCompany, meetingTypeFilter]);
 
   const handleDeleteHistory = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this document? This will permanently delete it from the database and disk.")) return;
+    if (!window.confirm("Are you sure you want to delete this draft document?")) return;
     try {
       const res = await fetch(`/api/generated-minutes/${id}`, {
         method: 'DELETE'
@@ -213,7 +390,8 @@ const MinutesGenerator = () => {
       if (res.ok) {
         setHistory(prev => prev.filter(item => item.id !== id));
       } else {
-        alert("Failed to delete document.");
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || "Failed to delete. Finalized minutes are locked.");
       }
     } catch (err) {
       console.error("Error deleting document:", err);
@@ -223,19 +401,28 @@ const MinutesGenerator = () => {
 
   const handleGenerateClick = () => {
     if (!selectedCompany) return;
-    sessionStorage.removeItem('minutes_form_draft');
+    // Do NOT wipe drafts here — resume if user already filled steps for this meeting
     const selectedPreset = companyPresets.find(c => c.name === selectedCompany.name);
+    const directors = directorsList.length > 0 ? directorsList : (selectedPreset ? selectedPreset.directors : []);
     const stateToPass = {
       companyName: selectedCompany.name,
       meetingDate: calendarData.meetingDate,
       meetingDay: calendarData.meetingDate ? new Date(calendarData.meetingDate).toLocaleDateString('en-US', { weekday: 'long' }) : '',
-      meetingType: calendarData.meetingType,
-      committeeName: calendarData.committeeName,
+      meetingNumber: nextMeetingNumber,
+      // Prefer the BU filter label when set (e.g. Audit Committee) so template picker filters correctly
+      meetingType: meetingTypeFilter !== 'all' && meetingTypeFilter !== 'Board Meeting' && meetingTypeFilter !== 'AGM' && meetingTypeFilter !== 'EGM'
+        ? (calendarData.meetingType === 'Committee Meeting' ? 'Committee Meeting' : meetingTypeFilter)
+        : calendarData.meetingType,
+      committeeName: meetingTypeFilter !== 'all' && !['Board Meeting', 'AGM', 'EGM', 'all'].includes(meetingTypeFilter)
+        ? (calendarData.committeeName || meetingTypeFilter)
+        : calendarData.committeeName,
       timeCommenced: calendarData.meetingTime,
       meetingPlace: selectedPreset ? selectedPreset.address : "Adani Corporate House, Ahmedabad",
-      presentDirectors: directorsList.length > 0 ? directorsList : (selectedPreset ? selectedPreset.directors : []),
-      chairmanName: directorsList[0]?.name || (selectedPreset ? selectedPreset.directors[0]?.name : ''),
-      resetDraft: true
+      presentDirectors: directors,
+      chairmanName: pickDefaultChairman(directors),
+      signingChairmanName: pickDefaultChairman(directors),
+      companySecretary: selectedCompany.secretary_name || '',
+      resetDraft: false,
     };
     navigate('/minutes-preparation/form-generator', { state: stateToPass });
   };
@@ -248,6 +435,31 @@ const MinutesGenerator = () => {
   ];
 
   const navigationItems = getMinutesNavItems('dashboard');
+
+  const handleBackToGrid = () => {
+    // Stay on the same BU + meeting-type filter; only leave the company detail
+    setSelectedCompany(null);
+    setSelectedVertical(null);
+    setCompanyMeetings([]);
+    setCalendarData({
+      meetingDate: '',
+      meetingTime: '',
+      meetingType: 'Board Meeting',
+      committeeName: ''
+    });
+  };
+
+  const openCompanyWithFilter = (company: any) => {
+    const mapped = mapFilterToCalendar(meetingTypeFilter);
+    setSelectedVertical(activeVertical);
+    setSelectedCompany(company);
+    setActiveTab('schedule');
+    setCalendarData(prev => ({
+      ...prev,
+      meetingType: mapped.meetingType,
+      committeeName: mapped.committeeName,
+    }));
+  };
 
   // --- RENDER 1: SELECTION GRID (LANDING PAGE) ---
   if (!selectedCompany) {
@@ -352,18 +564,51 @@ const MinutesGenerator = () => {
                     </div>
                   </div>
 
-                  {/* Search input inline */}
-                  <div style={{ position: "relative", width: "100%", maxWidth: "300px" }}>
-                    <Search size={14} color="#64748B" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)" }} />
-                    <Input
-                      placeholder="Search company or entity..."
-                      value={localSearchQuery}
-                      onChange={(e) => {
-                        setLocalSearchQuery(e.target.value);
-                        setLocalPage(1);
-                      }}
-                      className="pl-8 bg-white text-xs h-9 rounded-xl border-slate-200"
-                    />
+                  {/* Filter, Search, and Add Company Button */}
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    {/* Add Company Button */}
+                    <Button
+                      onClick={() => setShowAddCompanyModal(true)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 rounded-xl px-4 gap-2"
+                    >
+                      <Plus size={14} />
+                      Add Company
+                    </Button>
+
+                    {/* Meeting Type Filter Dropdown */}
+                    <Select value={meetingTypeFilter} onValueChange={(val) => {
+                      setMeetingTypeFilter(val);
+                      setLocalPage(1);
+                    }}>
+                      <SelectTrigger className="w-full sm:min-w-[240px] sm:w-[260px] bg-white text-xs h-9 rounded-xl border-slate-200 [&>span]:line-clamp-none">
+                        <SelectValue placeholder="Filter by Meeting Type" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white min-w-[260px]">
+                        <SelectItem value="all" className="text-xs">All Meetings</SelectItem>
+                        <SelectItem value="Board Meeting" className="text-xs">Board Meeting</SelectItem>
+                        <SelectItem value="Audit Committee" className="text-xs">Audit Committee</SelectItem>
+                        <SelectItem value="Nomination and Remuneration Committee" className="text-xs">NRC</SelectItem>
+                        <SelectItem value="Stakeholders Relationship Committee" className="text-xs">SRC</SelectItem>
+                        <SelectItem value="CSR Committee" className="text-xs">CSR Committee</SelectItem>
+                        <SelectItem value="Risk Management Committee" className="text-xs">Risk Committee</SelectItem>
+                        <SelectItem value="AGM" className="text-xs">AGM</SelectItem>
+                        <SelectItem value="EGM" className="text-xs">EGM</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Search input */}
+                    <div style={{ position: "relative", width: "100%", maxWidth: "300px" }}>
+                      <Search size={14} color="#64748B" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)" }} />
+                      <Input
+                        placeholder="Search company or entity..."
+                        value={localSearchQuery}
+                        onChange={(e) => {
+                          setLocalSearchQuery(e.target.value);
+                          setLocalPage(1);
+                        }}
+                        className="pl-8 bg-white text-xs h-9 rounded-xl border-slate-200"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -375,74 +620,73 @@ const MinutesGenerator = () => {
                   </div>
                 ) : localCompanies.length === 0 ? (
                   <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400 text-sm">
-                    No entities found matching "{localSearchQuery}" under {activeVertical.name}.
+                    No entities found{localSearchQuery ? ` matching "${localSearchQuery}"` : ''} under {activeVertical.name}.
+                    {meetingTypeFilter !== 'all' && localSearchQuery === '' ? ' Try another Business Unit, or add a company.' : ''}
                   </div>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {localCompanies.map((c) => {
                         const abbr = getCompanyAbbreviation(c.name);
+                        
                         return (
                           <div
                             key={c.id}
-                            onClick={() => {
-                              setSelectedVertical(activeVertical);
-                              setSelectedCompany(c);
-                              setActiveTab('schedule');
-                            }}
+                            onClick={() => openCompanyWithFilter(c)}
                             style={{
                               background: "#FFFFFF",
                               border: "1px solid #E2E8F0",
                               borderRadius: "16px",
                               padding: "20px 24px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
                               cursor: "pointer",
                               transition: "all 0.2s ease",
                               boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
                             }}
                             className="hover:shadow-md hover:border-blue-400 group"
                           >
-                            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#F1F5F9", borderRadius: "12px", width: "48px", height: "48px", flexShrink: 0, padding: "8px" }}>
-                                <img src="/adani.svg" alt="Adani" style={{ height: "100%", width: "auto" }} />
-                              </div>
-                              <div style={{ maxWidth: "160px" }}>
-                                <div style={{ fontSize: "16px", fontWeight: 700, color: "#0F172A" }}>{abbr}</div>
-                                <div 
-                                  style={{ 
-                                    fontSize: "12px", 
-                                    color: "#64748B", 
-                                    textTransform: "uppercase", 
-                                    fontWeight: 500,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap"
-                                  }}
-                                >
-                                  {c.name}
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: 1 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#F1F5F9", borderRadius: "12px", width: "48px", height: "48px", flexShrink: 0, padding: "8px" }}>
+                                  <img src="/adani.svg" alt="Adani" style={{ height: "100%", width: "auto" }} />
                                 </div>
-                                {c.secretary_name && (
-                                  <div style={{ fontSize: "11px", color: "#0057B8", marginTop: "2px", fontWeight: 600 }}>CS: {c.secretary_name}</div>
-                                )}
+                                <div style={{ maxWidth: "160px" }}>
+                                  <div style={{ fontSize: "16px", fontWeight: 700, color: "#0F172A" }}>{abbr}</div>
+                                  <div 
+                                    style={{ 
+                                      fontSize: "12px", 
+                                      color: "#64748B", 
+                                      textTransform: "uppercase", 
+                                      fontWeight: 500,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                  >
+                                    {c.name}
+                                  </div>
+                                  {c.secretary_name && (
+                                    <div style={{ fontSize: "11px", color: "#0057B8", marginTop: "2px", fontWeight: 600 }}>CS: {c.secretary_name}</div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                            <div 
-                              style={{
-                                width: "32px",
-                                height: "32px",
-                                borderRadius: "50%",
-                                border: "1px solid #E2E8F0",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                color: "#0057B8",
-                                background: "#F8FAFC"
-                              }}
-                              className="group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 transition-all shrink-0"
-                            >
-                              <ChevronRight size={16} />
+                              <div className="flex gap-2 items-center">
+                                {/* Delete Button - Shows on hover */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCompany(c);
+                                  }}
+                                  className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-600 bg-red-50 opacity-0 group-hover:opacity-100 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all duration-200"
+                                  title="Delete Company"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                                <div 
+                                  className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-blue-600 bg-slate-50 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 transition-all"
+                                >
+                                  <ChevronRight size={16} />
+                                </div>
+                              </div>
                             </div>
                           </div>
                         );
@@ -479,6 +723,133 @@ const MinutesGenerator = () => {
             )}
           </div>
         </div>
+
+        {/* Add Company Dialog — must live in this branch (company list) */}
+        <Dialog open={showAddCompanyModal} onOpenChange={setShowAddCompanyModal}>
+          <DialogContent className="bg-white max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add New Company</DialogTitle>
+              <DialogDescription>
+                Add a new company under <strong>{activeVertical?.name}</strong>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="company-name" className="text-sm font-semibold">
+                  Company Name <span className="text-red-600">*</span>
+                </Label>
+                <Input
+                  id="company-name"
+                  placeholder="e.g., ADANI GREEN ENERGY LIMITED"
+                  value={addCompanyForm.name}
+                  onChange={(e) => setAddCompanyForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="h-11"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company-code" className="text-sm font-semibold">
+                  Company Code
+                </Label>
+                <Input
+                  id="company-code"
+                  placeholder="e.g., AGEL (auto-generated if empty)"
+                  value={addCompanyForm.code}
+                  onChange={(e) => setAddCompanyForm(prev => ({ ...prev, code: e.target.value }))}
+                  className="h-11"
+                />
+                <p className="text-xs text-slate-500">
+                  Leave empty to auto-generate from company name
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company-cin" className="text-sm font-semibold">
+                  CIN (Corporate Identity Number)
+                </Label>
+                <Input
+                  id="company-cin"
+                  placeholder="e.g., L40101GJ2015PLC084374"
+                  value={addCompanyForm.cin}
+                  onChange={(e) => setAddCompanyForm(prev => ({ ...prev, cin: e.target.value }))}
+                  className="h-11 font-mono"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company-type" className="text-sm font-semibold">
+                  Company Type
+                </Label>
+                <Select
+                  value={addCompanyForm.type}
+                  onValueChange={(val) => setAddCompanyForm(prev => ({ ...prev, type: val }))}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Public Limited">Public Limited</SelectItem>
+                    <SelectItem value="Private Limited">Private Limited</SelectItem>
+                    <SelectItem value="LLP">LLP</SelectItem>
+                    <SelectItem value="OPC">One Person Company</SelectItem>
+                    <SelectItem value="Partnership">Partnership</SelectItem>
+                    <SelectItem value="Proprietorship">Proprietorship</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="secretary-name" className="text-sm font-semibold">
+                  Company Secretary Name
+                </Label>
+                <Input
+                  id="secretary-name"
+                  placeholder="e.g., Kuntal Chandya"
+                  value={addCompanyForm.secretary_name}
+                  onChange={(e) => setAddCompanyForm(prev => ({ ...prev, secretary_name: e.target.value }))}
+                  className="h-11"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company-status" className="text-sm font-semibold">
+                  Status
+                </Label>
+                <Select
+                  value={addCompanyForm.status}
+                  onValueChange={(val) => setAddCompanyForm(prev => ({ ...prev, status: val }))}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
+                    <SelectItem value="Dissolved">Dissolved</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowAddCompanyModal(false)}
+                disabled={addingCompany}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddCompany}
+                disabled={addingCompany || !addCompanyForm.name.trim()}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {addingCompany ? "Adding..." : "Add Company"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </ProductDashboardLayout>
     );
   }
@@ -488,12 +859,6 @@ const MinutesGenerator = () => {
   const indexOfFirstHistory = indexOfLastHistory - historyPageSize;
   const currentHistory = companyHistory.slice(indexOfFirstHistory, indexOfLastHistory);
   const totalHistoryPages = Math.ceil(companyHistory.length / historyPageSize) || 1;
-
-  const handleBackToGrid = () => {
-    setSelectedCompany(null);
-    setSelectedVertical(null);
-    setActiveVertical(null);
-  };
 
   return (
     <ProductDashboardLayout productName="Generate Minutes" productRoute="/minutes-preparation" navigationItems={navigationItems}>
@@ -516,6 +881,11 @@ const MinutesGenerator = () => {
                 {selectedCompany.cin && <span>CIN: <strong className="font-mono">{selectedCompany.cin}</strong></span>}
                 <span>Type: <strong>{selectedCompany.type || "Public"}</strong></span>
                 {selectedCompany.secretary_name && <span>Secretary: <strong className="text-blue-600">{selectedCompany.secretary_name}</strong></span>}
+                {meetingTypeFilter !== 'all' && (
+                  <Badge className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-50 font-semibold">
+                    {meetingTypeFilter}
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -561,31 +931,122 @@ const MinutesGenerator = () => {
           
           {/* TAB 1: SCHEDULE MEETING */}
           {activeTab === 'schedule' && (
-            <Card className="border border-slate-200 shadow-xs rounded-xl bg-white overflow-hidden">
+            <div className="space-y-6">
+              {/* Meetings for selected type — ordered by number + date */}
+              <Card className="border border-slate-200 shadow-xs rounded-xl bg-white overflow-hidden">
+                <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-base font-bold text-slate-900">
+                        {meetingTypeFilter !== 'all' ? `${meetingTypeFilter} Meetings` : 'All Meetings'}
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500">
+                        Previous meetings for this company (by meeting number). Used to auto-set the next meeting number — e.g. after 90TH, next is 91ST.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <Badge variant="outline" className="font-semibold border-slate-200">
+                        {companyMeetings.length} meeting{companyMeetings.length === 1 ? '' : 's'}
+                      </Badge>
+                      <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-50 font-semibold">
+                        Next: {nextMeetingNumber}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {loadingMeetings ? (
+                    <div className="p-8 text-center text-xs text-slate-400">Loading meetings…</div>
+                  ) : companyMeetings.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      {meetingTypeFilter !== 'all'
+                        ? `No ${meetingTypeFilter} records found for this company.`
+                        : 'No meeting records found for this company.'}
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-50/80">
+                          <TableHead className="text-xs font-semibold w-16">#</TableHead>
+                          <TableHead className="text-xs font-semibold">Meeting No.</TableHead>
+                          <TableHead className="text-xs font-semibold">Date</TableHead>
+                          <TableHead className="text-xs font-semibold">Type</TableHead>
+                          <TableHead className="text-xs font-semibold">Document</TableHead>
+                          <TableHead className="text-xs font-semibold text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {companyMeetings.map((m, idx) => (
+                          <TableRow key={m.id} className="hover:bg-slate-50/50">
+                            <TableCell className="text-xs text-slate-400">{idx + 1}</TableCell>
+                            <TableCell className="text-xs font-bold text-blue-700">
+                              {m.meeting_number || '—'}
+                            </TableCell>
+                            <TableCell className="text-xs font-medium text-slate-800">
+                              {formatMeetingDate(m.meeting_date)}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600">{m.meeting_type || '—'}</TableCell>
+                            <TableCell className="text-xs text-slate-500 truncate max-w-[200px]">
+                              {m.file_path || '—'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {m.download_url && (
+                                <a
+                                  href={m.download_url}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  Download
+                                </a>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border border-slate-200 shadow-xs rounded-xl bg-white overflow-hidden">
               <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-4">
                 <CardTitle className="text-base font-bold text-slate-900">Schedule Board / Committee Meeting</CardTitle>
-                <CardDescription className="text-xs text-slate-500">Configure meeting parameters to launch the minutes generator.</CardDescription>
+                <CardDescription className="text-xs text-slate-500">
+                  {meetingTypeFilter !== 'all'
+                    ? `Meeting type is set from the BU filter (${meetingTypeFilter}). Pick a date to continue.`
+                    : 'Configure meeting parameters to launch the minutes generator.'}
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">Meeting Type *</Label>
-                    <Select value={calendarData.meetingType} onValueChange={(v) => setCalendarData({ ...calendarData, meetingType: v })}>
-                      <SelectTrigger className="bg-white border-slate-200 h-9 rounded-lg text-xs font-medium"><SelectValue /></SelectTrigger>
+                    <Select
+                      value={calendarData.meetingType}
+                      onValueChange={(v) => setCalendarData({ ...calendarData, meetingType: v, committeeName: v === 'Committee Meeting' ? calendarData.committeeName : '' })}
+                      disabled={meetingTypeFilter !== 'all'}
+                    >
+                      <SelectTrigger className="bg-white border-slate-200 h-9 rounded-lg text-xs font-medium disabled:opacity-80 disabled:bg-slate-50">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent className="bg-white">
                         {meetingTypes.map(t => <SelectItem key={t.value} value={t.value} className="text-xs">{t.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                    {meetingTypeFilter !== 'all' && (
+                      <span className="text-[11px] text-slate-500">Locked from BU filter</span>
+                    )}
                   </div>
                   
-                  {calendarData.meetingType === 'Committee Meeting' && (
+                  {(calendarData.meetingType === 'Committee Meeting' || (meetingTypeFilter !== 'all' && calendarData.committeeName)) && (
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold text-slate-700">Committee Name *</Label>
                       <Input
                         placeholder="e.g. Audit Committee"
                         value={calendarData.committeeName}
                         onChange={(e) => setCalendarData({ ...calendarData, committeeName: e.target.value })}
-                        className="bg-white border-slate-200 h-9 rounded-lg text-xs"
+                        disabled={meetingTypeFilter !== 'all'}
+                        className="bg-white border-slate-200 h-9 rounded-lg text-xs disabled:opacity-80 disabled:bg-slate-50"
                       />
                     </div>
                   )}
@@ -614,6 +1075,16 @@ const MinutesGenerator = () => {
                       className="bg-white border-slate-200 h-9 rounded-lg text-xs" 
                     />
                   </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Meeting No. (auto)</Label>
+                    <div className="h-9 px-3 rounded-lg border border-emerald-200 bg-emerald-50 flex items-center text-xs font-bold text-emerald-700">
+                      {nextMeetingNumber}
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      From previous meetings of this company{meetingTypeFilter !== 'all' ? ` / ${meetingTypeFilter}` : ''}.
+                    </span>
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -625,7 +1096,7 @@ const MinutesGenerator = () => {
                       variant="outline"
                       className="text-xs font-semibold rounded-lg border-slate-200 h-9"
                       onClick={() => {
-                        sessionStorage.removeItem('minutes_form_draft');
+                        // Custom template path starts fresh
                         navigate('/minutes-preparation/form-generator', {
                           state: {
                             ...calendarData,
@@ -650,6 +1121,7 @@ const MinutesGenerator = () => {
                 </div>
               </CardContent>
             </Card>
+            </div>
           )}
 
           {/* TAB 2: SECRETARIAL COMPLIANCES */}
@@ -757,8 +1229,23 @@ const MinutesGenerator = () => {
           {activeTab === 'history' && (
             <Card>
               <CardHeader>
-                <CardTitle>Past Minutes & Document Repository</CardTitle>
-                <CardDescription>Download and view historical board documents.</CardDescription>
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div>
+                    <CardTitle>Past Minutes</CardTitle>
+                    <CardDescription>
+                      Minutes generated for this company. Full View / Edit / Finalize / Upload Signed is on the Meeting Minutes repository page.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8 font-semibold border-slate-200"
+                    onClick={() => navigate('/minutes-preparation/minutes')}
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1.5" />
+                    Open Meeting Minutes Repository
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>

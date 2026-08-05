@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -14,6 +14,17 @@ import { isAdmin } from '@/utils/adminAuth';
 import { toast } from '@/components/ui/use-toast';
 import { getMinutesNavItems } from '@/constants/minutesNavigation';
 import { Step0TemplateCompany, Step2Attendance, Step8Resolutions } from './components/form-steps';
+import {
+  buildMinutesDraftKey,
+  isDraftKeyReady,
+  readLocalDraft,
+  writeLocalDraft,
+  clearLocalDraft,
+  saveDraftToServer,
+  loadDraftFromServer,
+  deleteDraftFromServer,
+  type MinutesDraftPayload,
+} from '@/utils/minutesDraft';
 
 // Helper function to convert numbers to ordinals (1st, 2nd, 3rd, etc.)
 const numberToOrdinal = (num: number): string => {
@@ -127,6 +138,10 @@ const FormBasedGenerator: React.FC = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'offline'>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const draftRestoredRef = useRef(false);
+  const skipNextAutosaveRef = useRef(false);
 
   const [formData, setFormData] = useState<FormData>({
     template: '',
@@ -317,19 +332,29 @@ const FormBasedGenerator: React.FC = () => {
   };
 
   const handleResetForm = () => {
-    sessionStorage.removeItem('minutes_form_draft');
+    if (!window.confirm('Clear this draft and reset all steps? This cannot be undone.')) return;
+    const key = buildMinutesDraftKey(
+      formData.companyName,
+      formData.meetingType,
+      formData.meetingDate,
+      formData.committeeName,
+    );
+    clearLocalDraft(key);
+    void deleteDraftFromServer(key);
     setCurrentStep(0);
+    setDraftStatus('idle');
+    setLastSavedAt(null);
     setFormData({
       template: '',
-      companyName: '',
+      companyName: formData.companyName, // keep company context
       meetingNumber: '',
-      meetingType: 'Board Meeting',
-      committeeName: '',
-      meetingDate: '',
-      meetingDay: '',
-      timeCommenced: '',
+      meetingType: formData.meetingType || 'Board Meeting',
+      committeeName: formData.committeeName || '',
+      meetingDate: formData.meetingDate || '',
+      meetingDay: formData.meetingDay || '',
+      timeCommenced: formData.timeCommenced || '',
       timeConcluded: '',
-      meetingPlace: '',
+      meetingPlace: formData.meetingPlace || '',
       presentDirectors: [],
       chairmanName: '',
       inAttendance: [],
@@ -369,42 +394,119 @@ const FormBasedGenerator: React.FC = () => {
       resolutions: '',
       customTemplateFilename: '',
     });
-    toast({ title: "Form Reset", description: "All form fields have been cleared." });
+    toast({ title: "Form Reset", description: "Draft cleared. Meeting context kept." });
   };
 
-  // Auto-restore draft from sessionStorage on page load/reload unless reset requested
+  const draftKey = useMemo(
+    () =>
+      buildMinutesDraftKey(
+        formData.companyName,
+        formData.meetingType,
+        formData.meetingDate,
+        formData.committeeName,
+      ),
+    [formData.companyName, formData.meetingType, formData.meetingDate, formData.committeeName],
+  );
+
+  const persistDraft = useCallback(
+    async (stepOverride?: number) => {
+      if (!isDraftKeyReady(draftKey)) return false;
+      const step = typeof stepOverride === 'number' ? stepOverride : currentStep;
+      const payload: MinutesDraftPayload = {
+        currentStep: step,
+        formData: formData as unknown as Record<string, unknown>,
+      };
+      setDraftStatus('saving');
+      try {
+        writeLocalDraft(draftKey, payload);
+        const server = await saveDraftToServer(draftKey, {
+          company_name: formData.companyName,
+          meeting_type: formData.meetingType,
+          meeting_date: formData.meetingDate,
+          committee_name: formData.committeeName,
+          current_step: step,
+          form_data: formData as unknown as Record<string, unknown>,
+        });
+        const ts = server.updated_at || new Date().toISOString();
+        setLastSavedAt(ts);
+        setDraftStatus(server.ok ? 'saved' : 'offline');
+        return true;
+      } catch {
+        setDraftStatus('offline');
+        return false;
+      }
+    },
+    [draftKey, currentStep, formData],
+  );
+
+  // Restore draft once company + date are known (survives refresh / Back / reconnect)
   useEffect(() => {
-    if (location.state?.resetDraft) {
-      sessionStorage.removeItem('minutes_form_draft');
+    if (draftRestoredRef.current) return;
+    if (!isDraftKeyReady(draftKey)) return;
+
+    const forceReset = Boolean(location.state?.resetDraft);
+    if (forceReset) {
+      draftRestoredRef.current = true;
+      clearLocalDraft(draftKey);
+      void deleteDraftFromServer(draftKey);
       return;
     }
 
-    try {
-      const savedDraft = sessionStorage.getItem('minutes_form_draft');
-      if (savedDraft) {
-        const parsed = JSON.parse(savedDraft);
-        if (parsed.formData) {
-          setFormData(prev => ({ ...prev, ...parsed.formData }));
-        }
-        if (typeof parsed.currentStep === 'number') {
-          setCurrentStep(parsed.currentStep);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to restore form draft", e);
-    }
-  }, [location.state]);
+    let cancelled = false;
+    (async () => {
+      draftRestoredRef.current = true;
+      const local = readLocalDraft(draftKey);
+      const server = await loadDraftFromServer(draftKey);
 
-  // Auto-save draft to sessionStorage on formData or currentStep change
-  useEffect(() => {
-    try {
-      if (formData.template || formData.companyName) {
-        sessionStorage.setItem('minutes_form_draft', JSON.stringify({ currentStep, formData }));
+      const pickNewer = (a: MinutesDraftPayload | null, b: MinutesDraftPayload | null) => {
+        if (!a) return b;
+        if (!b) return a;
+        const at = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+        const bt = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+        return bt > at ? b : a;
+      };
+      const draft = pickNewer(local, server);
+      if (cancelled || !draft?.formData || Object.keys(draft.formData).length === 0) return;
+
+      skipNextAutosaveRef.current = true;
+      setFormData(prev => ({
+        ...prev,
+        ...(draft.formData as any),
+        // Keep the meeting identity from the company selection flow when present
+        companyName: prev.companyName || (draft.formData as any).companyName || '',
+        meetingDate: prev.meetingDate || (draft.formData as any).meetingDate || '',
+        meetingType: prev.meetingType || (draft.formData as any).meetingType || 'Board Meeting',
+        committeeName: prev.committeeName || (draft.formData as any).committeeName || '',
+      }));
+      if (typeof draft.currentStep === 'number' && draft.currentStep > 0) {
+        setCurrentStep(draft.currentStep);
+        toast({
+          title: "Draft restored",
+          description: `Resumed at step ${draft.currentStep + 1}. Your progress was saved.`,
+        });
       }
-    } catch (e) {
-      console.error("Failed to save form draft", e);
+      if (draft.updatedAt) setLastSavedAt(draft.updatedAt);
+      setDraftStatus('saved');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftKey, location.state]);
+
+  // Auto-save on every form / step change (debounced). Works offline via localStorage.
+  useEffect(() => {
+    if (!draftRestoredRef.current && !location.state?.resetDraft) return;
+    if (!isDraftKeyReady(draftKey)) return;
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
     }
-  }, [formData, currentStep]);
+    const timer = setTimeout(() => {
+      void persistDraft();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [formData, currentStep, draftKey, persistDraft, location.state]);
 
   const [dbTemplates, setDbTemplates] = useState<any[]>([]);
 
@@ -677,8 +779,10 @@ const FormBasedGenerator: React.FC = () => {
     e.preventDefault();
 
     if (currentStep < steps.length - 1) {
-      // Move to next step
-      setCurrentStep((s) => s + 1);
+      // Save this step, then move forward
+      const nextStep = currentStep + 1;
+      await persistDraft(nextStep);
+      setCurrentStep(nextStep);
     } else {
       // Final step - validate ALL steps before submitting
       const { valid, firstInvalidStep } = areAllStepsValid();
@@ -758,7 +862,31 @@ const FormBasedGenerator: React.FC = () => {
           }
 
           sessionStorage.removeItem('minutes_form_draft');
-          toast({ title: "Success", description: result.message || 'Document generated successfully!' });
+          clearLocalDraft(draftKey);
+          void deleteDraftFromServer(draftKey);
+          toast({
+            title: "Draft generated",
+            description: result.message || "Document saved as Draft. Finalize it from Meeting Minutes when approved.",
+          });
+          if (result.id) {
+            const shouldFinalize = window.confirm(
+              "Document downloaded and saved as Draft.\n\nFinalize and lock it now?"
+            );
+            if (shouldFinalize) {
+              try {
+                const fin = await fetch(`/api/generated-minutes/${result.id}/finalize`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ finalized_by: 'user' }),
+                });
+                if (fin.ok) {
+                  toast({ title: "Finalized", description: "Minutes are locked and cannot be deleted." });
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+          }
         } else {
           const error = await response.json();
           const detailMsg = typeof error.detail === 'string'
@@ -784,19 +912,64 @@ const FormBasedGenerator: React.FC = () => {
       navigationItems={navigationItems}
     >
       <div className="container mx-auto py-3 px-4">
-        <div className="flex justify-between items-center mb-3">
-          <Button variant="ghost" onClick={() => navigate("/minutes-preparation")} className="text-xs font-semibold text-slate-600 hover:text-slate-900">
+        <div className="flex justify-between items-center mb-3 gap-3">
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              await persistDraft();
+              toast({
+                title: "Draft saved",
+                description: "Your progress is saved. You can continue later from the same company and meeting date.",
+              });
+              navigate("/minutes-preparation");
+            }}
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleResetForm}
-            className="text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 rounded-lg"
-          >
-            Reset Form
-          </Button>
+          <div className="flex items-center gap-2">
+            {isDraftKeyReady(draftKey) && (
+              <span
+                className={`hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${
+                  draftStatus === 'saving'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : draftStatus === 'offline'
+                    ? 'bg-slate-50 text-slate-600 border-slate-200'
+                    : draftStatus === 'saved'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                }`}
+                title={lastSavedAt ? `Last saved ${new Date(lastSavedAt).toLocaleString()}` : undefined}
+              >
+                <CheckCircle className="h-3 w-3" />
+                {draftStatus === 'saving'
+                  ? 'Saving draft…'
+                  : draftStatus === 'offline'
+                  ? 'Saved on this device'
+                  : draftStatus === 'saved'
+                  ? `Draft saved · Step ${currentStep + 1}`
+                  : 'Auto-save on'}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void persistDraft()}
+              className="text-xs font-semibold border-slate-200 rounded-lg"
+            >
+              Save Draft
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleResetForm}
+              className="text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 rounded-lg"
+            >
+              Reset Form
+            </Button>
+          </div>
         </div>
 
         <div className="max-w-6xl mx-auto">
@@ -1478,7 +1651,11 @@ const FormBasedGenerator: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
+                onClick={async () => {
+                  const prev = Math.max(0, currentStep - 1);
+                  await persistDraft(prev);
+                  setCurrentStep(prev);
+                }}
                 disabled={currentStep === 0}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" /> Previous

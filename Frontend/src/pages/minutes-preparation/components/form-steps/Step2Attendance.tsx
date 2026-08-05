@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,23 @@ import { StepProps } from './types';
 
 export const Step2Attendance: React.FC<StepProps> = (props) => {
   const { formData, setFormData } = props;
+
+  // Default chairman = company Chairman/Chairperson when available
+  useEffect(() => {
+    const dirs = (formData.presentDirectors || []).filter((d: any) => d.status !== 'Leave of Absence');
+    if (!dirs.length) return;
+    const hasCurrent = dirs.some((d: any) => d.name === formData.chairmanName);
+    if (formData.chairmanName && hasCurrent) return;
+    const byRole = dirs.find((d: any) => `${d.designation || d.role || ''}`.toLowerCase().includes('chair'));
+    const pick = byRole?.name || dirs[0]?.name;
+    if (pick) {
+      setFormData((prev) => ({
+        ...prev,
+        chairmanName: pick,
+        signingChairmanName: prev.signingChairmanName || pick,
+      }));
+    }
+  }, [formData.presentDirectors, formData.chairmanName, setFormData]);
 
   const toggleDirectorStatus = (index: number) => {
     const updated = [...(formData.presentDirectors || [])];
@@ -129,7 +146,9 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
                   ) : (
                     formData.presentDirectors.map((director: any, index: number) => (
                       <SelectItem key={index} value={director.name} className="text-xs">
-                        {director.name} {director.din ? `(DIN: ${director.din})` : ''}
+                        {director.name}
+                        {director.designation || director.role ? ` · ${director.designation || director.role}` : ''}
+                        {director.din ? ` (DIN: ${director.din})` : ''}
                       </SelectItem>
                     ))
                   )}
