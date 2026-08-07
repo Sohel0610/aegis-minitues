@@ -8,6 +8,8 @@ import {
   X,
 } from "lucide-react";
 import UserManualModal from "../UserManualModal";
+import { VerticalNavigationHeader } from "./VerticalNavigationHeader";
+import { VerticalProvider } from "@/contexts/VerticalContext";
 
 // Adani theme color constants — same as outside design
 const A = {
@@ -423,16 +425,23 @@ const ProductDashboardLayout = ({
       )}
 
       {/* Main Content */}
-      <main
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflowY: "auto",
-          overflowX: "hidden",
-        }}
-      >
-        {children}
-      </main>
+      <VerticalProvider>
+        <main
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflowY: "auto",
+            overflowX: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <VerticalNavigationHeader />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            {children}
+          </div>
+        </main>
+      </VerticalProvider>
 
       {/* User Manual Modal */}
       <UserManualModal

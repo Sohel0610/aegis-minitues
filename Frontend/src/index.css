@@ -7,7 +7,6 @@
   src: url('./fonts/adani.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
-  font-display: swap;
 }
 
 :root {
@@ -48,147 +47,18 @@
 @layer base {
   * {
     border-color: hsl(var(--border));
+    font-family: 'Adani', sans-serif !important;
   }
 
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: 'Adani', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
     background: #ffffff;
     -webkit-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
-  }
-}
-
-@layer components {
-  .aegis-chat-markdown p {
-    margin: 0 0 0.75rem;
-  }
-
-  .aegis-chat-markdown p:last-child {
-    margin-bottom: 0;
-  }
-
-  .aegis-chat-markdown ul,
-  .aegis-chat-markdown ol {
-    margin: 0.5rem 0 0.75rem 1.25rem;
-  }
-
-  .aegis-chat-markdown ul { list-style: disc; }
-  .aegis-chat-markdown ol { list-style: decimal; }
-
-  .aegis-chat-markdown table {
-    width: 100%;
-    margin: 0.75rem 0;
-    border-collapse: collapse;
-    font-size: 0.8125rem;
-  }
-
-  .aegis-chat-markdown th,
-  .aegis-chat-markdown td {
-    border: 1px solid #e2e8f0;
-    padding: 0.45rem 0.55rem;
-    text-align: left;
-    vertical-align: top;
-  }
-
-  .aegis-chat-markdown th {
-    background: #f8fafc;
-    color: #334155;
-    font-weight: 600;
-  }
-
-  .aegis-chat-markdown a {
-    color: #005da4;
-    text-decoration: underline;
-  }
-
-  .card-glass {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    background: rgba(255, 255, 255, 0.9);
-  }
-
-  .ecg-grid {
-    background-image:
-      repeating-linear-gradient(rgba(0, 0, 0, 0.1) 0px, rgba(0, 0, 0, 0.1) 1px, transparent 1px, transparent 20px),
-      repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.1) 0px, rgba(0, 0, 0, 0.1) 1px, transparent 1px, transparent 20px);
-  }
-
-  .ecg-major-grid {
-    background-image:
-      repeating-linear-gradient(rgba(0, 0, 0, 0.2) 0px, rgba(0, 0, 0, 0.2) 1px, transparent 1px, transparent 100px),
-      repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0px, rgba(0, 0, 0, 0.2) 1px, transparent 1px, transparent 100px);
-  }
-
-  .monitor-glow {
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1), inset 0 0 20px rgba(255, 255, 255, 0.8);
-  }
-
-  .pulse-animation {
-    animation: pulse-monitor 2s ease-in-out infinite;
-  }
-
-  .scan-line {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .scan-line::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.1);
-    animation: scan-monitor 3s linear infinite;
-  }
-
-  .data-flow {
-    background: repeating-linear-gradient(45deg,
-        transparent 0px, transparent 5px, rgba(0, 0, 0, 0.1) 5px, rgba(0, 0, 0, 0.1) 10px,
-        transparent 10px, transparent 15px, rgba(0, 0, 0, 0.2) 15px, rgba(0, 0, 0, 0.2) 20px);
-    animation: flow-monitor 2s linear infinite;
-  }
-}
-
-@keyframes pulse-monitor {
-
-  0%,
-  100% {
-    opacity: 0.7;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-}
-
-@keyframes scan-monitor {
-  0% {
-    left: -100%;
-  }
-
-  100% {
-    left: 100%;
-  }
-}
-
-@keyframes flow-monitor {
-  0% {
-    background-position: 0 0;
-  }
-
-  100% {
-    background-position: 20px 20px;
   }
 }
 

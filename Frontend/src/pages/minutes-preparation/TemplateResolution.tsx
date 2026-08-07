@@ -1,11 +1,10 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Search } from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { useToast } from "@/components/ui/use-toast";
 import { getMinutesNavItems } from '@/constants/minutesNavigation';
@@ -21,6 +20,7 @@ const TemplateResolution = () => {
     const [templates, setTemplates] = useState<ResolutionTemplate[]>([]);
     const [newName, setNewName] = useState('');
     const [newText, setNewText] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
 
@@ -94,84 +94,106 @@ const TemplateResolution = () => {
         }
     };
 
+    const filteredTemplates = useMemo(() => {
+        if (!searchTerm.trim()) return templates;
+        const query = searchTerm.toLowerCase();
+        return templates.filter(t => 
+            t.template_name.toLowerCase().includes(query) ||
+            t.resolution_text.toLowerCase().includes(query)
+        );
+    }, [templates, searchTerm]);
+
     return (
         <ProductDashboardLayout productName="Generate Minutes" productRoute="/minutes-preparation" navigationItems={navigationItems}>
-            <div className="container mx-auto py-6">
-                <div className="space-y-8">
-                    <div>
-                        <h1 className="text-3xl font-bold">Template Resolution</h1>
-                        <p className="text-muted-foreground">Manage reusable resolution templates for your meeting minutes</p>
+            <div className="p-6">
+                <div className="border border-slate-200 rounded-xl bg-white shadow-xs p-6 space-y-6">
+                    <div className="pb-4 border-b border-slate-100">
+                        <h1 className="text-xl font-bold text-slate-900">Template Resolution</h1>
+                        <p className="text-xs text-slate-500 mt-1">Manage reusable resolution templates for meeting minutes.</p>
                     </div>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Add New Resolution Template</CardTitle>
-                            <CardDescription>Enter a name and the resolution text to save for future use</CardDescription>
+                    <Card className="border border-slate-200 shadow-none bg-white rounded-xl overflow-hidden">
+                        <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-3">
+                            <CardTitle className="text-sm font-bold text-slate-900">Add New Resolution Template</CardTitle>
+                            <CardDescription className="text-xs text-slate-500 mt-0.5">Enter a template name and statutory resolution text</CardDescription>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="p-4 space-y-4">
                             <form onSubmit={handleAddTemplate} className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="templateName">Template Name *</Label>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="templateName" className="text-xs font-semibold text-slate-700">Template Name *</Label>
                                     <Input
                                         id="templateName"
                                         placeholder="e.g., Appointment of Statutory Auditor"
                                         value={newName}
                                         onChange={(e) => setNewName(e.target.value)}
                                         required
+                                        className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="resolutionText">Resolution Text *</Label>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="resolutionText" className="text-xs font-semibold text-slate-700">Resolution Text *</Label>
                                     <textarea
                                         id="resolutionText"
-                                        className="w-full min-h-[150px] p-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full min-h-[120px] p-3 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-slate-400 bg-white"
                                         placeholder="Enter the full text of the resolution..."
                                         value={newText}
                                         onChange={(e) => setNewText(e.target.value)}
                                         required
                                     />
                                 </div>
-                                <Button type="submit" disabled={isLoading}>
+                                <Button type="submit" disabled={isLoading} className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg h-9 px-4">
                                     {isLoading ? 'Saving...' : (
-                                        <><Plus className="h-4 w-4 mr-2" /> Save Template</>
+                                        <><Plus className="h-4 w-4 mr-1.5" /> Save Template</>
                                     )}
                                 </Button>
                             </form>
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Stored Resolution Templates</CardTitle>
+                    <Card className="border border-slate-200 shadow-none bg-white rounded-xl overflow-hidden">
+                        <CardHeader className="bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-3 border-b border-slate-100">
+                            <div>
+                                <CardTitle className="text-sm font-bold text-slate-900">Stored Resolution Templates</CardTitle>
+                                <CardDescription className="text-xs text-slate-500 mt-0.5">Search and manage existing templates</CardDescription>
+                            </div>
+                            <div className="relative w-full md:w-64 shrink-0">
+                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                                <Input
+                                    placeholder="Search templates..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-9 bg-white border-slate-200 h-9 text-xs rounded-lg"
+                                />
+                            </div>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="p-0">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-slate-50/30">
                                     <TableRow>
-                                        <TableHead>Template Name</TableHead>
-                                        <TableHead>Preview</TableHead>
-                                        <TableHead className="w-[100px]">Action</TableHead>
+                                        <TableHead className="text-xs font-bold text-slate-700">Template Name</TableHead>
+                                        <TableHead className="text-xs font-bold text-slate-700">Preview</TableHead>
+                                        <TableHead className="w-[80px] text-center text-xs font-bold text-slate-700">Action</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {templates.length === 0 ? (
+                                    {filteredTemplates.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                                                No templates found. Add your first resolution template above.
+                                            <TableCell colSpan={3} className="text-center py-8 text-xs text-slate-400">
+                                                No templates found matching your criteria.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        templates.map((template) => (
-                                            <TableRow key={template.id}>
-                                                <TableCell className="font-medium">{template.template_name}</TableCell>
-                                                <TableCell className="max-w-[400px] truncate text-muted-foreground italic">
+                                        filteredTemplates.map((template) => (
+                                            <TableRow key={template.id} className="border-b border-slate-100">
+                                                <TableCell className="font-bold text-xs text-slate-900">{template.template_name}</TableCell>
+                                                <TableCell className="max-w-[400px] truncate text-slate-600 text-xs">
                                                     {template.resolution_text}
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell className="text-center">
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                        className="text-slate-400 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0 rounded-lg"
                                                         onClick={() => handleDeleteTemplate(template.id)}
                                                     >
                                                         <Trash2 className="h-4 w-4" />

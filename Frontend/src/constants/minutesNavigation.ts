@@ -14,7 +14,7 @@ import {
   Users,
   BookOpen,
   Eye,
-  Video,
+  MapPin,
   LucideIcon
 } from 'lucide-react';
 
@@ -34,16 +34,16 @@ export function getMinutesNavItems(activeId?: string): MinutesNavItem[] {
   const items: MinutesNavItem[] = [
     { id: 'home', label: 'Home', icon: Home, href: '/' },
     { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
-    { id: 'teams', label: 'Teams Meetings', icon: Video, href: '/minutes-preparation/teams' },
     { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
-    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
+    { id: 'ai-mom', label: 'Governance Records', icon: FileText, href: '/minutes-preparation/ai-assistant' },
     { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
     { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
+    { id: 'templates', label: 'Meeting Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
     { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
-    { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer' },
-    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
+    // { id: 'renderer', label: 'Template Renderer', icon: Eye, href: '/minutes-preparation/renderer' },
+    // { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
+    // { id: 'places', label: 'Meeting Places', icon: MapPin, href: '/minutes-preparation/places' },
     { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' },
   ];
 
