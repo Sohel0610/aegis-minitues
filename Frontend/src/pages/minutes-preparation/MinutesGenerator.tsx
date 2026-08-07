@@ -81,28 +81,6 @@ const formatMeetingDate = (dateStr?: string) => {
 const MinutesGenerator = () => {
   const navigate = useNavigate();
   
-  // Local state to track which BU is currently selected in Step 1
-  const [activeVertical, setActiveVertical] = useState<any | null>(null);
-
-  // Clear selected company & vertical on mount so the user starts fresh at Step 1 Grid
-  useEffect(() => {
-    setSelectedCompany(null);
-    setSelectedVertical(null);
-    setActiveVertical(null);
-  }, []);
-
-  // Dynamic Tab state for selected company details
-  const [activeTab, setActiveTab] = useState<'schedule' | 'compliances' | 'history' | 'directors'>('schedule');
-
-  // History & Compliance state
-  const [history, setHistory] = useState<any[]>([]);
-  const [compliances, setCompliances] = useState<any[]>([]);
-  const [loadingCompliances, setLoadingCompliances] = useState(false);
-
-  // Pagination for history
-  const [historyPage, setHistoryPage] = useState<number>(1);
-  const historyPageSize = 5;
-
   const {
     verticals,
     setSelectedVertical,
@@ -110,6 +88,16 @@ const MinutesGenerator = () => {
     setSelectedCompany,
     loadingVerticals
   } = useVertical();
+
+  // Local state to track which BU is currently selected in Step 1
+  const [activeVertical, setActiveVertical] = useState<any | null>(null);
+
+  // Clear selected company & vertical on mount so the user starts fresh at Step 1 Grid
+  useEffect(() => {
+    if (setSelectedCompany) setSelectedCompany(null);
+    if (setSelectedVertical) setSelectedVertical(null);
+    setActiveVertical(null);
+  }, [setSelectedCompany, setSelectedVertical]);
 
   // Local state for listing companies under the activeVertical
   const [localCompanies, setLocalCompanies] = useState<any[]>([]);
