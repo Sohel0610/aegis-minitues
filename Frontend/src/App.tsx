@@ -68,6 +68,8 @@ import { AccessRequest } from "./pages/AccessRequest";
 import { AdminPanel } from "./pages/AdminPanel";
 import { AccessDenied } from "./components/RouteGuard";
 
+import { VerticalProvider } from "@/contexts/VerticalContext";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -77,7 +79,8 @@ const App = () => (
       <SonnerToaster />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
+          <VerticalProvider>
+            <Routes>
             {/* Main landing page */}
             <Route path="/" element={<LandingPage />} />
 
@@ -306,7 +309,8 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </AuthProvider>
+        </VerticalProvider>
+      </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
