@@ -92,6 +92,18 @@ const MinutesGenerator = () => {
   // Local state to track which BU is currently selected in Step 1
   const [activeVertical, setActiveVertical] = useState<any | null>(null);
 
+  // Dynamic Tab state for selected company details
+  const [activeTab, setActiveTab] = useState<'schedule' | 'compliances' | 'history' | 'directors'>('schedule');
+
+  // History & Compliance state
+  const [history, setHistory] = useState<any[]>([]);
+  const [compliances, setCompliances] = useState<any[]>([]);
+  const [loadingCompliances, setLoadingCompliances] = useState(false);
+
+  // Pagination for history
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const historyPageSize = 5;
+
   // Clear selected company & vertical on mount so the user starts fresh at Step 1 Grid
   useEffect(() => {
     if (setSelectedCompany) setSelectedCompany(null);
