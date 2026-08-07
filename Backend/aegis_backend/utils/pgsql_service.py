@@ -1,3 +1,4 @@
+import sqlite3
 import psycopg2
 import psycopg2.pool
 from psycopg2.extras import RealDictCursor
@@ -12,6 +13,34 @@ logger = logging.getLogger(__name__)
 
 _pools = {}
 _pools_lock = threading.Lock()
+
+class SQLiteConnectionWrapper:
+    """Wrapper for sqlite3 connection to emulate psycopg2 interface."""
+    def __init__(self, conn):
+        self._conn = conn
+        self._conn.row_factory = sqlite3.Row
+
+    def cursor(self, cursor_factory=None):
+        return self._conn.cursor()
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self._conn.rollback()
+        else:
+            self._conn.commit()
+        self._conn.close()
 
 class PooledConnection:
     """Proxy a pooled psycopg2 connection so `.close()` returns it to the pool."""
