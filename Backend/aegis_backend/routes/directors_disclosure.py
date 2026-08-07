@@ -26,7 +26,7 @@ from routes.director_changes import log_director_change
 from routes.director_family_info import get_family_info_for_director, update_director_family_info
 
 # Import our PostgreSQL service
-from utils.pgsql_service import get_pg_connection, get_pg_cursor
+from utils.pgsql_service import get_pg_connection, get_pg_cursor, SQLiteConnectionWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -324,42 +324,108 @@ async def get_directors_disclosures():
 
 @router.get("/directors-master", response_model=DirectorsMasterResponse) 
 async def get_directors_master():
-    """Get the master list of directors (PostgreSQL)."""
+    """Get the master list of directors (PostgreSQL / SQLite fallback)."""
     pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
-    if not pg_conn: raise HTTPException(status_code=500, detail="DB connection failed")
+    if not pg_conn:
+        return DirectorsMasterResponse(data=[], count=0)
     cursor = get_pg_cursor(pg_conn)
     try:
-        cursor.execute("""
-            SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan,
-                   EXISTS (
-                       SELECT 1 FROM directors_master.external_board_members ea
-                       WHERE TRIM(ea.din) = TRIM(d.din)
-                       AND TRIM(UPPER(ea.designation)) IN (
-                           'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
-                           'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
-                       )
-                       AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
-                   ) as is_kmp
-            FROM directors_master.directors d
-            LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
-            ORDER BY d.name
-        """)
-        rows = cursor.fetchall()
-        data = []
-        for r in rows:
-            data.append({
-                "id": r["id"],
-                "name": r["name"],
-                "din": r["din"] or "N/A",
-                "pan": r["pan"],
-                "din_status": r["din_status"],
-                "gender": r["gender"],
-                "is_kmp": bool(r["is_kmp"]),
-                "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
-            })
-        return DirectorsMasterResponse(data=data, count=len(data))
+        use_sqlite = os.getenv("USE_SQLITE_FALLBACK", "False").lower() in ("true", "1", "yes")
+        is_sqlite = use_sqlite or isinstance(pg_conn, SQLiteConnectionWrapper)
+        if is_sqlite:
+            data = []
+            try:
+                cursor.execute("""
+                    SELECT DISTINCT name, COALESCE(din, '') as din
+                    FROM (
+                        SELECT name, din FROM external_board_members WHERE name IS NOT NULL AND TRIM(name) != ''
+                        UNION
+                        SELECT name, din FROM company_directors WHERE name IS NOT NULL AND TRIM(name) != ''
+                    )
+                    ORDER BY name
+                """)
+                rows = cursor.fetchall()
+                for idx, r in enumerate(rows):
+                    data.append({
+                        "id": idx + 1,
+                        "name": r["name"],
+                        "din": r["din"] or "N/A",
+                        "pan": "N/A",
+                        "din_status": "Active",
+                        "gender": "N/A",
+                        "is_kmp": False,
+                        "created_at": datetime.now().isoformat()
+                    })
+                return DirectorsMasterResponse(data=data, count=len(data))
+            except Exception as sql_err:
+                logger.warning(f"SQLite fallback directors query failed: {sql_err}")
+                return DirectorsMasterResponse(data=[], count=0)
+
+        try:
+            cursor.execute("""
+                SELECT d.id, d.name, d.din, d.created_at, d.din_status, d.gender, p.pan,
+                       EXISTS (
+                           SELECT 1 FROM directors_master.external_board_members ea
+                           WHERE TRIM(ea.din) = TRIM(d.din)
+                           AND TRIM(UPPER(ea.designation)) IN (
+                               'MANAGING DIRECTOR', 'CEO', 'CFO', 'COMPANY SECRETARY', 
+                               'MANAGER', 'WHOLE-TIME DIRECTOR', 'WHOLETIME DIRECTOR'
+                           )
+                           AND (ea.status IS NULL OR ea.status = '' OR ea.status = 'None' OR ea.status ILIKE 'ACTIVE%%')
+                       ) as is_kmp
+                FROM directors_master.directors d
+                LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
+                ORDER BY d.name
+            """)
+            rows = cursor.fetchall()
+            data = []
+            for r in rows:
+                data.append({
+                    "id": r["id"],
+                    "name": r["name"],
+                    "din": r["din"] or "N/A",
+                    "pan": r["pan"],
+                    "din_status": r["din_status"],
+                    "gender": r["gender"],
+                    "is_kmp": bool(r["is_kmp"]),
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else datetime.now().isoformat()
+                })
+            return DirectorsMasterResponse(data=data, count=len(data))
+        except Exception as pg_err:
+            logger.warning(f"PostgreSQL directors query failed: {pg_err}. Trying SQLite fallback query.")
+            cursor.execute("""
+                SELECT DISTINCT name, COALESCE(din, '') as din
+                FROM (
+                    SELECT name, din FROM external_board_members WHERE name IS NOT NULL AND TRIM(name) != ''
+                    UNION
+                    SELECT name, din FROM company_directors WHERE name IS NOT NULL AND TRIM(name) != ''
+                )
+                ORDER BY name
+            """)
+            rows = cursor.fetchall()
+            data = []
+            for idx, r in enumerate(rows):
+                data.append({
+                    "id": idx + 1,
+                    "name": r["name"],
+                    "din": r["din"] or "N/A",
+                    "pan": "N/A",
+                    "din_status": "Active",
+                    "gender": "N/A",
+                    "is_kmp": False,
+                    "created_at": datetime.now().isoformat()
+                })
+            return DirectorsMasterResponse(data=data, count=len(data))
+    except Exception as general_err:
+        logger.error(f"Error fetching directors master: {general_err}")
+        return DirectorsMasterResponse(data=[], count=0)
     finally:
-        cursor.close(); pg_conn.close()
+        if cursor:
+            try: cursor.close()
+            except Exception: pass
+        if pg_conn:
+            try: pg_conn.close()
+            except Exception: pass
 
 @router.get("/directors-disclosures/{id}/summary", response_model=DocumentSummaryResponse)
 async def get_disclosure_summary(id: int):
@@ -819,3 +885,132 @@ async def download_template(template_name: str):
 @router.get("/directors-for-minutes", response_model=DirectorsMasterResponse)
 async def get_directors_for_minutes():
     return await get_directors_master()
+
+# --- Formal Pydantic DTO Schemas for Enterprise Inter-Module Communication ---
+
+class MBP1AssociationSchema(BaseModel):
+    company_name: str
+    designation: str = "Director"
+    appointment_date: Optional[str] = "N/A"
+
+class DirectorDisclosureDTO(BaseModel):
+    director_name: str
+    din: str
+    din_status: str = "Active"
+    pan: Optional[str] = "N/A"
+    is_disqualified: bool = False
+    dir8_confirmation: str
+    mbp1_disclosure_text: str
+    mbp1_summary: Optional[str] = ""
+    mbp1_file: Optional[str] = ""
+    associations_count: int = 0
+    associations: List[MBP1AssociationSchema] = []
+
+def get_director_disclosure_dto(din: str) -> DirectorDisclosureDTO:
+    """
+    Enterprise Service Repository function.
+    Queries the database and returns a strongly-typed DirectorDisclosureDTO.
+    Decouples database access from consuming modules like Minutes Generator.
+    """
+    pg_conn = get_pg_connection(os.getenv('POSTGRES_DATABASE_DIRECTOR'))
+    if not pg_conn:
+        raise RuntimeError("Database connection unavailable")
+
+    cursor = get_pg_cursor(pg_conn)
+    try:
+        clean_din = din.strip()
+
+        # 1. Fetch Master & Profile Info
+        cursor.execute("""
+            SELECT d.name, d.din, d.din_status, d.gender, p.pan
+            FROM directors_master.directors d
+            LEFT JOIN directors_profile.directors_profile p ON TRIM(d.din) = TRIM(p.din)
+            WHERE TRIM(d.din) = %s
+        """, (clean_din,))
+        master_row = cursor.fetchone()
+
+        if not master_row:
+            cursor.execute("SELECT name FROM directors_master.external_board_members WHERE TRIM(din) = %s LIMIT 1", (clean_din,))
+            ext_row = cursor.fetchone()
+            name = ext_row["name"] if ext_row else f"Director ({clean_din})"
+            din_status = "Active"
+            pan = None
+        else:
+            name = master_row["name"]
+            din_status = master_row["din_status"] or "Active"
+            pan = master_row["pan"]
+
+        # 2. Fetch External Associations
+        associations = []
+        try:
+            cursor.execute("""
+                SELECT company_name, designation, appointment_date, status
+                FROM directors_master.external_associations
+                WHERE TRIM(din) = %s AND (status IS NULL OR status = '' OR status ILIKE 'ACTIVE%%')
+                ORDER BY company_name ASC
+            """, (clean_din,))
+            assoc_rows = cursor.fetchall()
+            associations = [
+                MBP1AssociationSchema(
+                    company_name=r["company_name"],
+                    designation=r.get("designation") or "Director",
+                    appointment_date=str(r["appointment_date"]) if r.get("appointment_date") else "N/A"
+                )
+                for r in assoc_rows
+            ]
+        except Exception:
+            pass
+
+        # 3. Fetch MBP-1 Document Summary
+        mbp1_summary = ""
+        mbp1_file = ""
+        try:
+            cursor.execute("""
+                SELECT file_path, summary
+                FROM directors_data.document_summaries
+                WHERE TRIM(din) = %s OR TRIM(UPPER(director_name)) = TRIM(UPPER(%s))
+                ORDER BY updated_at DESC LIMIT 1
+            """, (clean_din, name))
+            doc_row = cursor.fetchone()
+            if doc_row:
+                mbp1_summary = doc_row["summary"] or ""
+                mbp1_file = doc_row["file_path"] or ""
+        except Exception:
+            pass
+
+        # 4. Generate Statutory Confirmation Paragraphs
+        dir8_status_text = f"Notice in Form DIR-8 under Section 164(2) received from {name} (DIN: {clean_din}) confirming non-disqualification."
+
+        if associations:
+            assoc_names = ", ".join([a.company_name for a in associations[:5]])
+            mbp1_disclosure_text = f"Notice of Interest in Form MBP-1 under Section 184(1) received from {name} (DIN: {clean_din}) disclosing interest in: {assoc_names}."
+        else:
+            mbp1_disclosure_text = f"Notice of Interest in Form MBP-1 under Section 184(1) received from {name} (DIN: {clean_din}) taken on record."
+
+        return DirectorDisclosureDTO(
+            director_name=name,
+            din=clean_din,
+            din_status=din_status,
+            pan=pan or "N/A",
+            is_disqualified=(din_status.lower() in ["disqualified", "inactive"]),
+            dir8_confirmation=dir8_status_text,
+            mbp1_disclosure_text=mbp1_disclosure_text,
+            mbp1_summary=mbp1_summary,
+            mbp1_file=mbp1_file,
+            associations_count=len(associations),
+            associations=associations
+        )
+    finally:
+        cursor.close()
+        pg_conn.close()
+
+@router.get("/directors/{din}/disclosure-details", response_model=DirectorDisclosureDTO)
+async def get_director_disclosure_details(din: str):
+    """
+    Primary API endpoint returning strongly-typed DirectorDisclosureDTO schema.
+    """
+    try:
+        return get_director_disclosure_dto(din)
+    except Exception as e:
+        logger.error(f"Error fetching disclosure DTO for DIN {din}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

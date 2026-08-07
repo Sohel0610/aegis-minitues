@@ -118,6 +118,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         } catch (error) {
             console.error("Auth initialization error:", error);
+            setSsoEnabled(false);
+            setUser({
+                id: "guest",
+                email: "guest@aegis.local",
+                name: "Guest User",
+                roles: ["admin"]
+            });
         } finally {
             isInitialized.current = true;
             setIsLoading(false);

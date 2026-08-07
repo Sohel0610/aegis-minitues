@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -12,6 +12,19 @@ import PlaceSelector from '@/components/PlaceSelector';
 import MultiDirectorSelector from '@/components/MultiDirectorSelector';
 import { isAdmin } from '@/utils/adminAuth';
 import { toast } from '@/components/ui/use-toast';
+import { getMinutesNavItems } from '@/constants/minutesNavigation';
+import { Step0TemplateCompany, Step2Attendance, Step8Resolutions } from './components/form-steps';
+import {
+  buildMinutesDraftKey,
+  isDraftKeyReady,
+  readLocalDraft,
+  writeLocalDraft,
+  clearLocalDraft,
+  saveDraftToServer,
+  loadDraftFromServer,
+  deleteDraftFromServer,
+  type MinutesDraftPayload,
+} from '@/utils/minutesDraft';
 
 // Helper function to convert numbers to ordinals (1st, 2nd, 3rd, etc.)
 const numberToOrdinal = (num: number): string => {
@@ -24,6 +37,7 @@ const numberToOrdinal = (num: number): string => {
 interface Director {
   name: string;
   din: string;
+  status?: string;
 }
 
 // Convert numbers to Indian Rupees words
@@ -116,6 +130,7 @@ interface FormData {
   signingPlace: string;
   signingChairmanName: string;
   resolutions: string;
+  selectedResolutions?: any[];
   customTemplateFilename?: string;
 }
 
@@ -123,6 +138,10 @@ const FormBasedGenerator: React.FC = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'offline'>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const draftRestoredRef = useRef(false);
+  const skipNextAutosaveRef = useRef(false);
 
   const [formData, setFormData] = useState<FormData>({
     template: '',
@@ -176,19 +195,7 @@ const FormBasedGenerator: React.FC = () => {
   });
 
   const location = useLocation();
-  const navigationItems = [
-    { id: 'home', label: 'Home', icon: Home, href: '/' },
-    { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation', isActive: location.pathname === '/minutes-preparation' },
-    { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
-    { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
-    { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },
-    { id: 'chatbot', label: 'Meeting Assistant', icon: MessageSquare, href: '/minutes-preparation/chatbot' },
-    { id: 'template-resolution', label: 'Template Resolution', icon: History, href: '/minutes-preparation/template-resolution' },
-    { id: 'minutes', label: 'Meeting Minutes', icon: FileText, href: '/minutes-preparation/minutes' },
-    { id: 'templates', label: 'Templates', icon: FileSpreadsheet, href: '/minutes-preparation/templates' },
-    { id: 'directors', label: 'Directors', icon: Users, href: '/minutes-preparation/directors' },
-    { id: 'manual', label: 'User Manual', icon: BookOpen, href: '#' }
-  ];
+  const navigationItems = getMinutesNavItems('dashboard');
 
   useEffect(() => {
     if (location.state) {
@@ -220,6 +227,70 @@ const FormBasedGenerator: React.FC = () => {
   const [resolutionTemplates, setResolutionTemplates] = useState<{ id: number; template_name: string; resolution_text: string }[]>([]);
   const [resTemplateName, setResTemplateName] = useState('');
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const [resSearch, setResSearch] = useState('');
+
+  const moveResolutionUp = (index: number) => {
+    if (index === 0) return;
+    const items = [...(formData.selectedResolutions || [])];
+    const temp = items[index];
+    items[index] = items[index - 1];
+    items[index - 1] = temp;
+    
+    setFormData(prev => ({
+      ...prev,
+      selectedResolutions: items,
+      resolutions: items.map((i: any) => i.text).join('\n\n')
+    }));
+  };
+
+  const moveResolutionDown = (index: number) => {
+    const items = [...(formData.selectedResolutions || [])];
+    if (index === items.length - 1) return;
+    const temp = items[index];
+    items[index] = items[index + 1];
+    items[index + 1] = temp;
+
+    setFormData(prev => ({
+      ...prev,
+      selectedResolutions: items,
+      resolutions: items.map((i: any) => i.text).join('\n\n')
+    }));
+  };
+
+  const removeResolution = (index: number) => {
+    const items = [...(formData.selectedResolutions || [])];
+    items.splice(index, 1);
+    setFormData(prev => ({
+      ...prev,
+      selectedResolutions: items,
+      resolutions: items.map((i: any) => i.text).join('\n\n')
+    }));
+  };
+
+  const addResolutionTemplate = (template: any) => {
+    const items = [...(formData.selectedResolutions || [])];
+    items.push({
+      id: Date.now() + Math.random(),
+      template_id: template.id,
+      title: template.template_name,
+      text: template.resolution_text
+    });
+    setFormData(prev => ({
+      ...prev,
+      selectedResolutions: items,
+      resolutions: items.map((i: any) => i.text).join('\n\n')
+    }));
+  };
+
+  const handleResolutionTextChange = (index: number, text: string) => {
+    const items = [...(formData.selectedResolutions || [])];
+    items[index].text = text;
+    setFormData(prev => ({
+      ...prev,
+      selectedResolutions: items,
+      resolutions: items.map((i: any) => i.text).join('\n\n')
+    }));
+  };
 
   const handleCustomTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -259,6 +330,211 @@ const FormBasedGenerator: React.FC = () => {
       setIsUploadingTemplate(false);
     }
   };
+
+  const handleResetForm = () => {
+    if (!window.confirm('Clear this draft and reset all steps? This cannot be undone.')) return;
+    const key = buildMinutesDraftKey(
+      formData.companyName,
+      formData.meetingType,
+      formData.meetingDate,
+      formData.committeeName,
+    );
+    clearLocalDraft(key);
+    void deleteDraftFromServer(key);
+    setCurrentStep(0);
+    setDraftStatus('idle');
+    setLastSavedAt(null);
+    setFormData({
+      template: '',
+      companyName: formData.companyName, // keep company context
+      meetingNumber: '',
+      meetingType: formData.meetingType || 'Board Meeting',
+      committeeName: formData.committeeName || '',
+      meetingDate: formData.meetingDate || '',
+      meetingDay: formData.meetingDay || '',
+      timeCommenced: formData.timeCommenced || '',
+      timeConcluded: '',
+      meetingPlace: formData.meetingPlace || '',
+      presentDirectors: [],
+      chairmanName: '',
+      inAttendance: [],
+      companySecretary: '',
+      previousMinutesDate: '',
+      interestDisclosures: [],
+      disqualificationDeclarations: [],
+      hasSection184Disclosure: false,
+      section184Subject: '',
+      section184Text: '',
+      auditorPaymentNumber: 0,
+      auditorPaymentWords: '',
+      auditorPaymentYear: new Date().getFullYear(),
+      fsYear: new Date().getFullYear(),
+      rptFinYearRangeFrom: new Date().getFullYear() - 1,
+      rptFinYearRangeTo: new Date().getFullYear(),
+      signatory1Name: '',
+      signatory1Role: '',
+      signatory1Din: '',
+      signatory2Name: '',
+      signatory2Role: '',
+      signatory2Din: '',
+      directorsReportYear: new Date().getFullYear(),
+      agmNumber: '',
+      agmDayName: '',
+      agmMonthName: '',
+      agmYear: null,
+      agmMonth: null,
+      agmDay: null,
+      agmTime: '',
+      registeredOfficeAddress: '',
+      chairmanShortName: '',
+      recordingDate: '',
+      signingDate: '',
+      signingPlace: '',
+      signingChairmanName: '',
+      resolutions: '',
+      customTemplateFilename: '',
+    });
+    toast({ title: "Form Reset", description: "Draft cleared. Meeting context kept." });
+  };
+
+  const draftKey = useMemo(
+    () =>
+      buildMinutesDraftKey(
+        formData.companyName,
+        formData.meetingType,
+        formData.meetingDate,
+        formData.committeeName,
+      ),
+    [formData.companyName, formData.meetingType, formData.meetingDate, formData.committeeName],
+  );
+
+  const persistDraft = useCallback(
+    async (stepOverride?: number) => {
+      if (!isDraftKeyReady(draftKey)) return false;
+      const step = typeof stepOverride === 'number' ? stepOverride : currentStep;
+      const payload: MinutesDraftPayload = {
+        currentStep: step,
+        formData: formData as unknown as Record<string, unknown>,
+      };
+      setDraftStatus('saving');
+      try {
+        writeLocalDraft(draftKey, payload);
+        const server = await saveDraftToServer(draftKey, {
+          company_name: formData.companyName,
+          meeting_type: formData.meetingType,
+          meeting_date: formData.meetingDate,
+          committee_name: formData.committeeName,
+          current_step: step,
+          form_data: formData as unknown as Record<string, unknown>,
+        });
+        const ts = server.updated_at || new Date().toISOString();
+        setLastSavedAt(ts);
+        setDraftStatus(server.ok ? 'saved' : 'offline');
+        return true;
+      } catch {
+        setDraftStatus('offline');
+        return false;
+      }
+    },
+    [draftKey, currentStep, formData],
+  );
+
+  // Restore draft once company + date are known (survives refresh / Back / reconnect)
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    if (!isDraftKeyReady(draftKey)) return;
+
+    const forceReset = Boolean(location.state?.resetDraft);
+    if (forceReset) {
+      draftRestoredRef.current = true;
+      clearLocalDraft(draftKey);
+      void deleteDraftFromServer(draftKey);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      // Read drafts BEFORE enabling autosave so a mid-restore wipe can't overwrite localStorage
+      const local = readLocalDraft(draftKey);
+      const server = await loadDraftFromServer(draftKey);
+      if (cancelled) return;
+
+      const pickNewer = (a: MinutesDraftPayload | null, b: MinutesDraftPayload | null) => {
+        if (!a) return b;
+        if (!b) return a;
+        const at = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+        const bt = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+        return bt > at ? b : a;
+      };
+      const draft = pickNewer(local, server);
+
+      skipNextAutosaveRef.current = true;
+      draftRestoredRef.current = true;
+
+      if (!draft?.formData || Object.keys(draft.formData).length === 0) return;
+
+      setFormData(prev => ({
+        ...prev,
+        ...(draft.formData as any),
+        // Keep the meeting identity from the company selection flow when present
+        companyName: prev.companyName || (draft.formData as any).companyName || '',
+        meetingDate: prev.meetingDate || (draft.formData as any).meetingDate || '',
+        meetingType: prev.meetingType || (draft.formData as any).meetingType || 'Board Meeting',
+        committeeName: prev.committeeName || (draft.formData as any).committeeName || '',
+        // Prefer restored chairman — Step0/Attendance sync must not blank it on reload
+        chairmanName: (draft.formData as any).chairmanName || prev.chairmanName || '',
+        signingChairmanName:
+          (draft.formData as any).signingChairmanName ||
+          (draft.formData as any).chairmanName ||
+          prev.signingChairmanName ||
+          '',
+      }));
+      if (typeof draft.currentStep === 'number' && draft.currentStep > 0) {
+        setCurrentStep(draft.currentStep);
+        toast({
+          title: "Draft restored",
+          description: `Resumed at step ${draft.currentStep + 1}. Your progress was saved.`,
+        });
+      }
+      if (draft.updatedAt) setLastSavedAt(draft.updatedAt);
+      setDraftStatus('saved');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftKey, location.state]);
+
+  // Auto-save on every form / step change (debounced). Works offline via localStorage.
+  useEffect(() => {
+    if (!draftRestoredRef.current && !location.state?.resetDraft) return;
+    if (!isDraftKeyReady(draftKey)) return;
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void persistDraft();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [formData, currentStep, draftKey, persistDraft, location.state]);
+
+  const [dbTemplates, setDbTemplates] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchDbTemplates = async () => {
+      try {
+        const res = await fetch('/api/templates');
+        if (res.ok) {
+          const data = await res.json();
+          setDbTemplates(data.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch templates", err);
+      }
+    };
+    fetchDbTemplates();
+  }, []);
 
   useEffect(() => {
     const fetchResTemplates = async () => {
@@ -339,9 +615,61 @@ const FormBasedGenerator: React.FC = () => {
     }
   ];
 
+  const [verticals, setVerticals] = useState<any[]>([]);
+  const [selectedVertical, setSelectedVertical] = useState<string>('');
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
+
+  // Fetch verticals on mount
+  useEffect(() => {
+    const fetchVerticals = async () => {
+      try {
+        const res = await fetch('/api/verticals');
+        if (res.ok) {
+          const data = await res.json();
+          setVerticals(data.data || []);
+          if (data.data && data.data.length > 0) {
+            setSelectedVertical(data.data[0].id.toString());
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch verticals", err);
+      }
+    };
+    fetchVerticals();
+  }, []);
+
+  // Fetch companies based on vertical and search
+  useEffect(() => {
+    if (!selectedVertical) return;
+    const fetchCompanies = async () => {
+      setLoadingCompanies(true);
+      try {
+        const res = await fetch(`/api/verticals/${selectedVertical}/companies?q=${encodeURIComponent(companySearch)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCompanies(data.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch companies", err);
+      } finally {
+        setLoadingCompanies(false);
+      }
+    };
+
+    const delayDebounce = setTimeout(() => {
+      fetchCompanies();
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [selectedVertical, companySearch]);
+
   const [isOtherCompany, setIsOtherCompany] = useState(false);
 
-  const steps = formData.template === 'Q1' ? [
+  const isFullFlow = formData.template === 'Q1' || formData.template?.includes('28.04.2025') || !['Q2', 'Q3', 'Q4'].includes(formData.template);
+
+  const steps = isFullFlow ? [
     { id: 'template', title: 'Template & Company' },
     { id: 'meeting', title: 'Meeting Details' },
     { id: 'attendance', title: 'Attendance' },
@@ -361,19 +689,17 @@ const FormBasedGenerator: React.FC = () => {
     { id: 'review', title: 'Review & Generate' },
   ];
 
-  const isStepValid = () => {
-    // For Q2/Q3/Q4, map step indices
-    const isQ1 = formData.template === 'Q1';
+  const isStepValidAt = (stepIndex: number): boolean => {
+    const isQ1 = isFullFlow;
 
     if (isQ1) {
-      // Q1 has 9 steps (0-8)
-      switch (currentStep) {
-        case 0: { // Template & Company (Now includes Date & Time)
+      switch (stepIndex) {
+        case 0: { // Template & Company (includes Date & Time)
           const isTemplateValid = formData.template === 'custom' ? !!formData.customTemplateFilename : !!formData.template;
-          return isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced;
+          return Boolean(isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced);
         }
-        case 1: // Meeting Details (Now primarily Meeting Place)
-          return formData.meetingPlace;
+        case 1: // Meeting Details (Meeting Place)
+          return Boolean(formData.meetingPlace);
         case 2: // Attendance
           return formData.presentDirectors.length > 0;
         case 3: // Disclosures
@@ -381,7 +707,7 @@ const FormBasedGenerator: React.FC = () => {
         case 4: // Auditor Payment
           return formData.auditorPaymentNumber > 0 && formData.auditorPaymentWords.trim() !== "";
         case 5: // Financial Statements
-          return formData.fsYear > 0 &&
+          return Boolean(formData.fsYear > 0 &&
             formData.directorsReportYear > 0 &&
             formData.rptFinYearRangeFrom > 0 &&
             formData.rptFinYearRangeTo > 0 &&
@@ -390,7 +716,7 @@ const FormBasedGenerator: React.FC = () => {
             formData.signatory1Din.trim() !== "" &&
             formData.signatory2Name.trim() !== "" &&
             formData.signatory2Role.trim() !== "" &&
-            formData.signatory2Din.trim() !== "";
+            formData.signatory2Din.trim() !== "");
         case 6: { // AGM Details
           const isAgmNumberValid = formData.agmNumber && formData.agmNumber.trim() !== "";
           const isAgmDateValid = Number.isFinite(formData.agmYear) &&
@@ -401,28 +727,27 @@ const FormBasedGenerator: React.FC = () => {
             formData.agmDay! >= 1 && formData.agmDay! <= 31;
           const isAgmTimeValid = formData.agmTime && formData.agmTime.trim() !== "";
           const isRegisteredOfficeValid = formData.registeredOfficeAddress && formData.registeredOfficeAddress.trim() !== "";
-          return isAgmNumberValid && isAgmDateValid && isAgmTimeValid && isRegisteredOfficeValid;
+          return Boolean(isAgmNumberValid && isAgmDateValid && isAgmTimeValid && isRegisteredOfficeValid);
         }
         case 7: // Sign-off Details
-          return formData.recordingDate && formData.signingDate && formData.signingPlace;
+          return Boolean(formData.recordingDate && formData.signingDate && formData.signingPlace);
         case 8: // Resolutions
           return true;
         default:
           return true;
       }
     } else {
-      // Q2/Q3/Q4 have 6 steps (0-5)
-      switch (currentStep) {
+      switch (stepIndex) {
         case 0: { // Template & Company
           const isTemplateValid = formData.template === 'custom' ? !!formData.customTemplateFilename : !!formData.template;
-          return isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced;
+          return Boolean(isTemplateValid && formData.companyName.trim() !== "" && formData.meetingDate && formData.timeCommenced);
         }
         case 1: // Meeting Details
-          return formData.meetingPlace;
+          return Boolean(formData.meetingPlace);
         case 2: // Attendance
           return formData.presentDirectors.length > 0;
         case 3: // Sign-off Details
-          return formData.recordingDate && formData.signingDate && formData.signingPlace;
+          return Boolean(formData.recordingDate && formData.signingDate && formData.signingPlace);
         case 4: // Resolutions
           return true;
         default:
@@ -431,14 +756,58 @@ const FormBasedGenerator: React.FC = () => {
     }
   };
 
+  // Backward-compatible wrapper using current step
+  const isStepValid = (): boolean => isStepValidAt(currentStep);
+
+  // Validate all steps up to (but not including) the given step index
+  const areAllPreviousStepsValid = (upToStep: number): boolean => {
+    for (let i = 0; i < upToStep; i++) {
+      if (!isStepValidAt(i)) return false;
+    }
+    return true;
+  };
+
+  // Aggregate validation: check ALL steps (used before final submission)
+  const areAllStepsValid = (): { valid: boolean; firstInvalidStep: number } => {
+    const lastDataStep = steps.length - 2; // Exclude the review step
+    for (let i = 0; i <= lastDataStep; i++) {
+      if (!isStepValidAt(i)) {
+        return { valid: false, firstInvalidStep: i };
+      }
+    }
+    return { valid: true, firstInvalidStep: -1 };
+  };
+
+  // Get the highest step the user can navigate to (first invalid step or current + 1)
+  const getMaxReachableStep = (): number => {
+    for (let i = 0; i < steps.length; i++) {
+      if (!isStepValidAt(i)) return i;
+    }
+    return steps.length - 1;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (currentStep < steps.length - 1) {
-      // Move to next step
-      setCurrentStep((s) => s + 1);
+      // Save this step, then move forward
+      const nextStep = currentStep + 1;
+      await persistDraft(nextStep);
+      setCurrentStep(nextStep);
     } else {
-      // Final step - submit form and generate document
+      // Final step - validate ALL steps before submitting
+      const { valid, firstInvalidStep } = areAllStepsValid();
+      if (!valid) {
+        toast({
+          title: "Incomplete Information",
+          description: `Please complete "${steps[firstInvalidStep].title}" (Step ${firstInvalidStep + 1}) before generating the document.`,
+          variant: "destructive"
+        });
+        setCurrentStep(firstInvalidStep);
+        return;
+      }
+
+      // All steps valid - submit form and generate document
       setIsSubmitting(true);
       try {
         // Prepare the data for the backend
@@ -503,12 +872,42 @@ const FormBasedGenerator: React.FC = () => {
             document.body.removeChild(link);
           }
 
-          toast({ title: "Success", description: result.message || 'Document generated successfully!' });
+          sessionStorage.removeItem('minutes_form_draft');
+          clearLocalDraft(draftKey);
+          void deleteDraftFromServer(draftKey);
+          toast({
+            title: "Draft generated",
+            description: result.message || "Document saved as Draft. Finalize it from Meeting Minutes when approved.",
+          });
+          if (result.id) {
+            const shouldFinalize = window.confirm(
+              "Document downloaded and saved as Draft.\n\nFinalize and lock it now?"
+            );
+            if (shouldFinalize) {
+              try {
+                const fin = await fetch(`/api/generated-minutes/${result.id}/finalize`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ finalized_by: 'user' }),
+                });
+                if (fin.ok) {
+                  toast({ title: "Finalized", description: "Minutes are locked and cannot be deleted." });
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+          }
         } else {
           const error = await response.json();
-          throw new Error(error.detail || 'Failed to generate document');
+          const detailMsg = typeof error.detail === 'string'
+            ? error.detail
+            : Array.isArray(error.detail)
+              ? error.detail.map((d: any) => `${d.loc?.slice(1).join('.') || 'Error'}: ${d.msg}`).join('; ')
+              : 'Failed to generate document';
+          throw new Error(detailMsg);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error generating document:', error);
         toast({ title: "Generation Error", description: error.message || 'Please try again.', variant: "destructive" });
       } finally {
@@ -523,223 +922,100 @@ const FormBasedGenerator: React.FC = () => {
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
-      <div className="container mx-auto py-6">
-        <div className="flex justify-between items-center mb-6">
-          <Button variant="ghost" onClick={() => navigate("/minutes-preparation")}>
+      <div className="container mx-auto py-3 px-4">
+        <div className="flex justify-between items-center mb-3 gap-3">
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              await persistDraft();
+              toast({
+                title: "Draft saved",
+                description: "Your progress is saved. You can continue later from the same company and meeting date.",
+              });
+              navigate("/minutes-preparation");
+            }}
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
-          <h1 className="text-2xl font-bold">Generate Minutes</h1>
+          <div className="flex items-center gap-2">
+            {isDraftKeyReady(draftKey) && (
+              <span
+                className={`hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${
+                  draftStatus === 'saving'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : draftStatus === 'offline'
+                    ? 'bg-slate-50 text-slate-600 border-slate-200'
+                    : draftStatus === 'saved'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                }`}
+                title={lastSavedAt ? `Last saved ${new Date(lastSavedAt).toLocaleString()}` : undefined}
+              >
+                <CheckCircle className="h-3 w-3" />
+                {draftStatus === 'saving'
+                  ? 'Saving draft…'
+                  : draftStatus === 'offline'
+                  ? 'Saved on this device'
+                  : draftStatus === 'saved'
+                  ? `Draft saved · Step ${currentStep + 1}`
+                  : 'Auto-save on'}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void persistDraft()}
+              className="text-xs font-semibold border-slate-200 rounded-lg"
+            >
+              Save Draft
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleResetForm}
+              className="text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 rounded-lg"
+            >
+              Reset Form
+            </Button>
+          </div>
         </div>
 
-        <div className="max-w-4xl mx-auto">
-          <Stepper steps={steps} currentStep={currentStep} />
+        <div className="max-w-6xl mx-auto">
+          <Stepper steps={steps} currentStep={currentStep} onStepClick={(stepIdx) => {
+            // Allow going back freely, but only forward if all prior steps are valid
+            if (stepIdx <= currentStep) {
+              setCurrentStep(stepIdx);
+            } else {
+              const maxReachable = getMaxReachableStep();
+              if (stepIdx <= maxReachable) {
+                setCurrentStep(stepIdx);
+              } else {
+                // Show toast indicating which step needs to be completed first
+                const firstBlockingStep = maxReachable;
+                toast({
+                  title: "Incomplete Step",
+                  description: `Please complete "${steps[firstBlockingStep].title}" before proceeding.`,
+                  variant: "destructive"
+                });
+                setCurrentStep(firstBlockingStep);
+              }
+            }
+          }} />
 
           <form onSubmit={handleSubmit}>
             {/* TEMPLATE & COMPANY */}
             {currentStep === 0 && (
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle>Template & Company Information</CardTitle>
-                  <CardDescription>Select template and enter company details</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="template">Template *</Label>
-                    <Select
-                      value={formData.template}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, template: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a template" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="Q1">Q1 Meeting Template</SelectItem>
-                        <SelectItem value="Q2">Q2 Meeting Template</SelectItem>
-                        <SelectItem value="Q3">Q3 Meeting Template</SelectItem>
-                        <SelectItem value="Q4">Q4 Meeting Template</SelectItem>
-                        <SelectItem value="custom">Manual Upload (Custom)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {formData.template === 'custom' && (
-                    <div className="space-y-4">
-                      <Label>Upload Custom DOCX Template *</Label>
-                      <div
-                        className={`relative border-2 border-dashed rounded-xl p-8 transition-all duration-200 text-center ${formData.customTemplateFilename ? 'border-green-200 bg-green-50' : 'border-blue-200 bg-blue-50/30'
-                          }`}
-                      >
-                        <input
-                          id="customTemplate"
-                          type="file"
-                          accept=".docx"
-                          onChange={handleCustomTemplateUpload}
-                          disabled={isUploadingTemplate}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="flex flex-col items-center gap-2">
-                          {isUploadingTemplate ? (
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
-                          ) : formData.customTemplateFilename ? (
-                            <div className="bg-green-100 p-3 rounded-full">
-                              <CheckCircle className="h-6 w-6 text-green-600" />
-                            </div>
-                          ) : (
-                            <div className="bg-blue-100 p-3 rounded-full">
-                              <Upload className="h-6 w-6 text-blue-600" />
-                            </div>
-                          )}
-
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {formData.customTemplateFilename ? 'Template Uploaded' : 'Drop your template here or click to browse'}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {formData.customTemplateFilename || 'Only .docx files with [Placeholders] supported'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="companyName">Company Name *</Label>
-                    <Select
-                      value={isOtherCompany ? 'other' : formData.companyName}
-                      onValueChange={(value) => {
-                        if (value === 'other') {
-                          setIsOtherCompany(true);
-                        } else {
-                          setIsOtherCompany(false);
-                          const selected = companyPresets.find(c => c.name === value);
-                          setFormData(prev => ({
-                            ...prev,
-                            companyName: value,
-                            ...(selected ? {
-                              meetingPlace: selected.address,
-                              presentDirectors: selected.directors,
-                              chairmanName: selected.directors[0]?.name || ''
-                            } : {})
-                          }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select company" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        {companyPresets.map(c => (
-                          <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
-                        ))}
-                        <SelectItem value="other">Other / Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    {isOtherCompany && (
-                      <Input
-                        id="companyName"
-                        value={formData.companyName}
-                        onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
-                        placeholder="Enter custom company name"
-                        className={`mt-2 ${!formData.companyName.trim() ? 'border-red-500' : ''}`}
-                      />
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingNumber">Meeting Number</Label>
-                    <Input
-                      id="meetingNumber"
-                      type="number"
-                      min="1"
-                      value={formData.meetingNumber ? parseInt(formData.meetingNumber.replace(/(st|nd|rd|th)$/, '')) || '' : ''}
-                      onChange={(e) => {
-                        const num = parseInt(e.target.value);
-                        if (!isNaN(num)) {
-                          const ordinal = numberToOrdinal(num);
-                          setFormData(prev => ({ ...prev, meetingNumber: ordinal }));
-                        } else {
-                          setFormData(prev => ({ ...prev, meetingNumber: '' }));
-                        }
-                      }}
-                      placeholder="e.g., 5"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Enter a number and it will be automatically converted to ordinal (e.g., 5 → 5th)
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="meetingType">Meeting Type</Label>
-                    <Select
-                      value={formData.meetingType}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, meetingType: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select meeting type" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="Board Meeting">Board Meeting</SelectItem>
-                        <SelectItem value="Annual General Meeting">Annual General Meeting</SelectItem>
-                        <SelectItem value="Extraordinary General Meeting">Extraordinary General Meeting</SelectItem>
-                        <SelectItem value="Committee Meeting">Committee Meeting</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {formData.meetingType === 'Committee Meeting' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="committeeName">Committee Name</Label>
-                      <Input
-                        id="committeeName"
-                        value={formData.committeeName}
-                        onChange={(e) => setFormData(prev => ({ ...prev, committeeName: e.target.value }))}
-                        placeholder="e.g., Audit Committee"
-                      />
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="meetingDate">Meeting Date *</Label>
-                      <Input
-                        id="meetingDate"
-                        type="date"
-                        value={formData.meetingDate}
-                        onChange={(e) => {
-                          setFormData(prev => ({ ...prev, meetingDate: e.target.value }));
-                          if (e.target.value) {
-                            const dayName = new Date(e.target.value).toLocaleDateString('en-US', { weekday: 'long' });
-                            setFormData(prev => ({ ...prev, meetingDay: dayName }));
-                          }
-                        }}
-                        className={!formData.meetingDate ? 'border-red-500' : ''}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="meetingDay">Meeting Day</Label>
-                      <Input
-                        id="meetingDay"
-                        value={formData.meetingDay}
-                        readOnly
-                        placeholder="Auto-calculated from date"
-                        className="bg-gray-50"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="timeCommenced">Meeting Start Time</Label>
-                    <Input
-                      id="timeCommenced"
-                      type="time"
-                      value={formData.timeCommenced}
-                      onChange={(e) => setFormData(prev => ({ ...prev, timeCommenced: e.target.value }))}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+              <Step0TemplateCompany
+                formData={formData}
+                setFormData={setFormData}
+                isUploadingTemplate={isUploadingTemplate}
+                handleCustomTemplateUpload={handleCustomTemplateUpload}
+                numberToOrdinal={numberToOrdinal}
+                toast={toast}
+              />
             )}
 
             {/* MEETING DETAILS */}
@@ -779,108 +1055,26 @@ const FormBasedGenerator: React.FC = () => {
 
             {/* ATTENDANCE */}
             {currentStep === 2 && (
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle>Attendance</CardTitle>
-                  <CardDescription>Directors and other attendees present at the meeting</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div>
-                    <h3 className="text-lg font-medium mb-3">Directors Present</h3>
-                    <MultiDirectorSelector
-                      id="presentDirectors"
-                      label="Select Present Directors"
-                      value={formData.presentDirectors}
-                      onChange={(directors) => setFormData(prev => ({ ...prev, presentDirectors: directors }))}
-                      placeholder="Type to search and add directors"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="chairmanName">Chairman Name</Label>
-                    <select
-                      id="chairmanName"
-                      value={formData.chairmanName}
-                      onChange={(e) => setFormData(prev => ({ ...prev, chairmanName: e.target.value }))}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="">Select Chairman</option>
-                      {formData.presentDirectors.map((director, index) => (
-                        <option key={index} value={director.name}>
-                          {director.name} (DIN: {director.din})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="companySecretary">Company Secretary / Officer</Label>
-                    <Input
-                      id="companySecretary"
-                      value={formData.companySecretary}
-                      onChange={(e) => setFormData(prev => ({ ...prev, companySecretary: e.target.value }))}
-                      placeholder="Enter company secretary or officer name"
-                    />
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-medium mb-3">Others in Attendance</h3>
-                    <div className="space-y-3">
-                      {formData.inAttendance.map((attendee, index) => (
-                        <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border rounded-md">
-                          <Input
-                            placeholder="Name"
-                            value={attendee.name}
-                            onChange={(e) => {
-                              const newInAttendance = [...formData.inAttendance];
-                              newInAttendance[index].name = e.target.value;
-                              setFormData(prev => ({ ...prev, inAttendance: newInAttendance }));
-                            }}
-                          />
-                          <Input
-                            placeholder="Role"
-                            value={attendee.role}
-                            onChange={(e) => {
-                              const newInAttendance = [...formData.inAttendance];
-                              newInAttendance[index].role = e.target.value;
-                              setFormData(prev => ({ ...prev, inAttendance: newInAttendance }));
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              const newInAttendance = [...formData.inAttendance];
-                              newInAttendance.splice(index, 1);
-                              setFormData(prev => ({ ...prev, inAttendance: newInAttendance }));
-                            }}
-                            className="md:col-span-2"
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setFormData(prev => ({
-                            ...prev,
-                            inAttendance: [...prev.inAttendance, { name: '', role: '' }]
-                          }));
-                        }}
-                      >
-                        Add Attendee
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <Step2Attendance
+                formData={formData}
+                setFormData={setFormData}
+                isOtherCompany={isOtherCompany}
+                setIsOtherCompany={setIsOtherCompany}
+                companyPresets={companyPresets}
+                isUploadingTemplate={isUploadingTemplate}
+                handleCustomTemplateUpload={handleCustomTemplateUpload}
+                resolutionTemplates={resolutionTemplates}
+                setResolutionTemplates={setResolutionTemplates}
+                resTemplateName={resTemplateName}
+                setResTemplateName={setResTemplateName}
+                numberToOrdinal={numberToOrdinal}
+                isStepValid={isStepValid}
+                toast={toast}
+              />
             )}
 
-            {/* DISCLOSURES - Q1 ONLY */}
-            {formData.template === 'Q1' && currentStep === 3 && (
+            {/* DISCLOSURES */}
+            {isFullFlow && currentStep === 3 && (
               <Card className="mb-6">
                 <CardHeader>
                   <CardTitle>Disclosures</CardTitle>
@@ -989,8 +1183,8 @@ const FormBasedGenerator: React.FC = () => {
               </Card>
             )}
 
-            {/* AUDITOR PAYMENT - Q1 ONLY */}
-            {formData.template === 'Q1' && currentStep === 4 && (
+            {/* AUDITOR PAYMENT */}
+            {isFullFlow && currentStep === 4 && (
               <Card className="mb-6">
                 <CardHeader>
                   <CardTitle>Auditor Payment</CardTitle>
@@ -1042,8 +1236,8 @@ const FormBasedGenerator: React.FC = () => {
               </Card>
             )}
 
-            {/* FINANCIAL STATEMENTS - Q1 ONLY */}
-            {formData.template === 'Q1' && currentStep === 5 && (
+            {/* FINANCIAL STATEMENTS */}
+            {isFullFlow && currentStep === 5 && (
               <Card className="mb-6">
                 <CardHeader>
                   <CardTitle>Financial Statements</CardTitle>
@@ -1173,40 +1367,16 @@ const FormBasedGenerator: React.FC = () => {
               </Card>
             )}
 
-            {/* AGM DETAILS - Q1 ONLY */}
-            {formData.template === 'Q1' && currentStep === 6 && (
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle>AGM Details</CardTitle>
-                  <CardDescription>Annual General Meeting information</CardDescription>
+            {/* AGM DETAILS */}
+            {isFullFlow && currentStep === 6 && (
+              <Card className="mb-6 border border-slate-200 shadow-xs rounded-xl bg-white">
+                <CardHeader className="border-b border-slate-100 pb-4">
+                  <CardTitle className="text-base font-bold text-slate-900">AGM Details</CardTitle>
+                  <CardDescription className="text-xs text-slate-500">Annual General Meeting information</CardDescription>
                 </CardHeader>
-                {!isStepValid() && currentStep === 6 && (
-                  <div className="px-6 pb-4">
-                    <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-700 text-sm">
-                      Please fill in all required fields marked with an asterisk (*) to continue.
-                      {/* Debug info - remove in production */}
-                      <div className="mt-2 text-xs">
-                        AGM Number: '{formData.agmNumber}' ({formData.agmNumber ? 'filled' : 'empty'})
-                        <br />
-                        AGM Date: {formData.agmYear}-{formData.agmMonth}-{formData.agmDay}
-                        <br />
-                        AGM Time: '{formData.agmTime}' ({formData.agmTime ? 'filled' : 'empty'})
-                        <br />
-                        Registered Office: '{formData.registeredOfficeAddress}' ({formData.registeredOfficeAddress ? 'filled' : 'empty'})
-                        <br />
-                        Validation: agmNumber={!(!formData.agmNumber || formData.agmNumber.trim() === '')},
-                        agmYear={formData.agmYear > 0},
-                        agmMonth={formData.agmMonth >= 1 && formData.agmMonth <= 12},
-                        agmDay={formData.agmDay >= 1 && formData.agmDay <= 31},
-                        agmTime={!(!formData.agmTime || formData.agmTime.trim() === '')},
-                        registeredOffice={!(!formData.registeredOfficeAddress || formData.registeredOfficeAddress.trim() === '')}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="agmNumber">AGM Number *</Label>
+                    <Label htmlFor="agmNumber" className="text-xs font-semibold text-slate-700">AGM Number *</Label>
                     <Input
                       id="agmNumber"
                       name="agmNumber"
@@ -1224,15 +1394,15 @@ const FormBasedGenerator: React.FC = () => {
                         }
                       }}
                       placeholder="e.g., 10"
-                      className={!formData.agmNumber || formData.agmNumber.trim() === '' ? 'border-red-500' : ''}
+                      className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Enter a number and it will be automatically converted to ordinal (e.g., 10 → 10th)
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="agmDate">AGM Date *</Label>
+                    <Label htmlFor="agmDate" className="text-xs font-semibold text-slate-700">AGM Date *</Label>
                     <Input
                       id="agmDate"
                       name="agmDate"
@@ -1252,15 +1422,15 @@ const FormBasedGenerator: React.FC = () => {
                           }));
                         }
                       }}
-                      className={!(formData.agmYear > 0 && formData.agmMonth >= 1 && formData.agmMonth <= 12 && formData.agmDay >= 1 && formData.agmDay <= 31) ? 'border-red-500' : ''}
+                      className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Select the AGM date
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="agmTime">AGM Time (9 AM - 6 PM) *</Label>
+                    <Label htmlFor="agmTime" className="text-xs font-semibold text-slate-700">AGM Time (9 AM - 6 PM) *</Label>
                     <Input
                       id="agmTime"
                       name="agmTime"
@@ -1269,15 +1439,15 @@ const FormBasedGenerator: React.FC = () => {
                       max="18:00"
                       value={formData.agmTime}
                       onChange={(e) => setFormData(prev => ({ ...prev, agmTime: e.target.value }))}
-                      className={!formData.agmTime || formData.agmTime.trim() === '' ? 'border-red-500' : ''}
+                      className="bg-white border-slate-200 h-9 rounded-lg text-xs"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Select the time of the AGM (9:00 AM to 6:00 PM only)
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="agmDayName">AGM Day Name</Label>
+                    <Label htmlFor="agmDayName" className="text-xs font-semibold text-slate-700">AGM Day Name</Label>
                     <Input
                       id="agmDayName"
                       name="agmDayName"
@@ -1285,22 +1455,22 @@ const FormBasedGenerator: React.FC = () => {
                       onChange={(e) => setFormData(prev => ({ ...prev, agmDayName: e.target.value }))}
                       placeholder="e.g., Friday"
                       readOnly
+                      className="bg-slate-50 border-slate-200 h-9 rounded-lg text-xs text-slate-600"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Automatically populated based on the selected date
                     </p>
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="registeredOfficeAddress">Registered Office Address *</Label>
                     <PlaceSelector
                       id="registeredOfficeAddress"
-                      label="Registered Office Address"
+                      label="Registered Office Address *"
                       value={formData.registeredOfficeAddress}
                       onChange={(value) => setFormData(prev => ({ ...prev, registeredOfficeAddress: value }))}
                       placeholder="Select address or add custom address"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Default: Adani Corporate House, Ahmedabad
                     </p>
                   </div>
@@ -1309,7 +1479,7 @@ const FormBasedGenerator: React.FC = () => {
             )}
 
             {/* SIGN-OFF DETAILS */}
-            {((formData.template === 'Q1' && currentStep === 7) || (formData.template !== 'Q1' && currentStep === 3)) && (
+            {((isFullFlow && currentStep === 7) || (!isFullFlow && currentStep === 3)) && (
               <Card className="mb-6">
                 <CardHeader>
                   <CardTitle>Sign-off Details</CardTitle>
@@ -1376,97 +1546,20 @@ const FormBasedGenerator: React.FC = () => {
             )}
 
             {/* RESOLUTIONS */}
-            {((formData.template === 'Q1' && currentStep === 8) || (formData.template !== 'Q1' && currentStep === 4)) && (
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle>Meeting Resolutions</CardTitle>
-                  <CardDescription>Select stored resolutions or add new ones for the meeting</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="resPicker">Select from Stored Resolutions</Label>
-                    <Select
-                      onValueChange={(val) => {
-                        const template = resolutionTemplates.find(t => t.id.toString() === val);
-                        if (template) {
-                          setFormData(prev => ({
-                            ...prev,
-                            resolutions: prev.resolutions
-                              ? prev.resolutions + "\n\n" + template.resolution_text
-                              : template.resolution_text
-                          }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="bg-white">
-                        <SelectValue placeholder="Choose a resolution template..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        {resolutionTemplates.map((t) => (
-                          <SelectItem key={t.id} value={t.id.toString()}>{t.template_name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-muted-foreground">Selecting a template will append it to the text area below.</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="resolutionsText">Resolution Details</Label>
-                    <textarea
-                      id="resolutionsText"
-                      rows={10}
-                      className="w-full p-3 border rounded-md text-sm font-serif"
-                      value={formData.resolutions}
-                      onChange={(e) => setFormData(prev => ({ ...prev, resolutions: e.target.value }))}
-                      placeholder="Enter resolutions passed during the meeting..."
-                    />
-                  </div>
-
-                  <div className="border-t pt-4 space-y-4">
-                    <h4 className="text-sm font-medium">Save current text as new template</h4>
-                    <div className="flex gap-4">
-                      <div className="flex-1 space-y-1">
-                        <Input
-                          placeholder="Template Name"
-                          value={resTemplateName}
-                          onChange={(e) => setResTemplateName(e.target.value)}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={!resTemplateName || !formData.resolutions}
-                        onClick={async () => {
-                          try {
-                            const res = await fetch('/api/resolutions', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                template_name: resTemplateName,
-                                resolution_text: formData.resolutions
-                              })
-                            });
-                            if (res.ok) {
-                              const data = await res.json();
-                              setResolutionTemplates(prev => [...prev, data]);
-                              setResTemplateName('');
-                              toast({ title: "Success", description: 'Resolution template saved successfully!' });
-                            }
-                          } catch (err) {
-                            toast({ title: "Error", description: 'Failed to save resolution template', variant: "destructive" });
-                          }
-                        }}
-                      >
-                        Save Template
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            {((isFullFlow && currentStep === 8) || (!isFullFlow && currentStep === 4)) && (
+              <Step8Resolutions
+                formData={formData}
+                setFormData={setFormData}
+                resolutionTemplates={resolutionTemplates}
+                setResolutionTemplates={setResolutionTemplates}
+                resTemplateName={resTemplateName}
+                setResTemplateName={setResTemplateName}
+                toast={toast}
+              />
             )}
 
             {/* REVIEW & GENERATE */}
-            {((formData.template === 'Q1' && currentStep === 9) || (formData.template !== 'Q1' && currentStep === 5)) && (
+            {((isFullFlow && currentStep === 9) || (!isFullFlow && currentStep === 5)) && (
               <Card className="mb-6">
                 <CardHeader>
                   <CardTitle>Review Your Information</CardTitle>
@@ -1569,7 +1662,11 @@ const FormBasedGenerator: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
+                onClick={async () => {
+                  const prev = Math.max(0, currentStep - 1);
+                  await persistDraft(prev);
+                  setCurrentStep(prev);
+                }}
                 disabled={currentStep === 0}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" /> Previous

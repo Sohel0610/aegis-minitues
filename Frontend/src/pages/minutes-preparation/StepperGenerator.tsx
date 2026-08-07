@@ -4,7 +4,7 @@ import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
 import { getMinutesNavItems } from '@/constants/minutesNavigation';
 
 const StepperGenerator = () => {
-  const navigationItems = getMinutesNavItems();
+  const navigationItems = getMinutesNavItems('dashboard');
 
   return (
     <ProductDashboardLayout

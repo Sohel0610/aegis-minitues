@@ -44,7 +44,10 @@ class HybridRetrievalService:
     ) -> List[Dict[str, Any]]:
         """Get broad hybrid candidates, then retain only genuinely relevant chunks."""
         if settings.RETRIEVAL_BACKEND.lower() == "azure_ai_search":
-            return self._retrieve_from_azure_ai_search(query, user_id, is_admin, document_ids, top_k)
+            try:
+                return self._retrieve_from_azure_ai_search(query, user_id, is_admin, document_ids, top_k)
+            except Exception as exc:
+                logger.warning(f"Azure AI Search retrieval unavailable ({exc}); using local hybrid RAG fallback")
 
         # Apply metadata pre-filter: narrow candidate documents before semantic search.
         filtered_doc_ids = document_ids
