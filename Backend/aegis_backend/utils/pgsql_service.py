@@ -14,6 +14,47 @@ logger = logging.getLogger(__name__)
 _pools = {}
 _pools_lock = threading.Lock()
 
+class SQLiteCursorWrapper:
+    """Wrapper for sqlite3 cursor to convert %s to ? and return dict rows."""
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, sql, params=None):
+        if not sql:
+            return None
+        # Convert PostgreSQL data types and placeholders for SQLite compatibility
+        sql_conv = sql.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+        sql_conv = sql_conv.replace("BIGINT", "INTEGER").replace("TIMESTAMP", "DATETIME")
+        if params is not None:
+            sql_conv = sql_conv.replace("%s", "?")
+            return self._cursor.execute(sql_conv, params)
+        return self._cursor.execute(sql_conv)
+
+    def executemany(self, sql, seq_of_params):
+        if not sql:
+            return None
+        sql_conv = sql.replace("%s", "?")
+        return self._cursor.executemany(sql_conv, seq_of_params)
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        if isinstance(row, sqlite3.Row):
+            return dict(row)
+        return row
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if not rows:
+            return []
+        if isinstance(rows[0], sqlite3.Row):
+            return [dict(r) for r in rows]
+        return rows
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
 class SQLiteConnectionWrapper:
     """Wrapper for sqlite3 connection to emulate psycopg2 interface."""
     def __init__(self, conn):
@@ -21,7 +62,7 @@ class SQLiteConnectionWrapper:
         self._conn.row_factory = sqlite3.Row
 
     def cursor(self, cursor_factory=None):
-        return self._conn.cursor()
+        return SQLiteCursorWrapper(self._conn.cursor())
 
     def commit(self):
         self._conn.commit()
@@ -136,15 +177,19 @@ def get_pg_connection(database=None):
                 # Use ThreadedConnectionPool for FastAPI concurrency
                 _pools[pool_key] = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=25, **conn_params)
             except Exception as e:
-                logger.error(f"Critical: Failed to initialize pool for {database}: {e}")
-                raise RuntimeError(f"Database connection pool initialization failed: {e}")
+                logger.warning(f"PostgreSQL pool init failed for {database} ({e}); using local SQLite fallback")
+                sqlite_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "chatbot_minutes.db"))
+                conn = sqlite3.connect(sqlite_path)
+                return SQLiteConnectionWrapper(conn)
 
     try:
         conn = _pools[pool_key].getconn()
         return PooledConnection(conn, pool_key)
     except Exception as e:
-        logger.error(f"Pool exhausted or connection unavailable (DB: {database}): {e}")
-        raise RuntimeError(f"Database connection unavailable: {e}")
+        logger.warning(f"PostgreSQL connection unavailable ({e}); using local SQLite fallback")
+        sqlite_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "chatbot_minutes.db"))
+        conn = sqlite3.connect(sqlite_path)
+        return SQLiteConnectionWrapper(conn)
 
 def put_pg_connection(conn):
     """Explicitly return a connection to the pool (or use context manager)."""
