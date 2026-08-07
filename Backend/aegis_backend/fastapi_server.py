@@ -196,4 +196,12 @@ async def test_static_serving():
 
 if __name__ == "__main__":
     import uvicorn
+    frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "Frontend")
+    dist_dir = os.path.join(frontend_dir, "dist")
+    if not os.path.exists(dist_dir):
+        logger.info("Building frontend distribution package...")
+        try:
+            subprocess.run(["npm", "run", "build"], cwd=frontend_dir, check=False)
+        except Exception as err:
+            logger.warning(f"Frontend auto-build note: {err}")
     uvicorn.run(app, host="0.0.0.0", port=8000)
