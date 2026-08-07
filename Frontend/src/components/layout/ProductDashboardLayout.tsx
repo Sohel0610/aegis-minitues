@@ -425,23 +425,21 @@ const ProductDashboardLayout = ({
       )}
 
       {/* Main Content */}
-      <VerticalProvider>
-        <main
-          style={{
-            flex: 1,
-            minWidth: 0,
-            overflowY: "auto",
-            overflowX: "hidden",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <VerticalNavigationHeader />
-          <div style={{ flex: 1, minHeight: 0 }}>
-            {children}
-          </div>
-        </main>
-      </VerticalProvider>
+      <main
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <VerticalNavigationHeader />
+        <div style={{ flex: 1, minHeight: 0 }}>
+          {children}
+        </div>
+      </main>
 
       {/* User Manual Modal */}
       <UserManualModal
