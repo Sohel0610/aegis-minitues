@@ -1,234 +1,124 @@
-"""
-LLM Client Module
-Wraps embedding and chat completion APIs
-"""
-from typing import List
-from groq import Groq
-import os
-import json
-import subprocess
-import sys
-from dotenv import load_dotenv
-from config.llm_config import LLMConfig
- 
-# Load environment variables
-load_dotenv()
+"""Provider-safe LLM client for Azure OpenAI with Groq fallback.
 
-def _ignore_missing_ssl_cert_file():
-    ssl_cert_file = os.environ.get("SSL_CERT_FILE")
-    if ssl_cert_file and not os.path.exists(ssl_cert_file):
+The module deliberately has no subprocess/curl dependency: SDK clients support
+timeouts, structured tool calls and streaming consistently on every platform.
+"""
+from typing import Any, Dict, Iterable, List, Optional, Union
+import os
+
+from dotenv import load_dotenv
+from groq import Groq
+from openai import AzureOpenAI
+
+from config.llm_config import LLMConfig
+
+load_dotenv()
+_azure_client = None
+_groq_client = None
+
+
+def _ignore_missing_ssl_cert_file() -> None:
+    path = os.environ.get("SSL_CERT_FILE")
+    if path and not os.path.exists(path):
         os.environ.pop("SSL_CERT_FILE", None)
 
 
-# Initialize Groq client lazily so imports do not fail when Groq is not used.
-groq_client = None
+def _get_azure_client() -> AzureOpenAI:
+    global _azure_client
+    if _azure_client is None:
+        if not (LLMConfig.AZURE_ENDPOINT and LLMConfig.AZURE_API_KEY and LLMConfig.AZURE_DEPLOYMENT):
+            raise RuntimeError("Azure OpenAI endpoint, API key, or deployment is not configured")
+        _azure_client = AzureOpenAI(
+            azure_endpoint=LLMConfig.AZURE_ENDPOINT,
+            api_key=LLMConfig.AZURE_API_KEY,
+            api_version=LLMConfig.AZURE_API_VERSION,
+            timeout=45.0,
+            max_retries=2,
+        )
+    return _azure_client
 
 
-def _get_groq_client():
-    global groq_client
-
-    if groq_client is None:
+def _get_groq_client() -> Groq:
+    global _groq_client
+    if _groq_client is None:
         if not LLMConfig.GROQ_API_KEY:
-            raise Exception("GROQ_API_KEY is not configured")
-
+            raise RuntimeError("GROQ_API_KEY is not configured")
         _ignore_missing_ssl_cert_file()
-        groq_client = Groq(api_key=LLMConfig.GROQ_API_KEY)
+        _groq_client = Groq(api_key=LLMConfig.GROQ_API_KEY, timeout=45.0)
+    return _groq_client
 
-    return groq_client
- 
+
 def embed_text(text: str) -> List[float]:
+    """Compatibility hook; retrieval embeddings are supplied by embedding_utils."""
+    from chatbot_backend.utils.embedding_utils import get_embedding_model
+    return get_embedding_model().encode(text)[0].tolist()
+
+
+def _messages(system_prompt: str, user_prompt: str) -> List[Dict[str, str]]:
+    return [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+
+
+def _stream_text(stream: Iterable[Any]) -> Iterable[str]:
+    for event in stream:
+        delta = event.choices[0].delta.content if event.choices else None
+        if delta:
+            yield delta
+
+
+def chat_completion(system_prompt: str, user_prompt: str, model: Optional[str] = None,
+                    stream: bool = False) -> Union[str, Iterable[str]]:
+    """Return text, or a token iterator when ``stream=True``.
+
+    Azure is primary whenever configured. Groq is used as a resilient fallback
+    if Azure errors and a Groq key is available.
     """
-    Generate embedding for text using Groq-compatible embedding model
-    Note: Groq doesn't currently support embeddings, so we'll use a placeholder
-    In a real implementation, you would use OpenAI embeddings or similar
-    """
-    # Placeholder implementation - in real scenario, use actual embedding API
-    # For now, we're using sentence-transformers in the indexing layer
-    return [0.0] * 384  # MiniLM-L6-v2 embedding dimension
- 
-def chat_completion(system_prompt: str, user_prompt: str, model: str = None) -> str:
-    """
-    Get chat completion from configured LLM
-    """
-    if LLMConfig.is_groq_enabled():
-        # Use Groq LLM
-        if model is None:
-            model = LLMConfig.GROQ_MODEL
-       
+    messages = _messages(system_prompt, user_prompt)
+    providers = ["azure", "groq"] if LLMConfig.is_azure_enabled() else ["groq", "azure"]
+    errors = []
+    for provider in providers:
         try:
-            response = _get_groq_client().chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
-                model=model,
-                temperature=0.7,
-                max_tokens=1024,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            raise Exception(f"Error getting LLM response from Groq: {str(e)}")
-   
-    elif LLMConfig.is_azure_enabled():
-        # Use Azure OpenAI with curl (as previously working)
-        try:
-            import tempfile
-                   
-            # Create the prompt with system and user messages
-            prompt_data = {
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
-                "temperature": 0.2,
-                "max_tokens": 1536,
-                "top_p": 0.9
-            }
-                   
-            # Create a temporary file for the prompt
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json.dump(prompt_data, f, indent=2)
-                prompt_file = f.name
-                   
-            # Get Azure OpenAI configuration
-            endpoint = LLMConfig.AZURE_ENDPOINT
-            deployment = LLMConfig.AZURE_DEPLOYMENT
-            api_key = LLMConfig.AZURE_API_KEY
-                   
-            # Build curl command
-            api_url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={LLMConfig.AZURE_API_VERSION}"
-                   
-            if os.name == 'nt':
-                # Windows - use shell command with curl
-                curl_command = f'curl -s -k -X POST "{api_url}" -H "Content-Type: application/json" -H "api-key: {api_key}" -d "@{prompt_file}"'
-                result = subprocess.run(curl_command, capture_output=True, text=True, shell=True, timeout=30)
-            else:
-                # Unix/Linux/Mac - use direct subprocess call
-                curl_command = [
-                    'curl', '-s', '-k', '-X', 'POST', api_url,
-                    '-H', 'Content-Type: application/json',
-                    '-H', f'api-key: {api_key}',
-                    '-d', f'@{prompt_file}'
-                ]
-                result = subprocess.run(curl_command, capture_output=True, text=True, timeout=30)
-                   
-            # Clean up the temporary file
-            if os.path.exists(prompt_file):
-                os.unlink(prompt_file)
-                   
-            if result.returncode != 0:
-                error_msg = result.stderr if result.stderr else "Unknown error"
-                raise Exception(f"Curl command failed with return code {result.returncode}: {error_msg}")
-                   
-            # Check if we got a response
-            if not result.stdout:
-                raise Exception("No response received from Azure OpenAI API")
-                   
-            # Parse the response
-            try:
-                response_data = json.loads(result.stdout)
-            except json.JSONDecodeError as e:
-                raise Exception(f"Failed to parse JSON response: {e}. Response: {result.stdout}")
-                   
-            # Check for error responses
-            if "error" in response_data:
-                error_message = response_data["error"]
-                if isinstance(error_message, dict) and "message" in error_message:
-                    raise Exception(f"Azure API error: {error_message['message']}. Full response: {response_data}")
-                else:
-                    raise Exception(f"Azure API error: {error_message}. Full response: {response_data}")
-           
-            # Extract content from response
-            if "choices" in response_data and len(response_data["choices"]) > 0:
-                if "message" in response_data["choices"][0] and "content" in response_data["choices"][0]["message"]:
-                    content = response_data["choices"][0]["message"]["content"]
-                    return content.strip() if content else "No summary available"
-                else:
-                    raise Exception(f"Unexpected response format: missing message content. Full response: {response_data}")
-            else:
-                raise Exception(f"Invalid LLM response format: no choices found. Full response: {response_data}")
-                       
-        except Exception as e:
-            raise Exception(f"Error getting LLM response from Azure: {str(e)}")
-   
-    else:
-        raise Exception(f"Unsupported LLM provider: {LLMConfig.LLM_PROVIDER}")
- 
+            if provider == "azure" and LLMConfig.AZURE_ENDPOINT and LLMConfig.AZURE_API_KEY:
+                response = _get_azure_client().chat.completions.create(
+                    model=model or LLMConfig.AZURE_DEPLOYMENT, messages=messages,
+                    temperature=0.2, max_tokens=1536, top_p=0.9, stream=stream,
+                )
+                return _stream_text(response) if stream else (response.choices[0].message.content or "").strip()
+            if provider == "groq" and LLMConfig.GROQ_API_KEY:
+                response = _get_groq_client().chat.completions.create(
+                    model=model or LLMConfig.GROQ_MODEL, messages=messages,
+                    temperature=0.2, max_tokens=1536, stream=stream,
+                )
+                return _stream_text(response) if stream else (response.choices[0].message.content or "").strip()
+        except Exception as exc:
+            errors.append(f"{provider}: {exc}")
+    raise RuntimeError("LLM completion failed: " + "; ".join(errors or ["no provider configured"]))
+
+
+def chat_completion_with_tools(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]],
+                               model: Optional[str] = None) -> Any:
+    """Create a non-streaming tool-call completion for the agentic router."""
+    if LLMConfig.AZURE_ENDPOINT and LLMConfig.AZURE_API_KEY:
+        return _get_azure_client().chat.completions.create(
+            model=model or LLMConfig.AZURE_DEPLOYMENT, messages=messages, tools=tools,
+            tool_choice="auto", temperature=0.1, max_tokens=1024,
+        )
+    return _get_groq_client().chat.completions.create(
+        model=model or LLMConfig.GROQ_MODEL, messages=messages, tools=tools,
+        tool_choice="auto", temperature=0.1, max_tokens=1024,
+    )
+
+
 def generate_system_prompt() -> str:
-    """
-    Generate system prompt for the LLM
-    """
-    return """
-You answer strictly using the provided notifications.
-Do not invent information or add external context.
-Return concise results focused on company, date, and nature.
-Use plain ASCII only; bullets must be "-" and no Unicode bullets or dashes.
-List the most recent items first.
-If data is insufficient, say "Insufficient data".
-Avoid advice, opinions, and external links.
-"""
- 
+    return """You answer strictly using the provided notifications.
+Do not invent information or add external context. Return concise results focused
+on company, date, and nature. If data is insufficient, say \"Insufficient data\"."""
+
+
 def format_notifications_for_llm(notifications: List) -> str:
-    """
-    Format notifications for LLM consumption
-    """
     if not notifications:
         return "No relevant notifications found."
-   
-    formatted = ""
-    for i, notification in enumerate(notifications, 1):
-        # Handle both object and dictionary formats
-        if hasattr(notification, 'entity_name'):
-            # Object format (RegulatoryNotification)
-            entity_name = notification.entity_name
-            notice_date = notification.notice_date
-            notice_type = notification.notice_type
-            summary = notification.summary
-            link = notification.link
-        elif hasattr(notification, 'EntityName'):
-            # Object format (DailyLog)
-            entity_name = notification.EntityName
-            notice_date = notification.Date
-            notice_type = notification.Nature
-            summary = notification.Summary
-            link = notification.Link
-        elif isinstance(notification, dict):
-            # Dictionary format
-            entity_name = notification.get('entity_name') or notification.get('EntityName', 'Unknown')
-            notice_date = notification.get('notice_date') or notification.get('Date', 'Unknown')
-            notice_type = notification.get('notice_type') or notification.get('Nature', '')
-            summary = notification.get('summary') or notification.get('Summary', '')
-            link = notification.get('link') or notification.get('Link', '')
-        else:
-            # Fallback
-            entity_name = "Unknown"
-            notice_date = "Unknown"
-            notice_type = ""
-            summary = ""
-            link = ""
-           
-        formatted += f"[{i}] Entity: {entity_name}\n"
-        formatted += f"    Date: {notice_date}\n"
-        if notice_type:
-            formatted += f"    Nature: {notice_type}\n"
-        if summary:
-            formatted += f"    Summary: {summary}\n"
-        if link:
-            formatted += f"    Link: {link}\n"
-        formatted += "\n"
-   
-    return formatted
- 
- 
+    rows = []
+    for i, item in enumerate(notifications, 1):
+        get = (lambda *keys, default="": next((item.get(k) for k in keys if item.get(k) is not None), default)) if isinstance(item, dict) else (lambda *keys, default="": next((getattr(item, k, None) for k in keys if getattr(item, k, None) is not None), default))
+        rows.append(f"[{i}] Entity: {get('entity_name', 'EntityName')}\nDate: {get('notice_date', 'Date', 'date_key', 'run_date')}\nNature: {get('notice_type', 'Nature', 'title')}\nSummary: {get('summary', 'Summary', 'full_text')}\nLink: {get('link', 'Link', 'pdf_link')}")
+    return "\n\n".join(rows)

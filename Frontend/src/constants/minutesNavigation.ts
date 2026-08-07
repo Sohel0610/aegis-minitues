@@ -14,6 +14,7 @@ import {
   Users,
   BookOpen,
   Eye,
+  Video,
   LucideIcon
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ export function getMinutesNavItems(activeId?: string): MinutesNavItem[] {
   const items: MinutesNavItem[] = [
     { id: 'home', label: 'Home', icon: Home, href: '/' },
     { id: 'dashboard', label: 'Generate Minutes', icon: FileText, href: '/minutes-preparation' },
+    { id: 'teams', label: 'Teams Meetings', icon: Video, href: '/minutes-preparation/teams' },
     { id: 'create-agenda', label: 'Create Agenda', icon: Plus, href: '/minutes-preparation/create-agenda' },
     { id: 'compliances', label: 'Secretarial Compliances', icon: FileSpreadsheet, href: '/minutes-preparation/compliances' },
     { id: 'ai-mom', label: 'AI MOM', icon: FileText, href: '/minutes-preparation/ai-assistant' },

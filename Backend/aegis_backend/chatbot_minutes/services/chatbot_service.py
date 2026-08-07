@@ -1,48 +1,31 @@
+"""Orchestrates planning, memory, retrieval, grounded generation, and verification."""
+from __future__ import annotations
+
 import logging
-import os
-import json
-import subprocess
-import tempfile
-from typing import Dict, List
-from openai import AzureOpenAI
-import groq
+import re
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
-from .embedding_service import EmbeddingService
-from .chat_history_service import ChatHistoryService
+
 from ..config import settings
+from ..models import MeetingMetadata
+from .chat_history_service import ChatHistoryService
+from .embedding_service import EmbeddingService
+from .grounding_service import GroundingService
+from .llm_service import LLMService, LLMUnavailableError
+from .query_planner import QueryPlanner
+from .retrieval_service import HybridRetrievalService
 
 logger = logging.getLogger(__name__)
 
+
 class ChatbotService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.embedding_service = EmbeddingService()
+        self.retrieval_service = HybridRetrievalService(self.embedding_service)
         self.chat_history_service = ChatHistoryService()
-        
-        # Initialize LLM clients
-        self.groq_client = None
-        self.azure_client = None
-        
-        if settings.GROQ_API_KEY and settings.GROQ_API_KEY != "your-groq-api-key":
-            try:
-                self.groq_client = groq.Groq(api_key=settings.GROQ_API_KEY)
-                logger.info(f"Groq LLM initialized: {settings.GROQ_MODEL}")
-            except Exception as e:
-                logger.warning(f"Could not initialize Groq client: {e}")
-            
-        if settings.AZURE_OPENAI_API_KEY:
-            try:
-                self.azure_client = AzureOpenAI(
-                    azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-                    api_key=settings.AZURE_OPENAI_API_KEY,
-                    api_version=settings.AZURE_OPENAI_API_VERSION
-                )
-                logger.info("Azure OpenAI LLM initialized")
-            except Exception as e:
-                logger.warning(f"Could not initialize AzureOpenAI Python client: {e}. Subprocess curl will be used.")
-                self.azure_client = None
-            
-        if not self.groq_client and not settings.AZURE_OPENAI_API_KEY:
-            logger.warning("No LLM API key configured for ChatbotService")
+        self.llm_service = LLMService()
+        self.query_planner = QueryPlanner(self.llm_service)
 
     def process_query(
         self,
@@ -50,168 +33,197 @@ class ChatbotService:
         user_id: int,
         query: str,
         session_id: str,
-        is_admin: bool = False
-    ) -> Dict:
-        # 1. Fetch conversation history for this session (ChatGPT style)
-        history = self.chat_history_service.get_session_history(db, user_id, session_id, limit=6)
-        
-        # 2. Save current user message
+        is_admin: bool = False,
+        document_ids: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        clean_query = query.strip()
+        summary, recent_history = self.chat_history_service.get_memory_context(
+            db, user_id, session_id, settings.HISTORY_RECENT_TURNS,
+        )
+        self.chat_history_service.save_message(db, user_id, session_id, "user", clean_query)
+        plan = self.query_planner.build(clean_query, recent_history, summary)
+        if not plan.entities:
+            plan.entities = self.chat_history_service.extract_basic_entities(clean_query)
+        self.chat_history_service.remember_entities(db, user_id, plan.entities)
+
+        chunks = self._retrieve_for_plan(db, plan, user_id, is_admin, document_ids)
+        tool_results = self.retrieval_service.run_tools(db, plan.tools, user_id, is_admin, document_ids)
+        conflicts = self.retrieval_service.detect_potential_conflicts(chunks)
+        context = self._build_context(db, chunks, tool_results, conflicts)
+        answer, model_info = self._generate_answer(clean_query, plan, context, summary, recent_history, bool(chunks or tool_results))
+        answer = self._remove_inline_citations(answer)
+        assessment = GroundingService.assess(answer, chunks, tool_results, conflicts)
+        assessment = self._optional_faithfulness_check(clean_query, answer, context, assessment)
+        sources = [
+            {
+                "document_id": chunk["document_id"],
+                "document": chunk["document"],
+                "chunk_index": chunk["chunk_index"],
+                "location": chunk["location"],
+                "excerpt": chunk["excerpt"],
+                "similarity": chunk["score"],
+            }
+            for chunk in chunks[:3]
+        ]
+        metadata = {
+            "sources": sources,
+            "retrieval_mode": plan.retrieval_mode,
+            "confidence": assessment.as_dict(),
+            "response_format": plan.response_format,
+            "model": model_info,
+            "document_ids": document_ids or [],
+        }
         self.chat_history_service.save_message(
-            db=db,
-            user_id=user_id,
-            session_id=session_id,
-            role="user",
-            message=query
+            db, user_id, session_id, "assistant", answer, response_metadata=metadata,
         )
-        
-        # 3. Search for context (passing is_admin flag for RBAC)
-        similar_chunks = self.embedding_service.search_similar_chunks(
-            db=db,
-            query=query,
-            user_id=user_id,
-            is_admin=is_admin,
-            top_k=5
-        )
-        
-        if not similar_chunks:
-            context = "No specific document context found."
-            sources = []
-        else:
-            context = self._build_context(similar_chunks)
-            sources = [
-                {
-                    "document": chunk[1],
-                    "chunk": chunk[0][:300] + "..." if len(chunk[0]) > 300 else chunk[0],
-                    "similarity": round(chunk[2], 3)
-                }
-                for chunk in similar_chunks[:3]
-            ]
-        
-        # 4. Generate answer using history + current context
-        answer = self._generate_answer(query, context, history)
-        
-        # 5. Save assistant message
-        self.chat_history_service.save_message(
-            db=db,
-            user_id=user_id,
-            session_id=session_id,
-            role="assistant",
-            message=answer
-        )
-        
+        self._refresh_session_summary(db, user_id, session_id)
         return {
             "answer": answer,
             "sources": sources,
-            "session_id": session_id
+            "retrieval_mode": plan.retrieval_mode,
+            "response_format": plan.response_format,
+            "confidence": assessment.as_dict(),
+            # Safe operational trace, deliberately not hidden chain-of-thought.
+            "activity": self._activity(plan, chunks, tool_results, assessment),
+            "session_id": session_id,
         }
 
-    def _build_context(self, similar_chunks: List[tuple]) -> str:
-        context_parts = []
-        for idx, (chunk_text, filename, similarity) in enumerate(similar_chunks, 1):
-            context_parts.append(f"[Document: {filename}]\n{chunk_text}\n")
-        return "\n".join(context_parts)
+    def _retrieve_for_plan(self, db: Session, plan, user_id: int, is_admin: bool, document_ids: Optional[List[int]]) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        seen = set()
+        for search_query in [plan.rewritten_query] + plan.sub_questions[:2]:
+            for chunk in self.retrieval_service.retrieve(
+                db, search_query, user_id, is_admin,
+                document_ids=document_ids,
+                top_k=settings.RETRIEVAL_TOP_K,
+                metadata_filters=plan.metadata_filters or None,
+            ):
+                identity = (chunk["document_id"], chunk["chunk_index"])
+                if identity not in seen:
+                    merged.append(chunk)
+                    seen.add(identity)
+        return sorted(merged, key=lambda chunk: chunk["score"], reverse=True)[: settings.RETRIEVAL_TOP_K]
 
-    def _generate_answer(self, query: str, context: str, history: List) -> str:
-        system_prompt = """You are 'Aegis Meeting Assistant', a professional AI designed to analyze meeting minutes, agendas, and corporate records.
-You are in a conversation. Use the 'Document Context' to answer accurately. 
-Review the 'Conversation History' to understand the thread.
-If the context doesn't have the answer, use your knowledge but mention that the docs don't say.
-Always cite source filenames."""
-        
-        # Build chat message history
-        messages = [{"role": "system", "content": system_prompt}]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.message})
-            
-        # Add current context and question
-        user_payload = f"DOCUMENT CONTEXT:\n{context}\n\nUSER QUESTION: {query}"
-        messages.append({"role": "user", "content": user_payload})
+    def _build_context(self, db: Session, chunks: List[Dict[str, Any]], tool_results: List[Dict[str, Any]], conflicts: List[str]) -> str:
+        pieces: List[str] = []
+        # Cache meeting metadata lookups per document to avoid repeated DB hits.
+        _meta_cache: Dict[int, Optional[MeetingMetadata]] = {}
+        for index, chunk in enumerate(chunks, 1):
+            doc_id = chunk["document_id"]
+            if doc_id not in _meta_cache:
+                _meta_cache[doc_id] = db.query(MeetingMetadata).filter(MeetingMetadata.document_id == doc_id).first()
+            meeting_header = self._meeting_identity_header(_meta_cache[doc_id])
+            pieces.append(
+                f"[Evidence {index}: {chunk['document']} — {chunk['location']}]\n{meeting_header}{chunk['expanded_text']}"
+            )
+        for result in tool_results:
+            pieces.append(f"[Structured record: {result['tool']}]\n{result['text']}")
+        if conflicts:
+            pieces.append("[Evidence review]\n" + "\n".join(conflicts))
+        context = "\n\n".join(pieces)
+        return context[: settings.MAX_CONTEXT_CHARS]
 
+    @staticmethod
+    def _meeting_identity_header(meta: Optional[MeetingMetadata]) -> str:
+        """Build a one-line meeting identity header for the LLM context."""
+        if not meta:
+            return ""
+        parts: List[str] = []
+        if meta.meeting_title:
+            parts.append(f"Meeting: {meta.meeting_title}")
+        if meta.meeting_date:
+            parts.append(f"Date: {meta.meeting_date.isoformat()}")
+        if meta.meeting_type:
+            parts.append(f"Type: {meta.meeting_type.replace('_', ' ').title()}")
+        if meta.company_name:
+            parts.append(f"Company: {meta.company_name}")
+        if meta.participants:
+            names = [p.get("name", "") for p in (meta.participants or [])[:5] if p.get("name")]
+            if names:
+                parts.append(f"Participants: {', '.join(names)}")
+        if not parts:
+            return ""
+        return " | ".join(parts) + "\n---\n"
+
+    def _generate_answer(self, query: str, plan, context: str, summary: Optional[str], history: List[Any], has_evidence: bool) -> tuple[str, Dict[str, str]]:
+        system_prompt = """You are Aegis Meeting Assistant for enterprise governance, finance, and corporate records.
+Answer from supplied evidence and structured records only. Do not invent facts, figures, dates, legal conclusions, or actions.
+Do not include source labels, page numbers, chunk numbers, or citations in the prose: the UI renders verified evidence separately.
+When evidence comes from different meetings, clearly state which meeting each fact is from using the meeting title and date provided in the evidence header.
+If the user asks about a specific meeting (by date, topic, or name), focus on evidence from that meeting. If multiple meetings match, mention the alternatives.
+If evidence is absent or insufficient, say what was searched, state that you cannot verify the answer, and give one focused next step.
+When evidence may conflict, label it as a potential conflict and do not choose a side without support.
+Do not claim to have sent email, changed records, accessed a database, or called an external system unless a tool result explicitly proves it.
+Use concise business language. For comparison_table, use a Markdown table. For bullet_list, use bullets. For concise_answer, use 2–5 short paragraphs."""
+        history_payload = "\n".join(f"{item.role}: {item.message}" for item in history[-settings.HISTORY_RECENT_TURNS * 2 :])
+        user_payload = f"""REQUEST: {query}
+RESPONSE FORMAT: {plan.response_format}
+RETRIEVAL MODE: {plan.retrieval_mode}
+SESSION SUMMARY: {summary or 'None'}
+RECENT CONVERSATION: {history_payload or 'None'}
+EVIDENCE AVAILABLE: {'yes' if has_evidence else 'no'}
+EVIDENCE:
+{context or 'No matching evidence was found in the selected documents.'}"""
         try:
-            # Logic: Try Azure first, fallback to Groq if Azure fails or is unavailable
-            if settings.AZURE_OPENAI_API_KEY:
-                try:
-                    # Prepare payload
-                    prompt_data = {
-                        "messages": messages,
-                        "temperature": 0.4,
-                        "max_tokens": 2048
-                    }
-                    
-                    # Write payload to a temporary file
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', encoding='utf-8', delete=False) as f:
-                        json.dump(prompt_data, f, indent=2, ensure_ascii=False)
-                        prompt_file = f.name
-                        
-                    endpoint = settings.AZURE_OPENAI_ENDPOINT
-                    deployment = settings.AZURE_OPENAI_DEPLOYMENT_NAME
-                    api_key = settings.AZURE_OPENAI_API_KEY
-                    api_version = settings.AZURE_OPENAI_API_VERSION
-                    
-                    api_url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
-                    
-                    if os.name == 'nt':
-                        # Windows - quote file path properly and use shell execution
-                        curl_command = f'curl -s -k -X POST "{api_url}" -H "Content-Type: application/json" -H "api-key: {api_key}" -d "@{prompt_file}"'
-                        result = subprocess.run(curl_command, capture_output=True, encoding='utf-8', errors='replace', shell=True, timeout=45)
-                    else:
-                        # Unix/Linux/Mac
-                        curl_command = [
-                            'curl', '-s', '-k', '-X', 'POST', api_url,
-                            '-H', 'Content-Type: application/json',
-                            '-H', f'api-key: {api_key}',
-                            '-d', f'@{prompt_file}'
-                        ]
-                        result = subprocess.run(curl_command, capture_output=True, encoding='utf-8', errors='replace', timeout=45)
-                        
-                    # Clean up file
-                    if os.path.exists(prompt_file):
-                        os.unlink(prompt_file)
-                        
-                    if result.returncode != 0:
-                        error_msg = result.stderr if result.stderr else "Unknown error"
-                        raise Exception(f"Curl command failed with return code {result.returncode}: {error_msg}")
-                        
-                    if not result.stdout:
-                        raise Exception("No response from Azure OpenAI via curl")
-                        
-                    response_data = json.loads(result.stdout)
-                    
-                    if "error" in response_data:
-                        error_message = response_data["error"]
-                        if isinstance(error_message, dict) and "message" in error_message:
-                            raise Exception(f"Azure API error: {error_message['message']}")
-                        else:
-                            raise Exception(f"Azure API error: {error_message}")
-                            
-                    if "choices" in response_data and len(response_data["choices"]) > 0:
-                        if "message" in response_data["choices"][0] and "content" in response_data["choices"][0]["message"]:
-                            return response_data["choices"][0]["message"]["content"].strip()
-                    
-                    raise Exception("Invalid API response format from curl")
-                    
-                except Exception as azure_err:
-                    logger.warning(f"Azure OpenAI curl call failed: {azure_err}. Attempting Groq fallback...")
-                    if self.groq_client:
-                        response = self.groq_client.chat.completions.create(
-                            model=settings.GROQ_MODEL,
-                            messages=messages,
-                            temperature=0.4,
-                            max_tokens=2048
-                        )
-                        return response.choices[0].message.content
-                    else:
-                        raise azure_err
-            elif self.groq_client:
-                response = self.groq_client.chat.completions.create(
-                    model=settings.GROQ_MODEL,
-                    messages=messages,
-                    temperature=0.4,
-                    max_tokens=2048
+            result = self.llm_service.generate(
+                [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_payload}],
+                temperature=0.2,
+            )
+            return result.content, {"provider": result.provider, "model": result.model}
+        except LLMUnavailableError:
+            if not has_evidence:
+                return (
+                    "I could not reach the configured language model, and no matching document evidence is available yet. "
+                    "Upload a document or check the local Groq/Azure model configuration.",
+                    {"provider": "unavailable", "model": ""},
                 )
-                return response.choices[0].message.content
-            else:
-                return "LLM service is not configured. Please check your API keys."
-        except Exception as e:
-            logger.error(f"Error generating answer: {str(e)}")
-            return f"I apologize, but I encountered an error while generating the answer: {str(e)}"
+            return (
+                "I found relevant evidence, but the configured language model is currently unavailable. "
+                "Please retry after checking the model connection.",
+                {"provider": "unavailable", "model": ""},
+            )
+
+    @staticmethod
+    def _remove_inline_citations(answer: str) -> str:
+        answer = re.sub(r"\s*\[\s*(?:source|evidence)\s*\d+\s*:[^\]]*\]", "", answer, flags=re.IGNORECASE)
+        return re.sub(r"[ \t]+\n", "\n", answer).strip()
+
+    def _optional_faithfulness_check(self, query: str, answer: str, context: str, assessment):
+        if not settings.ENABLE_LLM_FAITHFULNESS_CHECK or not context:
+            return assessment
+        try:
+            result, _ = self.llm_service.generate_json([
+                {"role": "system", "content": "Judge whether an answer is supported only by evidence. Return JSON: {supported: boolean, reason: string}."},
+                {"role": "user", "content": f"Question: {query}\nAnswer: {answer}\nEvidence: {context[:8000]}"},
+            ], max_tokens=250)
+            if result.get("supported") is False:
+                assessment.confidence = "low"
+                assessment.reason = "The answer needs review because evidence support could not be confirmed."
+        except Exception:
+            pass
+        return assessment
+
+    def _refresh_session_summary(self, db: Session, user_id: int, session_id: str) -> None:
+        history = self.chat_history_service.get_session_history(db, user_id, session_id, limit=100)
+        if len(history) <= settings.SESSION_SUMMARY_TURN_THRESHOLD:
+            return
+        existing_summary, _ = self.chat_history_service.get_memory_context(db, user_id, session_id, settings.HISTORY_RECENT_TURNS)
+        try:
+            result = self.llm_service.generate([
+                {"role": "system", "content": "Summarise this enterprise chat in at most 5 neutral factual bullets. Preserve open questions, decisions, entities, dates, and document references. Do not invent facts."},
+                {"role": "user", "content": "Previous summary:\n" + (existing_summary or "None") + "\n\nConversation:\n" + "\n".join(f"{item.role}: {item.message}" for item in history)},
+            ], temperature=0, max_tokens=450)
+            summary = result.content
+        except Exception:
+            summary = "Recent conversation topics: " + "; ".join(item.message[:160] for item in history[-6:])
+        self.chat_history_service.upsert_session_summary(db, user_id, session_id, summary, history[-1].id)
+
+    @staticmethod
+    def _activity(plan, chunks: List[Dict[str, Any]], tool_results: List[Dict[str, Any]], assessment) -> List[str]:
+        steps = ["Understanding your request", "Searching selected documents"]
+        if plan.retrieval_mode == "agentic_rag":
+            steps.append("Comparing retrieved evidence")
+        if tool_results:
+            steps.append("Checking structured records")
+        steps.append("Verifying evidence" if assessment.evidence_found else "No matching evidence found")
+        return steps

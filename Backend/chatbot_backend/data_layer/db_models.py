@@ -1,6 +1,5 @@
 """
-Database Models for Separate Databases
-BSE + RBI from PostgreSQL, SEBI from SQLite
+Database Models for Separate PostgreSQL databases.
 """
 import os
 from datetime import datetime
@@ -27,7 +26,9 @@ class BSENotification(Base):
 
 # SEBI Database Model
 class SEBINotification(Base):
-    __tablename__ = "excel_summaries"
+    # This is the production table used by routes/sebi.py.  The old
+    # ``excel_summaries`` name only existed in the retired SQLite implementation.
+    __tablename__ = "aegis_sebi_data"
     
     id = Column(Integer, primary_key=True)
     date_key = Column(String(20))  # e.g. "01-09-2025"
@@ -58,8 +59,9 @@ def get_bse_engine():
     return _pg_engine(os.getenv("POSTGRES_DATABASE_BSE"))
 
 def get_sebi_engine():
-    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "database", "sebi_excel_master.db"))
-    return create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    # SEBI is intentionally kept in PostgreSQL with BSE/RBI.  A SQLite file
+    # makes production pods diverge and prevents fresh regulatory data sharing.
+    return _pg_engine(os.getenv("POSTGRES_DATABASE_SEBI"))
 
 def get_rbi_engine():
     return _pg_engine(os.getenv("POSTGRES_DATABASE_RBI"))

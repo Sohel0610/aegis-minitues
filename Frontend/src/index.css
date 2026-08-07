@@ -7,6 +7,7 @@
   src: url('./fonts/adani.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 
 :root {
@@ -63,6 +64,48 @@
 }
 
 @layer components {
+  .aegis-chat-markdown p {
+    margin: 0 0 0.75rem;
+  }
+
+  .aegis-chat-markdown p:last-child {
+    margin-bottom: 0;
+  }
+
+  .aegis-chat-markdown ul,
+  .aegis-chat-markdown ol {
+    margin: 0.5rem 0 0.75rem 1.25rem;
+  }
+
+  .aegis-chat-markdown ul { list-style: disc; }
+  .aegis-chat-markdown ol { list-style: decimal; }
+
+  .aegis-chat-markdown table {
+    width: 100%;
+    margin: 0.75rem 0;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .aegis-chat-markdown th,
+  .aegis-chat-markdown td {
+    border: 1px solid #e2e8f0;
+    padding: 0.45rem 0.55rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .aegis-chat-markdown th {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 600;
+  }
+
+  .aegis-chat-markdown a {
+    color: #005da4;
+    text-decoration: underline;
+  }
+
   .card-glass {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);

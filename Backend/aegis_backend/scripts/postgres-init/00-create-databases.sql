@@ -7,15 +7,21 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'director_disclosure_s
 SELECT 'CREATE DATABASE aegis_bse_notification'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'aegis_bse_notification')\gexec
 
+SELECT 'CREATE DATABASE aegis_sebi_db'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'aegis_sebi_db')\gexec
+
+SELECT 'CREATE DATABASE aegis_rbi_notifications'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'aegis_rbi_notifications')\gexec
+
 -- Common local DB name used in Backend/aegis_backend/.env
 SELECT 'CREATE DATABASE aegis_insider'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'aegis_insider')\gexec
 
--- Alternative DB name used in Backend/aegis_backend/.env.example
+-- Alternative DB name used in Backend/aegis_backend/.env
 SELECT 'CREATE DATABASE aegis_insider_trading'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'aegis_insider_trading')\gexec
 
--- Optional umbrella DB name used in Backend/aegis_backend/.env.example
+-- Optional umbrella DB name used in Backend/aegis_backend/.env
 SELECT 'CREATE DATABASE aegis_platform'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'aegis_platform')\gexec
 

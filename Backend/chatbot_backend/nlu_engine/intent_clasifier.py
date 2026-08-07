@@ -4,8 +4,9 @@ Classifies user queries into specific intents with confidence scoring
 """
 
 from enum import Enum
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 import re
+import json
 from dataclasses import dataclass
 
 
@@ -47,6 +48,9 @@ class IntentResult:
     confidence: float
     sub_intents: List[QueryIntent]
     reasoning: str
+    entities: List[str] = None
+    date_range: List[str] = None
+    regulation_types: List[str] = None
 
 
 class IntentClassifier:
@@ -68,6 +72,7 @@ class IntentClassifier:
                 r'\bcount\s+of\b',
                 r'\bnumber\s+of\b',
                 r'\btotal\s+(notifications?|records?)\b',
+                r'\b(?:give|show|provide)\s+(?:me\s+)?(?:a\s+)?count\b',
             ],
             QueryIntent.IMPLICIT_ANALYSIS: [
                 r'\bwhat\'?s\s+happening\b',
@@ -180,15 +185,10 @@ class IntentClassifier:
                     intent=QueryIntent.AMBIGUOUS,
                     confidence=0.8,
                     sub_intents=[],
-                    reasoning="Query too short or unclear"
+                    reasoning="Query too short or unclear", **self._extract_entities(query)
                 )
             else:
-                return IntentResult(
-                    intent=QueryIntent.UNKNOWN,
-                    confidence=0.6,
-                    sub_intents=[],
-                    reasoning="No matching intent patterns"
-                )
+                return self._llm_fallback(query, QueryIntent.UNKNOWN, 0.6, "No matching intent patterns")
         
         # Sort by score
         sorted_intents = sorted(intent_scores.items(), key=lambda x: x[1], reverse=True)
@@ -199,12 +199,36 @@ class IntentClassifier:
         # Determine reasoning
         reasoning = self._generate_reasoning(primary_intent, query_lower)
         
-        return IntentResult(
+        result = IntentResult(
             intent=primary_intent,
             confidence=primary_score,
             sub_intents=sub_intents,
-            reasoning=reasoning
+            reasoning=reasoning, **self._extract_entities(query)
         )
+        return self._llm_fallback(query, result.intent, result.confidence, result.reasoning) if result.confidence < 0.6 else result
+
+    def _llm_fallback(self, query: str, default: QueryIntent, confidence: float, reasoning: str) -> IntentResult:
+        """Use the LLM only for ambiguous pattern matches; graceful offline fallback."""
+        try:
+            from chatbot_backend.llm_layer.llm_client import chat_completion
+            choices = ", ".join(intent.value for intent in QueryIntent)
+            raw = chat_completion("Return strict JSON only.", f"Classify this regulatory query into one intent: {choices}. Query: {query}. Return {{\"intent\":...,\"confidence\":0..1,\"reasoning\":...}}")
+            parsed = json.loads(raw)
+            return IntentResult(QueryIntent(parsed["intent"]), float(parsed.get("confidence", confidence)), [], parsed.get("reasoning", reasoning), **self._extract_entities(query))
+        except Exception:
+            return IntentResult(default, confidence, [], reasoning, **self._extract_entities(query))
+
+    def _extract_entities(self, query: str) -> Dict[str, Any]:
+        """Cheap shared extraction so the API does not re-parse a request."""
+        from chatbot_backend.utils.entity_resolver import resolve_entity
+        from chatbot_backend.chat_orchestrator.router_logic import extract_dates
+        entity = resolve_entity(query)
+        regulation_types = re.findall(r'\b(?:bse|sebi|rbi|circulars?|disclosures?|filings?)\b', query, re.I)
+        return {
+            "entities": [entity["canonical"]] if entity else [],
+            "date_range": extract_dates(query),
+            "regulation_types": sorted(set(item.lower() for item in regulation_types)),
+        }
     
     def _generate_reasoning(self, intent: QueryIntent, query: str) -> str:
         """Generate human-readable reasoning for intent classification"""

@@ -3,13 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 import logging
-from dotenv import load_dotenv
 import concurrent.futures
 import sqlite3
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-# Load environment variables
-load_dotenv()
+from utils.shared_env import load_backend_env
+
+# Load the single backend environment file for every component started here.
+load_backend_env()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

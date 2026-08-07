@@ -8,14 +8,14 @@ import os
 import pandas as pd
 import json
 import logging
-from dotenv import load_dotenv
 import asyncio
 import concurrent.futures
 from functools import partial
 
-# Load environment variables from current directory
-env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
-load_dotenv(env_path)
+from utils.shared_env import load_backend_env
+
+# Load the single backend environment file for every component started here.
+env_path = load_backend_env()
 
 import sqlite3  # Add this import for database access
 import urllib.parse
@@ -86,7 +86,11 @@ async def lifespan(app: FastAPI):
         await loop.run_in_executor(thread_pool, init_rbac_pg_tables)
         await loop.run_in_executor(thread_pool, init_rbac_db)
 
-        logger.info("Directors data, chatbot, and RBAC databases initialized")
+        # Initialize MS Teams tables
+        from routes.teams import init_teams_pg
+        await loop.run_in_executor(thread_pool, init_teams_pg)
+
+        logger.info("Directors data, chatbot, RBAC, and Teams databases initialized")
         yield
     except Exception as e:
         logger.error(f"Error during startup: {e}")
@@ -135,7 +139,8 @@ from routes import (
     registry_management,
     director_exports,
     mca_sync,
-    servicenow_reconciliation
+    servicenow_reconciliation,
+    teams  # MS Teams Bot Integration
 )
 import chatbot_minutes
 
@@ -169,6 +174,7 @@ app.include_router(disclosure_downloader.router, prefix="/api")
 app.include_router(registry_management.router, prefix="/api")
 app.include_router(director_exports.router, prefix="/api")
 app.include_router(mca_sync.router)
+app.include_router(teams.router, prefix="/api")  # MS Teams Bot Integration routes
 app.include_router(chatbot_minutes.router) # Router already has /api/minutes-chatbot prefix
 
 # Print all registered routes for debugging

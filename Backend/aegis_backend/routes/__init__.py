@@ -29,7 +29,8 @@ from . import (
     registry_management,
     director_exports,
     mca_sync,
-    servicenow_reconciliation
+    servicenow_reconciliation,
+    teams
 )
 
 # Export all routers
@@ -60,5 +61,7 @@ __all__ = [
     "registry_management",
     "director_exports",
     "mca_sync",
-    "servicenow_reconciliation"
+    "servicenow_reconciliation",
+    "teams"
 ]
+

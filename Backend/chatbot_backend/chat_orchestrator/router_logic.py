@@ -7,11 +7,32 @@ Router Logic - FINAL FIX (Month Detection Fixed)
 """
 import re
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Tuple, List, Optional
 from chatbot_backend.data_layer.models import get_db_session, DailyLog
 from chatbot_backend.data_layer.db_models import get_sebi_session, get_rbi_session, SEBINotification, RBINotification
 from chatbot_backend.utils.entity_resolver import get_searchable_aliases
 from sqlalchemy import or_, and_, func, extract
+
+def needs_agentic_route(query: str) -> bool:
+    """Multi-source/multi-hop prompts require independent regulatory tools."""
+    q = query.lower()
+    sources = sum(source in q for source in ("bse", "sebi", "rbi"))
+    dates = len(re.findall(r"\b(?:20\d{2}|january|february|march|april|may|june|july|august|september|october|november|december)\b", q))
+    return sources >= 2 or (dates >= 2 and any(word in q for word in ("combine", "cross-reference", "compare")))
+
+def rrf_fuse(sql_rows: List, semantic_rows: List, limit: int = 50, k: int = 60) -> List:
+    """Reciprocal-rank fusion with source-safe deduplication."""
+    scores, rows = {}, {}
+    for ranked in (sql_rows, semantic_rows):
+        for rank, row in enumerate(ranked, 1):
+            if isinstance(row, dict):
+                key = (row.get("entity_name"), str(row.get("notice_date")), row.get("notice_type"), row.get("summary"))
+            else:
+                key = (getattr(row, "EntityName", getattr(row, "entity_name", "")), str(getattr(row, "Date", getattr(row, "notice_date", getattr(row, "date_key", getattr(row, "run_date", ""))))), getattr(row, "Nature", getattr(row, "notice_type", "")), getattr(row, "Summary", getattr(row, "summary", "")))
+            rows[key] = row
+            scores[key] = scores.get(key, 0) + 1.0 / (k + rank)
+    return [rows[key] for key in sorted(scores, key=scores.get, reverse=True)[:limit]]
 
 # Month name to number mapping
 MONTH_MAP = {
@@ -29,6 +50,7 @@ MONTH_MAP = {
     "december": 12, "dec": 12
 }
 
+@lru_cache(maxsize=1)
 def get_most_recent_year_from_db() -> int:
     """
     Query database to find the most recent year with data.
@@ -57,6 +79,17 @@ def get_most_recent_year_from_db() -> int:
     # Fallback to current year if database query fails
     return datetime.now().year
 
+# Cache database freshness probing for one hour, without caching query results.
+_year_cache_at = datetime.min
+_year_cache_value = None
+def get_cached_most_recent_year() -> int:
+    global _year_cache_at, _year_cache_value
+    if _year_cache_value is None or datetime.now() - _year_cache_at > timedelta(hours=1):
+        get_most_recent_year_from_db.cache_clear()
+        _year_cache_value = get_most_recent_year_from_db()
+        _year_cache_at = datetime.now()
+    return _year_cache_value
+
 
 def extract_month_year(query: str) -> Optional[Tuple[int, int]]:
     """
@@ -68,7 +101,7 @@ def extract_month_year(query: str) -> Optional[Tuple[int, int]]:
     q = query.lower()
     # SMART FIX: Get the most recent year from database
     # This allows: "nov month" → latest year in DB, "jan 2026" → explicit 2026
-    current_year = get_most_recent_year_from_db()
+    current_year = get_cached_most_recent_year()
 
     if re.search(r"\b(this|current)\s+month\b", q):
         now = datetime.now()
@@ -126,7 +159,7 @@ def extract_all_months_years(query: str) -> Tuple[List[int], Optional[int]]:
         year_found = int(year_match.group(1))
     else:
         # Fallback year
-        year_found = get_most_recent_year_from_db()
+        year_found = get_cached_most_recent_year()
         
     for month_name, month_num in MONTH_MAP.items():
         if len(month_name) > 2: # protect small matches

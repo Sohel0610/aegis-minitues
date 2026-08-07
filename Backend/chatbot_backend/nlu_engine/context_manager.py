@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import json
 import sqlite3
+import re
 from pathlib import Path
+import os
+from sqlalchemy import create_engine, text
 
 
 @dataclass
@@ -190,10 +193,7 @@ class ContextManager:
         
         query_lower = query.lower()
         
-        # Pronoun patterns to replace
-        pronoun_patterns = [
-            ('it', 'its', 'this', 'that', 'the company', 'the entity'),
-        ]
+        pronoun_patterns = ('it', 'its', 'this company', 'that company', 'the same company', 'the company', 'the entity')
         
         # Get most recent entity
         most_recent_entity = context.active_entities[-1] if context.active_entities else None
@@ -202,11 +202,9 @@ class ContextManager:
             resolved_query = query
             
             # Replace pronouns with entity name
-            for pronoun in pronoun_patterns[0]:
-                # Simple replacement (can be enhanced with NLP)
-                if f" {pronoun} " in f" {query_lower} ":
-                    resolved_query = query.replace(pronoun, most_recent_entity)
-                    resolved_query = resolved_query.replace(pronoun.capitalize(), most_recent_entity)
+            for pronoun in pronoun_patterns:
+                # Word boundaries avoid corrupting words such as "security".
+                resolved_query = re.sub(rf"\b{re.escape(pronoun)}\b", most_recent_entity, resolved_query, flags=re.I)
             
             return resolved_query
         
@@ -362,6 +360,59 @@ class ContextManager:
         conn.close()
 
 
+# PostgreSQL implementation used by the application. The original SQLite class
+# remains a useful local/offline fallback when no PostgreSQL configuration exists.
+class PostgresContextManager(ContextManager):
+    def __init__(self, max_turns: int = 10):
+        self.engine = create_engine(
+            f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@"
+            f"{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT', '5432')}/"
+            f"{os.getenv('POSTGRES_DATABASE_BSE')}",
+            pool_pre_ping=True, connect_args={"sslmode": os.getenv("POSTGRES_SSLMODE", "require")},
+        )
+        super().__init__(db_path="postgresql", max_turns=max_turns)
+
+    def _init_database(self):
+        with self.engine.begin() as conn:
+            conn.execute(text("""CREATE TABLE IF NOT EXISTS chatbot_conversations (
+                session_id TEXT PRIMARY KEY, active_entities JSONB NOT NULL DEFAULT '[]',
+                active_database TEXT, user_preferences JSONB NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ NOT NULL, last_updated TIMESTAMPTZ NOT NULL)"""))
+            conn.execute(text("""CREATE TABLE IF NOT EXISTS chatbot_conversation_turns (
+                id BIGSERIAL PRIMARY KEY, session_id TEXT NOT NULL REFERENCES chatbot_conversations(session_id) ON DELETE CASCADE,
+                turn_id INTEGER NOT NULL, user_query TEXT NOT NULL, bot_response TEXT NOT NULL,
+                intent TEXT NOT NULL, entities JSONB NOT NULL DEFAULT '[]', timestamp TIMESTAMPTZ NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}', UNIQUE(session_id, turn_id))"""))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chatbot_session_turns ON chatbot_conversation_turns(session_id, turn_id)"))
+
+    def _load_context_from_db(self, session_id):
+        with self.engine.connect() as conn:
+            row = conn.execute(text("SELECT active_entities, active_database, user_preferences, created_at, last_updated FROM chatbot_conversations WHERE session_id=:id"), {"id": session_id}).mappings().first()
+            if not row:
+                return None
+            turns = [ConversationTurn(turn_id=item["turn_id"], user_query=item["user_query"], bot_response=item["bot_response"], intent=item["intent"], entities=item["entities"] or [], timestamp=item["timestamp"], metadata=item["metadata"] or {}) for item in conn.execute(text("SELECT turn_id,user_query,bot_response,intent,entities,timestamp,metadata FROM chatbot_conversation_turns WHERE session_id=:id ORDER BY turn_id DESC LIMIT :limit"), {"id": session_id, "limit": self.max_turns}).mappings().all()][::-1]
+        return ConversationContext(session_id=session_id, turns=turns, active_entities=row["active_entities"] or [], active_database=row["active_database"], user_preferences=row["user_preferences"] or {}, created_at=row["created_at"], last_updated=row["last_updated"])
+
+    def _save_turn_to_db(self, session_id, turn):
+        # conversation is inserted first by _update_context_in_db below; this method
+        # is called before it, so ensure a parent row exists transactionally.
+        now = datetime.utcnow()
+        with self.engine.begin() as conn:
+            conn.execute(text("INSERT INTO chatbot_conversations(session_id,created_at,last_updated) VALUES (:id,:now,:now) ON CONFLICT (session_id) DO NOTHING"), {"id": session_id, "now": now})
+            next_id = conn.execute(text("SELECT COALESCE(MAX(turn_id),0)+1 FROM chatbot_conversation_turns WHERE session_id=:id"), {"id": session_id}).scalar_one()
+            conn.execute(text("INSERT INTO chatbot_conversation_turns(session_id,turn_id,user_query,bot_response,intent,entities,timestamp,metadata) VALUES (:id,:turn,:query,:response,:intent,CAST(:entities AS jsonb),:time,CAST(:metadata AS jsonb))"), {"id": session_id, "turn": next_id, "query": turn.user_query, "response": turn.bot_response, "intent": turn.intent, "entities": json.dumps(turn.entities), "time": turn.timestamp, "metadata": json.dumps(turn.metadata)})
+
+    def _update_context_in_db(self, context):
+        with self.engine.begin() as conn:
+            conn.execute(text("""INSERT INTO chatbot_conversations(session_id,active_entities,active_database,user_preferences,created_at,last_updated)
+                VALUES (:id,CAST(:entities AS jsonb),:database,CAST(:preferences AS jsonb),:created,:updated)
+                ON CONFLICT(session_id) DO UPDATE SET active_entities=EXCLUDED.active_entities,active_database=EXCLUDED.active_database,user_preferences=EXCLUDED.user_preferences,last_updated=EXCLUDED.last_updated"""), {"id": context.session_id, "entities": json.dumps(context.active_entities), "database": context.active_database, "preferences": json.dumps(context.user_preferences), "created": context.created_at, "updated": context.last_updated})
+
+    def clear_context(self, session_id):
+        self._active_sessions.pop(session_id, None)
+        with self.engine.begin() as conn:
+            conn.execute(text("DELETE FROM chatbot_conversations WHERE session_id=:id"), {"id": session_id})
+
 # Global instance
 _context_manager = None
 
@@ -369,5 +420,8 @@ def get_context_manager() -> ContextManager:
     """Get singleton instance of ContextManager"""
     global _context_manager
     if _context_manager is None:
-        _context_manager = ContextManager()
+        if os.getenv("POSTGRES_HOST") and os.getenv("POSTGRES_DATABASE_BSE"):
+            _context_manager = PostgresContextManager()
+        else:
+            _context_manager = ContextManager()
     return _context_manager

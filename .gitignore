@@ -1,31 +1,26 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Environment variables
+# ==========================================
+# Environment & Secrets (NEVER COMMIT)
+# ==========================================
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
-# Aegis Generated Disclosures
-Backend/Director_Disclosure/Output_Disclosures/
-*.docx
-venv/
+# ==========================================
+# Operating System & IDE
+# ==========================================
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sln
+*.sw?
 
-# Python
-__pycache__
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -33,112 +28,65 @@ __pycache__
 *.so
 .coverage
 .coverage.*
-.cache
-.pytest_cache
 .pytest_cache/
-.pytest_cache_*
-.nox
-.nox/
-.tox
 .tox/
-.eggs
-.eggs/
+.nox/
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-*.manifest
-*.spec
+.eggs/
+venv/
+.venv/
+**/venv/
+**/.venv/
 
-pip-log.txt
-pip-delete-this-directory.txt
-htmlcov/
-.pytest_cache/
+# ==========================================
+# Node.js & Frontend Build Outputs
+# ==========================================
+node_modules/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Test files
-test_sharepoint_connection.py
-
-# Local runtime data and generated uploads
-/public/
-Backend/aegis_backend/public/chatbot_docs/
-Backend/aegis_backend/public/ai_assistant_mom/
-Backend/aegis_backend/public/Directors\ Discloser\ Output/
-Backend/aegis_backend/server.log
-Backend/aegis_backend/uploads/
-Backend/aegis_backend/director_images/
-
-# Local SQLite/runtime database files not needed for production deploys
-/chatbot_minutes.db
-Backend/aegis_backend/chatbot_minutes.db
+# ==========================================
+# Local Databases & Temp Files
+# ==========================================
 *.db
 *.db-wal
 *.db-shm
 *.db-journal
 *.sqlite
+*.tmp
+sqlite.db.tmp
+sqlite.db.*.tmp
 
-# Remote / Development copies and specific junk
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+Backend/aegis_backend/server.log
+
+# ==========================================
+# Local Runtime Data & Upload Directories
+# ==========================================
+/public/
+Backend/Director_Disclosure/Output_Disclosures/
+Backend/aegis_backend/public/chatbot_docs/
+Backend/aegis_backend/public/ai_assistant_mom/
+Backend/aegis_backend/public/Directors Disclosure Output/
+Backend/aegis_backend/uploads/
+Backend/aegis_backend/director_images/
+chatbot_eval_output/
+
+# ==========================================
+# Dev Utilities, Temp Archives & Specific Exclusions
+# ==========================================
 *_remote.*
 Task Tracker.md
 files_updated.md
 src.zip
-*.pdf
-*.zip
-
-# Test files and dev scripts
-test_*.py
-**/test_*.py
-mock_*.py
-**/mock_*.py
-e2e_*.py
-**/e2e_*.py
-comprehensive_test.py
-test_prompt.json
-scripts/test_*.py
-*sample*
-*.ipynb
-check_*.py
-**/check_*.py
-debug_*.py
-**/debug_*.py
-list_*.py
-**/list_*.py
-*migration*.py
-inspect_columns.py
-
-# Local runtime data and project tracking
-*.zip
-*.pdf
-Task Tracker.md
-files_updated.md
-*.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# Editor directories and files
-.vscode
-.idea
-.DS_Store
-Thumbs.db
-*/venv
+a.txt

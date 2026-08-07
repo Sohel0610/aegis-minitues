@@ -22,7 +22,8 @@ import {
   User,
   LogOut,
   Key,
-  ChevronDown
+  ChevronDown,
+  Video
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -174,11 +175,11 @@ const products: Product[] = [
     status: "Live",
     route: "/minutes-preparation",
     features: [
+      "MS Teams Bot integration",
       "Automated transcription",
       "Template-based formatting",
-      "Action item tracking",
-      "Compliance verification",
-      "Digital signing support"
+      "Action item & MOM tracking",
+      "Compliance verification"
     ]
   }
 ];

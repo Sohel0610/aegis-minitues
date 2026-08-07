@@ -1,131 +1,176 @@
-from sentence_transformers import SentenceTransformer
-from sqlalchemy.orm import Session
-from ..models import Embedding, Document
-from ..config import settings
-from typing import List
-import numpy as np
+"""Embedding and source-aware chunking for local and Azure VM modes."""
+from __future__ import annotations
+
 import logging
 import re
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+from sqlalchemy.orm import Session
+
+from ..config import settings
+from ..models import Document, Embedding
 
 logger = logging.getLogger(__name__)
 
-class EmbeddingService:
-    def __init__(self):
-        try:
-            model_path = settings.EMBEDDING_MODEL_PATH
-            if not model_path or model_path == "None":
-                model_path = "sentence-transformers/all-MiniLM-L6-v2"
-                logger.info(f"No local model path set, using model name: {model_path}")
-            else:
-                logger.info(f"Loading embedding model from: {model_path}")
-            
-            self.model = SentenceTransformer(model_path)
-            logger.info(f"Embedding model loaded successfully")
-        except Exception as e:
-            logger.error(f"Error loading embedding model: {str(e)}")
-            raise
 
-    def generate_embedding(self, text: str) -> List[float]:
+class EmbeddingService:
+    _local_models: Dict[str, Any] = {}
+    _cohere_client: Any = None
+
+    def __init__(self) -> None:
+        self.provider = settings.EMBEDDING_PROVIDER.strip().lower()
+        if self.provider in {"sentence_transformer", "sentence-transformer", "local"}:
+            self._load_local_model()
+        elif self.provider not in {"cohere", "cohere_azure", "azure_cohere"}:
+            raise ValueError(f"Unsupported embedding provider: {settings.EMBEDDING_PROVIDER}")
+
+    def _load_local_model(self) -> None:
+        model_path = settings.EMBEDDING_MODEL_PATH or "sentence-transformers/all-MiniLM-L6-v2"
+        if model_path not in self._local_models:
+            from sentence_transformers import SentenceTransformer
+
+            logger.info("Loading local embedding model: %s", model_path)
+            self._local_models[model_path] = SentenceTransformer(model_path)
+        self.model = self._local_models[model_path]
+
+    def _get_cohere_client(self):
+        if self._cohere_client is not None:
+            return self._cohere_client
+        if not all([settings.COHERE_API_KEY, settings.COHERE_AZURE_ENDPOINT]):
+            raise ValueError("COHERE_API_KEY and COHERE_AZURE_ENDPOINT are required for Azure Cohere embeddings")
         try:
-            embedding = self.model.encode(text, convert_to_numpy=True)
-            return embedding.tolist()
-        except Exception as e:
-            logger.error(f"Error generating embedding: {str(e)}")
-            raise
+            import cohere
+        except ImportError as exc:
+            raise ValueError("Install the 'cohere' package to use Azure Cohere embeddings") from exc
+        self.__class__._cohere_client = cohere.ClientV2(
+            api_key=settings.COHERE_API_KEY,
+            base_url=settings.COHERE_AZURE_ENDPOINT,
+        )
+        return self._cohere_client
+
+    def generate_embedding(self, text: str, *, input_type: str = "search_document") -> List[float]:
+        cleaned = text.strip()
+        if not cleaned:
+            return []
+        if self.provider in {"sentence_transformer", "sentence-transformer", "local"}:
+            return self.model.encode(cleaned, convert_to_numpy=True, normalize_embeddings=True).tolist()
+        client = self._get_cohere_client()
+        response = client.embed(
+            model=settings.COHERE_EMBED_MODEL,
+            texts=[cleaned],
+            input_type=input_type,
+            embedding_types=["float"],
+            output_dimension=settings.COHERE_EMBED_DIMENSIONS,
+        )
+        vectors = getattr(getattr(response, "embeddings", None), "float", None)
+        if not vectors:
+            raise ValueError("Azure Cohere returned no float embedding")
+        return list(vectors[0])
 
     @staticmethod
-    def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:
-        if not text:
+    def chunk_text_with_metadata(text: str, chunk_size: int = 1400, overlap: int = 180) -> List[Tuple[str, Dict[str, Any]]]:
+        """Keep page/slide/sheet boundaries intact before splitting long sections."""
+        if not text or not text.strip():
             return []
-        if len(text) <= chunk_size:
-            return [text.strip()]
-        
-        # Section-aware chunking
-        section_markers = ["\nAttendees:", "\nAgenda:", "\nDecisions:", "\nAction Items:",
-                          "\n--- Page", "\n=== Slide", "\n=== Sheet", "\n## ", "\n# "]
-        
-        has_sections = any(marker in text for marker in section_markers)
-        if has_sections:
-            pattern = r'(?=\n(?:Attendees:|Agenda:|Decisions:|Action Items:|--- Page|=== Slide|=== Sheet|## |# ))'
-            sections = re.split(pattern, text)
-            chunks = []
-            current_chunk = ""
-            for section in sections:
-                if len(current_chunk) + len(section) <= chunk_size:
-                    current_chunk += section
-                else:
-                    if current_chunk.strip():
-                        chunks.append(current_chunk.strip())
-                    current_chunk = section
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-            return chunks
-
-        # Fallback: character-based chunking
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-            if chunk.strip():
-                chunks.append(chunk.strip())
-            start += (chunk_size - overlap)
+        marker = re.compile(r"(?=^(?:--- Page \d+.*---|=== Slide \d+ ===|=== Sheet: .* ===|=== Word document ===|=== Image OCR ===))", re.MULTILINE)
+        sections = [section.strip() for section in marker.split(text) if section.strip()]
+        if not sections:
+            sections = [text.strip()]
+        chunks: List[Tuple[str, Dict[str, Any]]] = []
+        for section in sections:
+            metadata = EmbeddingService._source_metadata(section)
+            if len(section) <= chunk_size:
+                chunks.append((section, metadata))
+                continue
+            chunks.extend((piece, {**metadata, "continued": True}) for piece in EmbeddingService._split_long_text(section, chunk_size, overlap))
         return chunks
 
-    def create_document_embeddings(self, db: Session, document: Document):
+    @staticmethod
+    def _split_long_text(text: str, chunk_size: int, overlap: int) -> List[str]:
+        words = text.split()
+        pieces, current, current_length = [], [], 0
+        for word in words:
+            length = len(word) + 1
+            if current and current_length + length > chunk_size:
+                pieces.append(" ".join(current))
+                overlap_words, overlap_length = [], 0
+                for previous in reversed(current):
+                    overlap_length += len(previous) + 1
+                    if overlap_length > overlap:
+                        break
+                    overlap_words.append(previous)
+                current = list(reversed(overlap_words))
+                current_length = sum(len(item) + 1 for item in current)
+            current.append(word)
+            current_length += length
+        if current:
+            pieces.append(" ".join(current))
+        return pieces
+
+    @staticmethod
+    def _source_metadata(text: str) -> Dict[str, Any]:
+        first_line = text.splitlines()[0] if text.splitlines() else ""
+        page = re.search(r"--- Page (\d+)", first_line)
+        slide = re.search(r"=== Slide (\d+) ===", first_line)
+        sheet = re.search(r"=== Sheet: (.*) ===", first_line)
+        if page:
+            return {"location_type": "page", "location": f"Page {page.group(1)}", "page": int(page.group(1))}
+        if slide:
+            return {"location_type": "slide", "location": f"Slide {slide.group(1)}", "slide": int(slide.group(1))}
+        if sheet:
+            return {"location_type": "sheet", "location": f"Sheet: {sheet.group(1)}", "sheet": sheet.group(1)}
+        return {"location_type": "document", "location": "Document"}
+
+    def create_document_embeddings(self, db: Session, document: Document) -> int:
         if not document.extracted_text:
-            return
-        
-        chunks = self.chunk_text(document.extracted_text)
-        for idx, chunk in enumerate(chunks):
+            return 0
+        db.query(Embedding).filter(Embedding.document_id == document.id).delete(synchronize_session=False)
+        chunks = self.chunk_text_with_metadata(document.extracted_text)
+
+        # Look up meeting metadata to enrich each chunk.
+        from ..models import MeetingMetadata
+        meeting_meta = db.query(MeetingMetadata).filter(MeetingMetadata.document_id == document.id).first()
+        meeting_fields = self._meeting_metadata_for_chunk(meeting_meta) if meeting_meta else {}
+
+        created = 0
+        for index, (chunk, metadata) in enumerate(chunks):
             try:
-                embedding = self.generate_embedding(chunk)
-                doc_embedding = Embedding(
+                enriched_metadata = {**metadata, **meeting_fields}
+                db.add(Embedding(
                     document_id=document.id,
                     chunk_text=chunk,
-                    embedding_vector=embedding,
-                    chunk_index=idx
-                )
-                db.add(doc_embedding)
-            except Exception as e:
-                logger.error(f"Error creating embedding for chunk {idx}: {str(e)}")
-                continue
+                    embedding_vector=self.generate_embedding(chunk, input_type="search_document"),
+                    chunk_index=index,
+                    chunk_metadata=enriched_metadata,
+                ))
+                created += 1
+            except Exception as exc:
+                logger.error("Embedding failed for document %s chunk %s: %s", document.id, index, type(exc).__name__)
+                raise
         db.commit()
+        return created
 
-    def search_similar_chunks(
-        self,
-        db: Session,
-        query: str,
-        user_id: int,
-        is_admin: bool = False,
-        top_k: int = 5
-    ) -> List[tuple]:
-        query_embedding = self.generate_embedding(query)
-        
-        # If admin, search all docs, else search only user's own docs
-        if is_admin:
-            embeddings_query = db.query(Embedding).join(Document)
-        else:
-            embeddings_query = db.query(Embedding).join(Document).filter(
-                Document.user_id == user_id
-            )
-        
-        embeddings = embeddings_query.all()
-        
-        if not embeddings:
-            return []
-        
-        results = []
-        for emb in embeddings:
-            if emb.embedding_vector:
-                similarity = self._cosine_similarity(query_embedding, emb.embedding_vector)
-                results.append((emb.chunk_text, emb.document.filename, similarity))
-        
-        results.sort(key=lambda x: x[2], reverse=True)
-        return results[:top_k]
+    @staticmethod
+    def _meeting_metadata_for_chunk(meta) -> Dict[str, Any]:
+        """Extract a slim set of meeting identity fields to store per chunk."""
+        fields: Dict[str, Any] = {}
+        if meta.meeting_title:
+            fields["meeting_title"] = meta.meeting_title
+        if meta.meeting_date:
+            fields["meeting_date"] = meta.meeting_date.isoformat()
+        if meta.meeting_type:
+            fields["meeting_type"] = meta.meeting_type
+        if meta.company_name:
+            fields["company_name"] = meta.company_name
+        if meta.key_topics:
+            fields["key_topics"] = meta.key_topics[:10]
+        return fields
 
     @staticmethod
     def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-        v1 = np.array(vec1)
-        v2 = np.array(vec2)
-        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        if not vec1 or not vec2 or len(vec1) != len(vec2):
+            return 0.0
+        left, right = np.array(vec1), np.array(vec2)
+        denominator = np.linalg.norm(left) * np.linalg.norm(right)
+        return float(np.dot(left, right) / denominator) if denominator else 0.0

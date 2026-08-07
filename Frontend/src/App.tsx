@@ -37,6 +37,10 @@ import Templates from "./pages/minutes-preparation/Templates";
 import TemplateRenderer from "./pages/minutes-preparation/TemplateRenderer";
 import MinutesChatbot from "./pages/minutes-preparation/MinutesChatbot";
 
+// Import MS Teams meeting pages
+import TeamsMeetings from "./pages/teams/TeamsMeetings";
+import TeamsMeetingDetail from "./pages/teams/TeamsMeetingDetail";
+
 
 // Import SEBI specific pages
 import SEBIDashboard from "./pages/SEBIDashboard";
@@ -259,6 +263,28 @@ const App = () => (
             } />
 
             <Route path="/hierarchy-structure" element={<HierarchyStructure />} />
+
+            {/* MS Teams Meeting routes (Integrated inside Minutes Preparation) */}
+            <Route path="/minutes-preparation/teams" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <TeamsMeetings />
+              </ProtectedRoute>
+            } />
+            <Route path="/minutes-preparation/teams/:id" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <TeamsMeetingDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/teams-meetings" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <TeamsMeetings />
+              </ProtectedRoute>
+            } />
+            <Route path="/teams-meetings/:id" element={
+              <ProtectedRoute requiredRoute="/minutes-preparation">
+                <TeamsMeetingDetail />
+              </ProtectedRoute>
+            } />
 
             {/* Legacy product routes - redirect to main product */}
             <Route path="/ageis-wind" element={
