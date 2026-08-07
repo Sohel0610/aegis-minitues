@@ -364,7 +364,7 @@ export const Step2Attendance: React.FC<StepProps> = (props) => {
                     )}
                     {!chairName && (
                       <p className="text-[11px] text-slate-500">
-                        No previous chairman found for this company/meeting type — please select.
+                        No automatic chairman for this company (none with Chair designation / no prior minutes match among the directors above) — please select from Present directors.
                       </p>
                     )}
                     <Select

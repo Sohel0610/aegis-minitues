@@ -244,15 +244,12 @@ export const parseMinutesText = (text: string): Record<string, any> => {
     extracted.inAttendance = [{ name: inviteeMatch[1].trim(), role: inviteeMatch[2].trim() }];
   }
 
-  // 9. Chairman Name
+  // 9. Chairman Name — only from document text, never invent from first director
   const chairMatch = text.match(/CHAIRMAN\s*\n\s*([A-Za-z\s]+?)\s+occupied\s+the\s+Chair/i) || text.match(/Chairman:?\s*([A-Za-z\s]+)/i);
   if (chairMatch) {
     const name = chairMatch[1].trim();
     extracted.chairmanName = name;
     extracted.signingChairmanName = name;
-  } else if (dirs.length > 0) {
-    extracted.chairmanName = dirs[0].name;
-    extracted.signingChairmanName = dirs[0].name;
   }
 
   // 10. Previous Minutes Date

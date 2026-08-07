@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getMinutesNavItems } from '@/constants/minutesNavigation';
 import { companyPresets } from '@/constants/companyPresets';
 import { useVertical } from '@/contexts/VerticalContext';
+import { useToast } from '@/components/ui/use-toast';
 
 // Cleanup helpers
 const cleanNameForCompare = (name: string) => {
@@ -130,6 +131,12 @@ const MinutesGenerator = () => {
     status: 'Active'
   });
   const [addingCompany, setAddingCompany] = useState(false);
+  const [showDeleteCompanyModal, setShowDeleteCompanyModal] = useState(false);
+  const [companyToDelete, setCompanyToDelete] = useState<any | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingCompany, setDeletingCompany] = useState(false);
+
+  const { toast } = useToast();
 
   const [directorsList, setDirectorsList] = useState<any[]>([]);
   const [companyMeetings, setCompanyMeetings] = useState<any[]>([]);
@@ -192,35 +199,57 @@ const MinutesGenerator = () => {
     }
   };
 
-  // Delete Company Handler
-  const handleDeleteCompany = async (company: any) => {
-    const confirmMsg = `⚠️ DELETE COMPANY?\n\nAre you sure you want to delete:\n${company.name}\n\nThis will permanently delete:\n• Company record\n• All meetings and minutes\n• All attendance records\n• All directors\n• All related data\n\nThis action CANNOT be undone!\n\nType "DELETE" to confirm:`;
-    
-    const userInput = prompt(confirmMsg);
-    
-    if (userInput !== "DELETE") {
-      return;
-    }
+  const openDeleteCompanyModal = (company: any) => {
+    setCompanyToDelete(company);
+    setDeleteConfirmText('');
+    setShowDeleteCompanyModal(true);
+  };
 
+  const closeDeleteCompanyModal = () => {
+    if (deletingCompany) return;
+    setShowDeleteCompanyModal(false);
+    setCompanyToDelete(null);
+    setDeleteConfirmText('');
+  };
+
+  const confirmDeleteCompany = async () => {
+    if (!companyToDelete || deleteConfirmText !== 'DELETE') return;
+
+    setDeletingCompany(true);
     try {
-      const res = await fetch(`/api/companies/${company.id}?confirm=true`, {
-        method: 'DELETE'
+      const res = await fetch(`/api/companies/${companyToDelete.id}?confirm=true`, {
+        method: 'DELETE',
       });
 
       if (res.ok) {
         const result = await res.json();
-        alert(`✅ Company deleted successfully!\n\nDeleted ${result.deleted_records?.total || 0} related records.`);
-        
-        // Refresh company list
-        setLocalCompanies(prev => prev.filter(c => c.id !== company.id));
-        setLocalTotalCompanies(prev => prev - 1);
+        toast({
+          title: 'Company deleted',
+          description: `"${companyToDelete.name}" and ${result.deleted_records?.total || 0} related record(s) were removed.`,
+        });
+
+        setLocalCompanies((prev) => prev.filter((c) => c.id !== companyToDelete.id));
+        setLocalTotalCompanies((prev) => prev - 1);
+        setShowDeleteCompanyModal(false);
+        setCompanyToDelete(null);
+        setDeleteConfirmText('');
       } else {
         const error = await res.json();
-        alert(`Failed to delete company: ${error.detail || 'Unknown error'}`);
+        toast({
+          title: 'Delete failed',
+          description: error.detail || 'Unknown error',
+          variant: 'destructive',
+        });
       }
     } catch (err) {
-      console.error("Error deleting company:", err);
-      alert("Failed to delete company. Please try again.");
+      console.error('Error deleting company:', err);
+      toast({
+        title: 'Delete failed',
+        description: 'Could not delete company. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingCompany(false);
     }
   };
 
@@ -695,7 +724,7 @@ const MinutesGenerator = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteCompany(c);
+                                    openDeleteCompanyModal(c);
                                   }}
                                   className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-600 bg-red-50 opacity-0 group-hover:opacity-100 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all duration-200"
                                   title="Delete Company"
@@ -867,6 +896,67 @@ const MinutesGenerator = () => {
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {addingCompany ? "Adding..." : "Add Company"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Company Dialog */}
+        <Dialog open={showDeleteCompanyModal} onOpenChange={(open) => !open && closeDeleteCompanyModal()}>
+          <DialogContent className="bg-white max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-700">
+                <AlertCircle className="h-5 w-5" />
+                Delete company?
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-4 pt-1 text-sm text-slate-600">
+                  <p>
+                    Are you sure you want to delete{' '}
+                    <strong className="text-slate-900">{companyToDelete?.name}</strong>?
+                  </p>
+                  <div className="rounded-lg border border-red-100 bg-red-50/60 p-3">
+                    <p className="font-medium text-red-800 mb-2">This will permanently delete:</p>
+                    <ul className="list-disc pl-5 space-y-1 text-red-900/80">
+                      <li>Company record</li>
+                      <li>All meetings and minutes</li>
+                      <li>All attendance records</li>
+                      <li>All directors</li>
+                      <li>All related data</li>
+                    </ul>
+                  </div>
+                  <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="delete-confirm" className="text-sm font-semibold text-slate-700">
+                      Type <span className="font-mono text-red-600">DELETE</span> to confirm
+                    </Label>
+                    <Input
+                      id="delete-confirm"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder="DELETE"
+                      className="h-10 font-mono"
+                      autoComplete="off"
+                      disabled={deletingCompany}
+                    />
+                  </div>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={closeDeleteCompanyModal}
+                disabled={deletingCompany}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteCompany}
+                disabled={deletingCompany || deleteConfirmText !== 'DELETE'}
+              >
+                {deletingCompany ? 'Deleting...' : 'Delete company'}
               </Button>
             </DialogFooter>
           </DialogContent>

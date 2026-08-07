@@ -1,59 +1,227 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { FileText, Upload, Download, Plus, Trash, Eye, FileSpreadsheet, History } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  FileText,
+  Upload,
+  Download,
+  Search,
+  Building2,
+  Calendar,
+  Layers,
+  RefreshCw,
+} from 'lucide-react';
 import ProductDashboardLayout from '@/components/layout/ProductDashboardLayout';
-import { Link } from 'react-router-dom';
 import { getMinutesNavItems } from '@/constants/minutesNavigation';
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from '@/components/ui/use-toast';
+import { getCleanBusinessTemplateName } from './components/form-steps/Step0TemplateCompany';
+
+interface StoredTemplate {
+  id?: number;
+  name: string;
+  category?: string;
+  companyName?: string;
+  quarter?: string;
+  size?: number;
+  lastModified?: string;
+  path?: string;
+}
+
+const formatBytes = (bytes?: number) => {
+  if (!bytes || bytes <= 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+};
+
+const formatDate = (value?: string) => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const categoryBadgeClass = (category: string) => {
+  const c = category.toLowerCase();
+  if (c.includes('audit')) return 'bg-amber-50 text-amber-800 border-amber-200';
+  if (c.includes('board')) return 'bg-blue-50 text-blue-800 border-blue-200';
+  if (c.includes('agm') || c.includes('egm')) return 'bg-violet-50 text-violet-800 border-violet-200';
+  if (c.includes('committee')) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  return 'bg-slate-50 text-slate-700 border-slate-200';
+};
 
 const Templates = () => {
   const navigationItems = getMinutesNavItems('templates');
   const { toast } = useToast();
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
-  const [templates, setTemplates] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [templates, setTemplates] = useState<StoredTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [companyFilter, setCompanyFilter] = useState('all');
 
   const fetchTemplates = async () => {
+    setLoading(true);
     try {
       const res = await fetch('/api/templates');
       if (res.ok) {
         const data = await res.json();
         setTemplates(data.data || []);
+      } else {
+        toast({
+          title: 'Could not load templates',
+          description: 'Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (err) {
-      console.error("Failed to fetch templates", err);
+      console.error('Failed to fetch templates', err);
+      toast({
+        title: 'Could not load templates',
+        description: 'Check that the API server is running.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  React.useEffect(() => {
-    fetchTemplates();
+  useEffect(() => {
+    void fetchTemplates();
   }, []);
+
+  const enrichedTemplates = useMemo(() => {
+    return templates.map((t) => {
+      const formatted = getCleanBusinessTemplateName(t.name);
+      return {
+        ...t,
+        displayTitle: formatted.title,
+        displayCategory: t.category || formatted.category,
+        displayCompany: t.companyName || '—',
+        displayQuarter: t.quarter || formatted.quarterTag,
+      };
+    });
+  }, [templates]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    enrichedTemplates.forEach((t) => {
+      if (t.displayCategory) set.add(t.displayCategory);
+    });
+    return Array.from(set).sort();
+  }, [enrichedTemplates]);
+
+  const companyOptions = useMemo(() => {
+    const set = new Set<string>();
+    enrichedTemplates.forEach((t) => {
+      if (t.displayCompany && t.displayCompany !== '—') set.add(t.displayCompany);
+    });
+    return Array.from(set).sort();
+  }, [enrichedTemplates]);
+
+  const filteredTemplates = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return enrichedTemplates.filter((t) => {
+      if (categoryFilter !== 'all' && t.displayCategory !== categoryFilter) return false;
+      if (companyFilter !== 'all' && t.displayCompany !== companyFilter) return false;
+      if (!q) return true;
+      return (
+        t.name.toLowerCase().includes(q) ||
+        t.displayTitle.toLowerCase().includes(q) ||
+        (t.displayCompany || '').toLowerCase().includes(q) ||
+        (t.displayCategory || '').toLowerCase().includes(q)
+      );
+    });
+  }, [enrichedTemplates, searchQuery, categoryFilter, companyFilter]);
+
+  const stats = useMemo(() => {
+    const companies = new Set(
+      enrichedTemplates.map((t) => t.displayCompany).filter((c) => c && c !== '—')
+    );
+    const board = enrichedTemplates.filter((t) =>
+      (t.displayCategory || '').toLowerCase().includes('board')
+    ).length;
+    const committee = enrichedTemplates.filter((t) => {
+      const c = (t.displayCategory || '').toLowerCase();
+      return c.includes('committee') || c.includes('audit');
+    }).length;
+    return {
+      total: enrichedTemplates.length,
+      companies: companies.size,
+      board,
+      committee,
+    };
+  }, [enrichedTemplates]);
 
   const handleDownload = (filename: string) => {
     const link = document.createElement('a');
-    link.href = `/api/templates/download/${filename}`;
+    link.href = `/api/templates/download/${encodeURIComponent(filename)}`;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleDelete = async (filename: string) => {
-    if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
+  const handleUpload = async (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      toast({
+        title: 'Invalid file',
+        description: 'Only .docx meeting templates are supported.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
 
     try {
-      const res = await fetch(`/api/templates/${filename}`, {
-        method: 'DELETE'
+      const res = await fetch('/api/upload-template', {
+        method: 'POST',
+        body: formData,
       });
       if (res.ok) {
-        fetchTemplates();
+        toast({ title: 'Template uploaded', description: `${file.name} was added to the library.` });
+        await fetchTemplates();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({
+          title: 'Upload failed',
+          description: err.detail || 'Could not upload template.',
+          variant: 'destructive',
+        });
       }
     } catch (err) {
-      console.error("Failed to delete template", err);
+      console.error('Upload error', err);
+      toast({
+        title: 'Upload failed',
+        description: 'Could not connect to the server.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
     }
   };
 
@@ -63,212 +231,223 @@ const Templates = () => {
       productRoute="/minutes-preparation"
       navigationItems={navigationItems}
     >
-      <div className="p-6">
-        <div className="border border-slate-200 rounded-xl bg-white shadow-xs p-6 space-y-6">
-          <div className="pb-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">Template Management</h1>
-              <p className="text-xs text-slate-500 mt-1">Manage and configure meeting minutes templates.</p>
-            </div>
-            <div className="flex gap-2">
-              <Link to="/minutes-preparation/renderer">
-                <Button variant="outline" className="flex items-center gap-2 text-xs font-semibold rounded-lg border-slate-200 h-9 bg-white">
-                  <Eye className="h-4 w-4 text-slate-500" />
-                  Template Renderer
-                </Button>
-              </Link>
-              <Button 
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg h-9"
-                onClick={() => document.getElementById('add-template-input')?.click()}
-              >
-                <Plus className="h-4 w-4" />
-                Add New Template
-              </Button>
-              <input
-                id="add-template-input"
-                type="file"
-                accept=".docx"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-
-                  const formData = new FormData();
-                  formData.append('file', file);
-
-                  try {
-                    const res = await fetch('/api/upload-template', {
-                      method: 'POST',
-                      body: formData
-                    });
-                    if (res.ok) {
-                      fetchTemplates();
-                      toast({ title: "Success", description: "Template added successfully." });
-                    } else {
-                      toast({ title: "Error", description: "Upload failed", variant: "destructive" });
-                    }
-                  } catch (err) {
-                    console.error('Upload error', err);
-                  }
-                }}
-              />
-            </div>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Meeting Template Library</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Browse, search, and download official DOCX minutes templates stored in the system.
+            </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void fetchTemplates()} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {uploading ? 'Uploading…' : 'Upload template'}
+            </Button>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".docx"
+              className="hidden"
+              onChange={(e) => void handleUpload(e.target.files?.[0])}
+            />
+          </div>
+        </div>
 
-          <Card className="w-full border border-slate-200 shadow-none bg-white rounded-xl overflow-hidden">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-slate-400" />
-                Available Templates
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-500 mt-1">
-                Manage and customize your meeting minutes DOCX templates
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div 
-                className="space-y-3 max-h-[500px] overflow-y-auto pr-1 scroll-smooth"
-              >
-                {templates.length === 0 && !loading && (
-                  <div className="text-center py-10">
-                    <FileText className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-slate-400 text-xs font-medium">No templates found in the system.</p>
-                  </div>
-                )}
-                {loading && (
-                  <div className="text-center py-10">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-600 mx-auto"></div>
-                    <p className="mt-2 text-slate-500 text-xs font-medium">Loading templates repository...</p>
-                  </div>
-                )}
-                {templates.map((template, idx) => (
-                  <div
-                    key={idx}
-                    className="group flex flex-col md:flex-row items-start md:items-center justify-between p-3.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors gap-4"
-                  >
-                    <div className="flex items-center gap-3.5 flex-1 min-w-0 w-full">
-                      <div className="bg-blue-50 border border-blue-200/60 p-2.5 rounded-lg text-blue-600 shrink-0">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div className="space-y-1 min-w-0 flex-1">
-                        {(() => {
-                          const rawName = template.name || '';
-                          let companyPrefix = 'Adani Group';
-                          if (rawName.startsWith('AGEL')) companyPrefix = 'AGEL';
-                          else if (rawName.startsWith('AGE(UP)L')) companyPrefix = 'AGE(UP)L';
-                          else if (rawName.includes('AGE25BL')) companyPrefix = 'AGE25BL';
-
-                          let category = 'Board Meeting';
-                          if (rawName.includes('- AC -') || rawName.toLowerCase().includes('audit')) category = 'Audit Committee';
-                          else if (rawName.toLowerCase().includes('agm')) category = 'AGM';
-
-                          let quarterTag = '';
-                          if (rawName.includes('28.04') || rawName.includes('Q1')) quarterTag = ' (Q1 Focus)';
-                          else if (rawName.includes('28.07') || rawName.includes('Q2')) quarterTag = ' (Q2 Focus)';
-                          else if (rawName.includes('28.10') || rawName.includes('Q3')) quarterTag = ' (Q3 Focus)';
-                          else if (rawName.includes('23.01') || rawName.includes('Q4')) quarterTag = ' (Q4 Annual Focus)';
-
-                          const cleanTitle = `${companyPrefix} — ${category}${quarterTag}`;
-
-                          return (
-                            <>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-sm text-slate-900 truncate" title={rawName}>
-                                  {cleanTitle}
-                                </h3>
-                                <span className="bg-blue-50 text-blue-700 border border-blue-200/60 px-2 py-0.5 rounded text-[10px] font-semibold">
-                                  {category}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-slate-400 font-mono truncate">{rawName}</div>
-                            </>
-                          );
-                        })()}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 pt-1">
-                          <div className="flex items-center gap-1.5 font-mono text-[10px]">
-                            <History className="h-3.5 w-3.5 text-slate-400" />
-                            {template.lastModified}
-                          </div>
-                          <div className="flex items-center gap-1.5 font-mono text-[10px]">
-                            <FileSpreadsheet className="h-3.5 w-3.5 text-slate-400" />
-                            {(template.size / 1024).toFixed(1)} KB
-                          </div>
-                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-medium text-[9px] uppercase tracking-wider">
-                            DOCX
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-slate-100 justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 sm:flex-none h-8 px-3 rounded-lg border-slate-200 text-slate-700 font-semibold text-xs bg-white hover:bg-slate-50"
-                        onClick={() => handleDownload(template.name)}
-                      >
-                        <Download className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-                        Download
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-3 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-50 text-xs font-semibold"
-                        onClick={() => handleDelete(template.name)}
-                      >
-                        <Trash className="h-3.5 w-3.5 mr-1.5" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-slate-200 shadow-xs">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                <FileText className="h-5 w-5" />
               </div>
-
-              <div
-                className="mt-6 relative border border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors"
-              >
-                <input
-                  type="file"
-                  accept=".docx"
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-
-                    const formData = new FormData();
-                    formData.append('file', file);
-
-                    try {
-                      const res = await fetch('/api/upload-template', {
-                        method: 'POST',
-                        body: formData
-                      });
-                      if (res.ok) {
-                        fetchTemplates();
-                        toast({ title: "Success", description: "Template uploaded successfully." });
-                      } else {
-                        toast({ title: "Error", description: "Upload failed", variant: "destructive" });
-                      }
-                    } catch (err) {
-                      console.error('Upload error', err);
-                    }
-                  }}
-                />
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center mb-2">
-                    <Upload className="h-5 w-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-800 text-sm mb-0.5">Upload New Template</h3>
-                    <p className="text-xs text-slate-500">
-                      Drag and drop a .docx file here or click to browse
-                    </p>
-                  </div>
-                </div>
+              <div>
+                <p className="text-xs text-slate-500">Total templates</p>
+                <p className="text-xl font-bold text-slate-900">{stats.total}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-xs">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Companies</p>
+                <p className="text-xl font-bold text-slate-900">{stats.companies}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-xs">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Board meetings</p>
+                <p className="text-xl font-bold text-slate-900">{stats.board}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-xs">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Committee templates</p>
+                <p className="text-xl font-bold text-slate-900">{stats.committee}</p>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-slate-200 shadow-xs rounded-xl overflow-hidden">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50">
+            <CardTitle className="text-base font-bold text-slate-900">Stored templates</CardTitle>
+            <CardDescription className="text-xs">
+              {filteredTemplates.length} of {templates.length} template{templates.length === 1 ? '' : 's'} shown
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="relative md:col-span-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Search by name, company, or type…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10"
+                />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {categoryOptions.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={companyFilter} onValueChange={setCompanyFilter}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All companies" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All companies</SelectItem>
+                  {companyOptions.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
+                    <TableHead className="text-xs font-bold uppercase tracking-wide">Template</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wide">Company</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wide">Type</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wide">Size</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wide">Added</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wide text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-12 text-center text-sm text-slate-500">
+                        Loading template library…
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredTemplates.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-12 text-center">
+                        <FileText className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No templates match your filters.</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredTemplates.map((template) => (
+                      <TableRow key={template.id || template.name} className="hover:bg-slate-50/60">
+                        <TableCell className="align-top py-3">
+                          <div className="font-semibold text-sm text-slate-900">{template.displayTitle}</div>
+                          <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-[280px]" title={template.name}>
+                            {template.name}
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top py-3 text-xs text-slate-700 max-w-[200px]">
+                          <span className="line-clamp-2">{template.displayCompany}</span>
+                        </TableCell>
+                        <TableCell className="align-top py-3">
+                          <Badge variant="outline" className={`text-[10px] font-semibold ${categoryBadgeClass(template.displayCategory || '')}`}>
+                            {template.displayCategory}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="align-top py-3 text-xs text-slate-600 font-mono">
+                          {formatBytes(template.size)}
+                        </TableCell>
+                        <TableCell className="align-top py-3 text-xs text-slate-600">
+                          {formatDate(template.lastModified)}
+                        </TableCell>
+                        <TableCell className="align-top py-3 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => handleDownload(template.name)}
+                          >
+                            <Download className="h-3.5 w-3.5 mr-1.5" />
+                            Download
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div
+              className="relative border border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                void handleUpload(e.dataTransfer.files?.[0]);
+              }}
+            >
+              <input
+                type="file"
+                accept=".docx"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={(e) => void handleUpload(e.target.files?.[0])}
+                disabled={uploading}
+              />
+              <div className="flex flex-col items-center gap-2 pointer-events-none">
+                <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center">
+                  <Upload className="h-5 w-5 text-slate-500" />
+                </div>
+                <h3 className="font-semibold text-slate-800 text-sm">Upload a meeting template</h3>
+                <p className="text-xs text-slate-500">Drag and drop a .docx file here, or click to browse</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </ProductDashboardLayout>
   );
