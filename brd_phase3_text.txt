@@ -1,0 +1,48 @@
+
+
+AEGIS PHASE 3 - ENHANCEMENT Enhancements for Minutes Generator
+
+
+
+
+
+
+
+Date: 22-06-2026
+Created By: Priyanka Pandey
+
+Table of Contents:
+Enhancements for Minutes Generator
+Enhancements for Chatbot
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Enhancements for Minutes Generator
+
+
+Enhancements for Chatbot
+
+Sl. No | Steps | Comments/Screenshots
+1 | ‘Template Resolution’ >> This feature allows users to create and add standard templates which can be stored and used during Minutes Generator (users are provided with an option to save with the template name)  In the Template Resolution, the save option to be enabled so that it is working.  In Meeting Resolutions, in resolution template, the data to be in same format (table/text, etc.) as entered by the user.  Dropdown option and type search functionality to be added in the Meeting Resolutions. | 
+2 | In the Template Renderer, attendance tab, the names of attendees to be added from company list and option to add the attendees manually. | 
+3 | Role based access control to be applied. | The admin master access to reside with Pragnesh Darji, Kamlesh Bhagia and Puneet Bansal.
+4 | Meeting wise and person wise tracking of meeting attendance. | A feature is to be given (a report) where the attendance can be tracked for the attendees of the meetings on the basis of meetings as well as based on the individual attendee names.
+5 | The secretarial compliances report to be created by using OCR and extracting the details of meetings, dates and attendees, i.e. number of meetings attended by individuals. | 
+6 | For the entity list in the vertical (BU), type search and dropdown both functionalities to be added. | 
+7 | The minutes generated need to be saved in a structured path of folders as described: - | Vertical (BU)->Company Name-> Meeting-> Type of meeting-> Date(year)
+8 | The user needs to have an upload option for both word/pdf formats for Repository (OCR & upload). | 
+9 | Template option and sequencing option to be available with the user for generating minutes. | 
+10 | The user needs to be able to search from title, or type search using keywords. | 
+Sl. No | Steps | Comments/Screenshots
+1 | AI functionality to be added | AI features chatbot will work on that specific vertical =--> company --> with their supported documents.

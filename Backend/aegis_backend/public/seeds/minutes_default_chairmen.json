@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "count": 5,
+  "chairmen": [
+    {
+      "company_name": "Adani Green Energy Limited",
+      "meeting_type": "Board Meeting",
+      "meeting_date": "2026-01-23",
+      "file_path": "90. AGEL - BM - 23.01.2026.docx",
+      "chairman_name": "Gautam S. Adani"
+    },
+    {
+      "company_name": "Adani Green Energy (UP) Limited",
+      "meeting_type": "Audit Committee",
+      "meeting_date": "2026-01-21",
+      "file_path": "4. AGE(UP)L - AC - 21.01.2026.docx",
+      "chairman_name": "Raj Kumar Jain"
+    },
+    {
+      "company_name": "Adani Green Energy (UP) Limited",
+      "meeting_type": "Board Meeting",
+      "meeting_date": "2026-01-21",
+      "file_path": "81. 21.01.2026 - AGE(UP)L.docx",
+      "chairman_name": "Raj Kumar Jain"
+    },
+    {
+      "company_name": "Adani Green Energy Twenty Five B Limited",
+      "meeting_type": "Board Meeting",
+      "meeting_date": "2026-01-21",
+      "file_path": "64. 21.01.2026 - AGE25BL.docx",
+      "chairman_name": "Pragnesh Darji"
+    },
+    {
+      "company_name": "Adani Green Energy Limited",
+      "meeting_type": "Audit Committee",
+      "meeting_date": "2026-03-26",
+      "file_path": "73. AGEL - AC - Minutes - 26.03.2026.docx",
+      "chairman_name": "Raminder Singh Gujral"
+    }
+  ]
+}
