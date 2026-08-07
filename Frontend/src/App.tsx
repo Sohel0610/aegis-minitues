@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { VerticalProvider } from "@/contexts/VerticalContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
@@ -77,7 +78,8 @@ const App = () => (
       <SonnerToaster />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
+          <VerticalProvider>
+            <Routes>
             {/* Main landing page */}
             <Route path="/" element={<LandingPage />} />
 
@@ -306,7 +308,8 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </AuthProvider>
+        </VerticalProvider>
+      </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

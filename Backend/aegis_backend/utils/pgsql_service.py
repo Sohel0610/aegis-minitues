@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 _pools = {}
 _pools_lock = threading.Lock()
 
+class SQLiteConnectionWrapper:
+    """Fallback compatibility wrapper class for legacy SQLite support."""
+    pass
+
 class PooledConnection:
     """Proxy a pooled psycopg2 connection so `.close()` returns it to the pool."""
 

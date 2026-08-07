@@ -17,6 +17,7 @@ def _create_engine_with_fallback():
     options = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         options["connect_args"] = {"check_same_thread": False}
+        os.makedirs("./data", exist_ok=True)
     else:
         options.update({"pool_size": 5, "max_overflow": 10})
     try:
